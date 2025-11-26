@@ -9,7 +9,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import {
   Building2,
   Server,
-  Monitor,
   Warehouse,
   ArrowRight,
   ArrowLeft,
@@ -22,6 +21,7 @@ import {
   Building,
   CreditCard,
   AlertCircle,
+  Cpu,
 } from "lucide-react"
 import Link from "next/link"
 import { submitLead } from "@/app/actions/leads"
@@ -39,10 +39,11 @@ const moveTypes = [
     baseRate: 2500,
     perSqm: 45,
     code: "OFF-REL",
+    minSqm: 20,
     description:
       "Complete office moves including workstations, furniture, and equipment. Our team handles everything from packing to setup at your new location.",
     minRequirements: [
-      "Minimum 50 sqm office space",
+      "Minimum 20 sqm office space",
       "2 weeks advance booking recommended",
       "Building access coordination required",
     ],
@@ -58,11 +59,12 @@ const moveTypes = [
   },
   {
     id: "datacenter",
-    name: "Data Centre Migration",
+    name: "Data Center Migration",
     icon: Server,
-    baseRate: 8500,
-    perSqm: 180,
+    baseRate: 5000,
+    perSqm: 85,
     code: "DC-MIG",
+    minSqm: 50,
     description:
       "Specialized data centre relocations with climate-controlled transport, anti-static handling, and minimal downtime planning for mission-critical infrastructure.",
     minRequirements: [
@@ -84,10 +86,11 @@ const moveTypes = [
   {
     id: "it-equipment",
     name: "IT Equipment Transport",
-    icon: Monitor,
+    icon: Cpu,
     baseRate: 1500,
-    perSqm: 85,
+    perSqm: 35,
     code: "IT-TRN",
+    minSqm: 10,
     description:
       "Safe transport of computers, servers, networking equipment, and peripherals with proper packaging and handling protocols.",
     minRequirements: ["Equipment inventory list", "1 week advance booking", "Power-down coordination"],
@@ -105,9 +108,10 @@ const moveTypes = [
     id: "warehouse",
     name: "Warehouse Relocation",
     icon: Warehouse,
-    baseRate: 5500,
-    perSqm: 35,
+    baseRate: 4000,
+    perSqm: 55,
     code: "WH-REL",
+    minSqm: 100,
     description:
       "Large-scale warehouse and industrial facility moves including racking systems, heavy machinery, and inventory transfer with minimal business disruption.",
     minRequirements: [
@@ -169,7 +173,8 @@ export function QuoteBuilder() {
     const type = moveTypes.find((t) => t.id === selectedType)
     if (!type) return null
 
-    let total = type.baseRate + type.perSqm * squareMeters[0]
+    const effectiveSqm = Math.max(squareMeters[0], type.minSqm)
+    let total = type.baseRate + type.perSqm * effectiveSqm
 
     if (distance) {
       total += Number.parseInt(distance) * 8
@@ -285,6 +290,9 @@ export function QuoteBuilder() {
       prev.includes(serviceId) ? prev.filter((id) => id !== serviceId) : [...prev, serviceId],
     )
   }
+
+  const selectedMoveType = moveTypes.find((t) => t.id === selectedType)
+  const isBelowMinimum = selectedMoveType && squareMeters[0] < selectedMoveType.minSqm
 
   if (paymentComplete) {
     return (
@@ -648,6 +656,13 @@ export function QuoteBuilder() {
               </div>
             </div>
 
+            {isBelowMinimum && (
+              <div className="flex items-center gap-2 p-3 border border-destructive bg-destructive/10 text-destructive text-sm">
+                <AlertCircle className="w-4 h-4" />
+                Your selected space size is below the minimum requirement for this move type.
+              </div>
+            )}
+
             <div className="flex gap-3">
               <Button variant="outline" onClick={() => setStep(1)} className="flex-1 border-primary/50">
                 <ArrowLeft className="w-4 h-4 mr-2" />
@@ -656,6 +671,7 @@ export function QuoteBuilder() {
               <Button
                 onClick={() => setStep(3)}
                 className="flex-1 bg-primary hover:bg-primary/80 text-primary-foreground"
+                disabled={isBelowMinimum}
               >
                 Continue
                 <ArrowRight className="w-4 h-4 ml-2" />
@@ -679,6 +695,11 @@ export function QuoteBuilder() {
                 <p className="text-xs font-mono text-secondary">AUD</p>
               </div>
               <p className="text-4xl font-bold text-secondary">${estimate?.toLocaleString()}</p>
+              {isBelowMinimum && selectedMoveType && (
+                <p className="text-xs text-accent mt-2 font-mono">
+                  * Minimum cost applies for spaces under {selectedMoveType.minSqm} sqm
+                </p>
+              )}
               <p className="text-xs text-muted-foreground mt-2">*Final quote may vary based on site assessment</p>
 
               <div className="mt-4 pt-4 border-t border-secondary/30">
