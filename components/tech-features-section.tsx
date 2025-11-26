@@ -7,9 +7,8 @@ const features = [
   {
     icon: Radar,
     title: "Real-Time Tracking",
-    description:
-      "GPS-enabled fleet tracking with live updates. Monitor your assets throughout the entire relocation process.",
-    comingSoon: false,
+    description: "Live tracking with real-time updates. Monitor your assets throughout the entire relocation process.",
+    comingSoon: true,
   },
   {
     icon: Cpu,
@@ -134,20 +133,12 @@ export function TechFeaturesSection() {
             <p className="text-foreground">
               → {stats.totalVehicles} vehicle{stats.totalVehicles !== 1 ? "s" : ""} online | {stats.activeDeployments}{" "}
               active deployment{stats.activeDeployments !== 1 ? "s" : ""}
-              {stats.pipelineCount > 0 && <span className="text-accent"> | {stats.pipelineCount} in pipeline</span>}
             </p>
             <p>
               <span className="text-secondary">$</span> tracking_uptime
             </p>
             <p className="text-foreground">
-              → {stats.trackingUptime}% uptime | <span className="text-muted-foreground">GPS: Traccar</span>
-            </p>
-            <p>
-              <span className="text-secondary">$</span> security_audit
-            </p>
-            <p className={stats.securityBreaches === 0 ? "text-primary" : "text-destructive"}>
-              → {stats.securityBreaches === 0 ? "All systems nominal" : `${stats.securityBreaches} incidents`} |{" "}
-              {stats.securityBreaches === 0 ? "Zero breaches" : "Review required"}_
+              → <span className="text-accent">Coming Soon</span>
             </p>
           </div>
         </div>
