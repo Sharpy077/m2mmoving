@@ -35,7 +35,10 @@ export function CTASection() {
           </div>
 
           <div className="space-y-6">
-            <div className="flex items-center gap-4 p-4 border border-border bg-background">
+            <a
+              href="tel:+61388201801"
+              className="flex items-center gap-4 p-4 border border-border bg-background hover:border-primary/50 transition-colors"
+            >
               <div className="w-12 h-12 bg-primary/10 border border-primary/30 flex items-center justify-center">
                 <Phone className="w-5 h-5 text-primary" />
               </div>
@@ -43,9 +46,12 @@ export function CTASection() {
                 <div className="text-xs text-muted-foreground uppercase tracking-wider">Direct Line</div>
                 <div className="text-lg font-bold text-foreground">(03) 8820 1801</div>
               </div>
-            </div>
+            </a>
 
-            <div className="flex items-center gap-4 p-4 border border-border bg-background">
+            <a
+              href="mailto:sales@m2mmoving.au"
+              className="flex items-center gap-4 p-4 border border-border bg-background hover:border-secondary/50 transition-colors"
+            >
               <div className="w-12 h-12 bg-secondary/10 border border-secondary/30 flex items-center justify-center">
                 <Mail className="w-5 h-5 text-secondary" />
               </div>
@@ -53,7 +59,7 @@ export function CTASection() {
                 <div className="text-xs text-muted-foreground uppercase tracking-wider">Email</div>
                 <div className="text-lg font-bold text-foreground">sales@m2mmoving.au</div>
               </div>
-            </div>
+            </a>
 
             <div className="flex items-center gap-4 p-4 border border-border bg-background">
               <div className="w-12 h-12 bg-accent/10 border border-accent/30 flex items-center justify-center">
