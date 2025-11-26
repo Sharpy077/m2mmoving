@@ -1,28 +1,13 @@
 "use client"
 
-import { createClient } from "@/lib/supabase/client"
-import { Button } from "@/components/ui/button"
-import { LogOut, User } from "lucide-react"
-import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { createClient } from "@/lib/supabase/server"
+import { LogoutButton } from "@/components/logout-button"
+import { User } from "lucide-react"
 
-export function AdminHeader() {
-  const [userEmail, setUserEmail] = useState<string | null>(null)
-  const router = useRouter()
-
-  useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getUser().then(({ data }) => {
-      setUserEmail(data.user?.email || null)
-    })
-  }, [])
-
-  const handleLogout = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push("/")
-    router.refresh()
-  }
+export async function AdminHeader() {
+  const supabase = await createClient()
+  const { data } = await supabase.auth.getUser()
+  const userEmail = data.user?.email || null
 
   return (
     <div className="flex items-center justify-between p-4 border-b border-border bg-card">
@@ -39,10 +24,7 @@ export function AdminHeader() {
             <span className="font-mono text-xs">{userEmail}</span>
           </div>
         )}
-        <Button variant="outline" size="sm" onClick={handleLogout} className="font-mono text-xs bg-transparent">
-          <LogOut className="w-4 h-4 mr-2" />
-          LOGOUT
-        </Button>
+        <LogoutButton />
       </div>
     </div>
   )

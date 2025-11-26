@@ -1,44 +1,33 @@
 "use client"
 
 import type React from "react"
-
-import { createClient } from "@/lib/supabase/client"
+import { loginAction } from "@/app/actions/auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
-import { useState, Suspense } from "react"
+import { useSearchParams } from "next/navigation"
+import { useState, Suspense, useTransition } from "react"
 import { Lock, AlertTriangle, ArrowLeft } from "lucide-react"
 
 function LoginForm() {
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
   const searchParams = useSearchParams()
   const redirectTo = searchParams.get("redirect") || "/admin"
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    const supabase = createClient()
-    setIsLoading(true)
     setError(null)
 
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-      if (error) throw error
-      router.push(redirectTo)
-      router.refresh()
-    } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "An error occurred")
-    } finally {
-      setIsLoading(false)
-    }
+    const formData = new FormData(e.currentTarget)
+
+    startTransition(async () => {
+      const result = await loginAction(formData)
+      if (result?.error) {
+        setError(result.error)
+      }
+    })
   }
 
   return (
@@ -67,11 +56,10 @@ function LoginForm() {
               </Label>
               <Input
                 id="email"
+                name="email"
                 type="email"
                 placeholder="admin@mmcommercial.com.au"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
                 className="bg-muted/50 border-border font-mono"
               />
             </div>
@@ -82,10 +70,9 @@ function LoginForm() {
               </Label>
               <Input
                 id="password"
+                name="password"
                 type="password"
                 required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
                 className="bg-muted/50 border-border font-mono"
               />
             </div>
@@ -100,9 +87,9 @@ function LoginForm() {
             <Button
               type="submit"
               className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-mono"
-              disabled={isLoading}
+              disabled={isPending}
             >
-              {isLoading ? "AUTHENTICATING..." : "LOGIN"}
+              {isPending ? "AUTHENTICATING..." : "LOGIN"}
             </Button>
           </form>
 
