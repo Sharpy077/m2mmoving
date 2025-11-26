@@ -6,23 +6,27 @@ const features = [
     title: "Real-Time Tracking",
     description:
       "GPS-enabled fleet tracking with live updates. Monitor your assets throughout the entire relocation process.",
+    comingSoon: false,
   },
   {
     icon: Cpu,
     title: "AI Route Optimization",
     description:
       "Machine learning algorithms calculate the fastest, safest routes for your cargo. Reduce transit time by 40%.",
+    comingSoon: true,
   },
   {
     icon: Lock,
     title: "Chain of Custody",
     description:
       "Blockchain-verified documentation and digital signatures ensure complete accountability at every checkpoint.",
+    comingSoon: true,
   },
   {
     icon: BarChart3,
     title: "Analytics Dashboard",
     description: "Access detailed move analytics, cost breakdowns, and performance metrics through our client portal.",
+    comingSoon: true,
   },
 ]
 
@@ -46,15 +50,32 @@ export function TechFeaturesSection() {
           {features.map((feature, index) => (
             <div
               key={index}
-              className="flex gap-6 p-6 border border-border bg-background hover:border-secondary/50 transition-colors group"
+              className="flex gap-6 p-6 border border-border bg-background hover:border-secondary/50 transition-colors group relative"
             >
+              {feature.comingSoon && (
+                <div className="absolute top-3 right-3 px-2 py-1 bg-accent/20 border border-accent/50 text-accent text-xs font-mono uppercase tracking-wider">
+                  Coming Soon
+                </div>
+              )}
               <div className="flex-shrink-0">
-                <div className="w-14 h-14 bg-secondary/10 border border-secondary/30 flex items-center justify-center group-hover:bg-secondary/20 transition-colors">
-                  <feature.icon className="w-7 h-7 text-secondary" />
+                <div
+                  className={`w-14 h-14 border flex items-center justify-center transition-colors ${
+                    feature.comingSoon
+                      ? "bg-muted/10 border-muted/30"
+                      : "bg-secondary/10 border-secondary/30 group-hover:bg-secondary/20"
+                  }`}
+                >
+                  <feature.icon
+                    className={`w-7 h-7 ${feature.comingSoon ? "text-muted-foreground" : "text-secondary"}`}
+                  />
                 </div>
               </div>
               <div>
-                <h3 className="text-lg font-bold text-foreground mb-2">{feature.title}</h3>
+                <h3
+                  className={`text-lg font-bold mb-2 ${feature.comingSoon ? "text-muted-foreground" : "text-foreground"}`}
+                >
+                  {feature.title}
+                </h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
               </div>
             </div>
