@@ -29,7 +29,7 @@ export function CTASection() {
                 </Link>
               </Button>
               <Button size="lg" variant="outline" className="uppercase tracking-wider bg-transparent" asChild>
-                <a href="tel:1300666683">Call Now</a>
+                <a href="tel:+61388201801">Call Now</a>
               </Button>
             </div>
           </div>
@@ -41,7 +41,7 @@ export function CTASection() {
               </div>
               <div>
                 <div className="text-xs text-muted-foreground uppercase tracking-wider">Direct Line</div>
-                <div className="text-lg font-bold text-foreground">1300 MM MOVE</div>
+                <div className="text-lg font-bold text-foreground">(03) 8820 1801</div>
               </div>
             </div>
 

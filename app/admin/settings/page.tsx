@@ -95,8 +95,8 @@ export default function SettingsPage() {
                 <div className="flex gap-3">
                   <span className="text-primary font-mono">02.</span>
                   <div>
-                    <p className="text-foreground">Purchase an Australian phone number (1300 or local)</p>
-                    <p className="text-muted-foreground text-xs">~$4-15 AUD/month depending on number type</p>
+                    <p className="text-foreground">Purchase an Australian phone number</p>
+                    <p className="text-green-500 text-xs font-mono">✓ Current: +61 3 8820 1801</p>
                   </div>
                 </div>
 
