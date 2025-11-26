@@ -7,11 +7,7 @@ export async function createClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY
 
-  console.log("[v0] Supabase URL available:", !!supabaseUrl)
-  console.log("[v0] Supabase Key available:", !!supabaseKey)
-
   if (!supabaseUrl || !supabaseKey) {
-    console.error("[v0] Missing Supabase credentials!")
     throw new Error("Missing Supabase configuration")
   }
 

@@ -1,5 +1,3 @@
-"use client"
-
 import { createClient } from "@/lib/supabase/server"
 import { LogoutButton } from "@/components/logout-button"
 import { User } from "lucide-react"
