@@ -1,4 +1,5 @@
 import { Truck } from "lucide-react"
+import Link from "next/link"
 
 export function Footer() {
   return (
@@ -68,6 +69,11 @@ export function Footer() {
                 <a href="#" className="hover:text-primary transition-colors">
                   Blog
                 </a>
+              </li>
+              <li>
+                <Link href="/admin" className="hover:text-primary transition-colors">
+                  Admin Portal
+                </Link>
               </li>
             </ul>
           </div>
