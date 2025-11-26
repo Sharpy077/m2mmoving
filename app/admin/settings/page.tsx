@@ -1,5 +1,6 @@
 import { Phone, Globe, Key, CheckCircle, AlertCircle } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { AdminHeader } from "@/components/admin-header"
 import Link from "next/link"
 
 export default function SettingsPage() {
@@ -11,6 +12,7 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      <AdminHeader />
       <div className="border-b border-border bg-card">
         <div className="container mx-auto px-4 py-6">
           <div className="flex items-center justify-between">

@@ -1,4 +1,5 @@
 import { VoicemailsDashboard } from "@/components/voicemails-dashboard"
+import { AdminHeader } from "@/components/admin-header"
 import { Phone, Users, Settings } from "lucide-react"
 import Link from "next/link"
 
@@ -7,6 +8,7 @@ export const dynamic = "force-dynamic"
 export default function VoicemailsPage() {
   return (
     <div className="min-h-screen bg-background">
+      <AdminHeader />
       <div className="border-b border-border bg-card">
         <div className="container mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
