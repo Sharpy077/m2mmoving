@@ -87,6 +87,13 @@ export function Footer() {
             SYS_VERSION: 2.4.1 | STATUS: <span className="text-primary">OPERATIONAL</span>
           </p>
         </div>
+
+        <div className="border-t border-border mt-6 pt-6 text-center">
+          <p className="text-xs text-muted-foreground">
+            * A subsidiary of <span className="text-foreground font-medium">Sharp Horizons Technology</span> | ABN: 71
+            661 207 309
+          </p>
+        </div>
       </div>
     </footer>
   )
