@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card"
-import { Quote } from "lucide-react"
+import { MessageSquare } from "lucide-react"
 
 const testimonials = [
   {
@@ -33,26 +33,23 @@ export function TestimonialsSection() {
             <span className="text-xs uppercase tracking-widest text-accent font-mono">// Client Logs</span>
           </div>
           <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">MISSION_REPORTS</h2>
-          <p className="text-muted-foreground max-w-2xl">
-            Verified feedback from completed operations. Our clients speak for our results.
-          </p>
+          <p className="text-muted-foreground max-w-2xl">Client testimonials and feedback from completed operations.</p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-6">
-          {testimonials.map((testimonial, index) => (
-            <Card key={index} className="bg-card">
-              <CardContent className="pt-6">
-                <Quote className="w-8 h-8 text-primary/50 mb-4" />
-                <blockquote className="text-foreground mb-6 leading-relaxed">"{testimonial.quote}"</blockquote>
-                <div className="border-t border-border pt-4">
-                  <div className="font-bold text-foreground">{testimonial.author}</div>
-                  <div className="text-sm text-muted-foreground">{testimonial.role}</div>
-                  <div className="text-xs text-primary font-mono mt-1">@{testimonial.company}</div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <Card className="bg-card border-dashed border-2 border-border">
+          <CardContent className="py-16 flex flex-col items-center justify-center text-center">
+            <div className="w-16 h-16 rounded-none bg-muted flex items-center justify-center mb-6">
+              <MessageSquare className="w-8 h-8 text-muted-foreground" />
+            </div>
+            <div className="inline-block px-3 py-1 bg-accent/20 text-accent text-xs font-mono uppercase tracking-wider mb-4">
+              Coming Soon
+            </div>
+            <h3 className="text-xl font-bold text-foreground mb-2">Client Testimonials</h3>
+            <p className="text-muted-foreground max-w-md">
+              We're currently completing our first missions. Check back soon for verified feedback from our clients.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     </section>
   )
