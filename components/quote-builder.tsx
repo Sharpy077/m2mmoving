@@ -1,145 +1,156 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Building2,
   Server,
   Monitor,
-  Package,
-  Truck,
-  Shield,
-  Clock,
+  Warehouse,
   ArrowRight,
-  Calculator,
-  MapPin,
-  Check,
-  Info,
-  ChevronDown,
-  ChevronUp,
+  ArrowLeft,
   CheckCircle2,
   Loader2,
+  MapPin,
+  Mail,
+  Phone,
+  User,
+  Building,
+  CreditCard,
+  AlertCircle,
 } from "lucide-react"
 import Link from "next/link"
 import { submitLead } from "@/app/actions/leads"
+import { createDepositCheckoutSession, markDepositPaid } from "@/app/actions/stripe"
+import { loadStripe } from "@stripe/stripe-js"
+import { EmbeddedCheckout, EmbeddedCheckoutProvider } from "@stripe/react-stripe-js"
+
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
 
 const moveTypes = [
   {
     id: "office",
-    label: "Office Relocation",
+    name: "Office Relocation",
     icon: Building2,
-    basePrice: 2500,
+    baseRate: 2500,
+    perSqm: 45,
+    code: "OFF-REL",
     description:
-      "Complete office moving solution for businesses of all sizes. From small startups to corporate headquarters.",
-    minRequirements: ["Minimum 50m² space", "Access for loading dock or lift", "2 weeks advance booking recommended"],
+      "Complete office moves including workstations, furniture, and equipment. Our team handles everything from packing to setup at your new location.",
+    minRequirements: [
+      "Minimum 50 sqm office space",
+      "2 weeks advance booking recommended",
+      "Building access coordination required",
+    ],
     included: [
       "Workstation disassembly & reassembly",
-      "IT equipment careful handling",
-      "Furniture protection wrapping",
-      "Floor & wall protection",
-      "Basic labeling system",
-      "Project coordinator assigned",
+      "IT equipment handling",
+      "Furniture protection & wrapping",
+      "Labeling & inventory system",
+      "Weekend/after-hours moves available",
     ],
-    idealFor: "Small to large offices, co-working spaces, corporate relocations",
-    typicalDuration: "1-3 days",
+    idealFor: ["Corporate offices", "Co-working spaces", "Professional services firms"],
+    typicalDuration: "1-3 days depending on size",
   },
   {
     id: "datacenter",
-    label: "Data Center",
+    name: "Data Centre Migration",
     icon: Server,
-    basePrice: 8000,
+    baseRate: 8500,
+    perSqm: 180,
+    code: "DC-MIG",
     description:
-      "Mission-critical data center relocation with zero downtime protocols. Anti-static handling and climate-controlled transport.",
+      "Specialized data centre relocations with climate-controlled transport, anti-static handling, and minimal downtime planning for mission-critical infrastructure.",
     minRequirements: [
-      "Site assessment required",
-      "Minimum 4 weeks advance booking",
-      "After-hours access mandatory",
-      "Network documentation required",
+      "Technical site assessment required",
+      "4 weeks minimum planning period",
+      "Detailed asset inventory",
+      "Downtime window scheduling",
     ],
     included: [
       "Anti-static equipment handling",
       "Climate-controlled transport",
-      "Server rack disassembly/assembly",
-      "Cable management & labeling",
-      "Real-time GPS tracking",
-      "Dedicated project manager",
-      "24/7 emergency support",
+      "Cable management & documentation",
+      "Rack disassembly & reassembly",
+      "24/7 project coordination",
     ],
-    idealFor: "Server rooms, colocation facilities, enterprise data centers",
-    typicalDuration: "3-7 days",
+    idealFor: ["Data centres", "Server rooms", "Network operations centres"],
+    typicalDuration: "3-7 days with staged migration",
   },
   {
     id: "it-equipment",
-    label: "IT Equipment",
+    name: "IT Equipment Transport",
     icon: Monitor,
-    basePrice: 3500,
+    baseRate: 1500,
+    perSqm: 85,
+    code: "IT-TRN",
     description:
-      "Specialized transport for sensitive IT assets including servers, networking gear, and high-value electronics.",
-    minRequirements: ["Equipment inventory list", "1 week advance booking", "Power-down schedule coordination"],
+      "Safe transport of computers, servers, networking equipment, and peripherals with proper packaging and handling protocols.",
+    minRequirements: ["Equipment inventory list", "1 week advance booking", "Power-down coordination"],
     included: [
       "Anti-static packaging",
-      "Shock-absorbent cases",
       "Individual item tracking",
-      "Photo documentation",
-      "Basic reconnection assistance",
-      "Equipment testing post-move",
+      "Secure chain of custody",
+      "Setup assistance at destination",
+      "Equipment testing support",
     ],
-    idealFor: "IT refresh projects, equipment upgrades, branch office setups",
+    idealFor: ["IT departments", "Tech companies", "Equipment refreshes"],
     typicalDuration: "1-2 days",
   },
   {
     id: "warehouse",
-    label: "Warehouse",
-    icon: Package,
-    basePrice: 5000,
+    name: "Warehouse Relocation",
+    icon: Warehouse,
+    baseRate: 5500,
+    perSqm: 35,
+    code: "WH-REL",
     description:
-      "Industrial-scale warehouse and inventory relocation with full logistics coordination and inventory management.",
+      "Large-scale warehouse and industrial facility moves including racking systems, heavy machinery, and inventory transfer with minimal business disruption.",
     minRequirements: [
-      "Inventory audit required",
-      "Forklift access at both sites",
-      "3 weeks advance booking",
-      "Loading bay availability",
+      "Site survey required",
+      "3 weeks minimum planning",
+      "Forklift access at both locations",
+      "Inventory reconciliation plan",
     ],
     included: [
-      "Pallet handling & transport",
-      "Inventory tracking system",
-      "Racking disassembly/assembly",
+      "Racking disassembly & installation",
       "Heavy machinery moving",
-      "Logistics coordination",
-      "Multiple truck deployment",
+      "Inventory management",
+      "Forklift operations",
+      "Loading dock coordination",
     ],
-    idealFor: "Distribution centers, manufacturing, retail stockrooms",
-    typicalDuration: "3-10 days",
+    idealFor: ["Distribution centres", "Manufacturing facilities", "Storage operations"],
+    typicalDuration: "3-10 days depending on scale",
   },
 ]
 
 const additionalServices = [
   {
     id: "packing",
-    label: "Professional Packing",
-    price: 800,
-    description: "Full-service packing with premium materials",
+    name: "Professional Packing",
+    price: 450,
+    description: "Full packing service with quality materials",
   },
-  { id: "storage", label: "Temporary Storage", price: 500, description: "Secure climate-controlled storage facility" },
-  { id: "insurance", label: "Premium Insurance", price: 350, description: "Extended coverage up to $500K per item" },
-  { id: "after-hours", label: "After-Hours Moving", price: 600, description: "Weekend & evening availability" },
-  { id: "it-setup", label: "IT Setup & Reconnection", price: 1200, description: "Full IT infrastructure reconnection" },
-  { id: "furniture", label: "Furniture Assembly", price: 450, description: "Professional assembly & placement" },
+  { id: "storage", name: "Temporary Storage", price: 300, description: "Secure storage per week if needed" },
+  { id: "cleaning", name: "Post-Move Cleaning", price: 350, description: "Professional cleaning of old premises" },
+  { id: "insurance", name: "Premium Insurance", price: 200, description: "Enhanced coverage up to $100,000" },
+  { id: "afterhours", name: "After Hours Service", price: 500, description: "Weekend or evening move scheduling" },
+  { id: "itsetup", name: "IT Setup Assistance", price: 600, description: "Help reconnecting IT equipment" },
 ]
 
 export function QuoteBuilder() {
+  const [step, setStep] = useState(1)
   const [selectedType, setSelectedType] = useState<string | null>(null)
   const [expandedType, setExpandedType] = useState<string | null>(null)
-  const [squareMeters, setSquareMeters] = useState([200])
-  const [distance, setDistance] = useState("")
+  const [squareMeters, setSquareMeters] = useState([100])
   const [selectedServices, setSelectedServices] = useState<string[]>([])
   const [originSuburb, setOriginSuburb] = useState("")
   const [destSuburb, setDestSuburb] = useState("")
+  const [distance, setDistance] = useState("")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
   const [companyName, setCompanyName] = useState("")
@@ -147,31 +158,127 @@ export function QuoteBuilder() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [submittedLead, setSubmittedLead] = useState<any>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+
+  const [showPayment, setShowPayment] = useState(false)
+  const [paymentClientSecret, setPaymentClientSecret] = useState<string | null>(null)
+  const [paymentComplete, setPaymentComplete] = useState(false)
 
   const estimate = useMemo(() => {
     if (!selectedType) return null
+    const type = moveTypes.find((t) => t.id === selectedType)
+    if (!type) return null
 
-    const moveType = moveTypes.find((t) => t.id === selectedType)
-    if (!moveType) return null
+    let total = type.baseRate + type.perSqm * squareMeters[0]
 
-    let total = moveType.basePrice
-    const sizeMultiplier = squareMeters[0] / 100
-    total += sizeMultiplier * 500
-
-    const dist = Number.parseInt(distance) || 0
-    if (dist > 50) {
-      total += (dist - 50) * 8
+    if (distance) {
+      total += Number.parseInt(distance) * 8
     }
 
     selectedServices.forEach((serviceId) => {
       const service = additionalServices.find((s) => s.id === serviceId)
-      if (service) {
-        total += service.price
-      }
+      if (service) total += service.price
     })
 
     return Math.round(total)
-  }, [selectedType, squareMeters, distance, selectedServices])
+  }, [selectedType, squareMeters, selectedServices, distance])
+
+  const depositAmount = estimate ? Math.round(estimate * 0.5) : 0
+
+  const handleSubmit = async () => {
+    if (!email || !selectedType || !estimate) {
+      console.log("[v0] Submit validation failed:", { email, selectedType, estimate })
+      return
+    }
+
+    setIsSubmitting(true)
+    setSubmitError(null)
+    console.log("[v0] Starting lead submission...")
+
+    try {
+      const result = await submitLead({
+        lead_type: "instant_quote",
+        email,
+        phone: phone || undefined,
+        company_name: companyName || undefined,
+        contact_name: contactName || undefined,
+        move_type: selectedType,
+        origin_suburb: originSuburb || undefined,
+        destination_suburb: destSuburb || undefined,
+        distance_km: distance ? Number.parseInt(distance) : undefined,
+        square_meters: squareMeters[0],
+        estimated_total: estimate,
+        additional_services: selectedServices.length > 0 ? selectedServices : undefined,
+      })
+
+      console.log("[v0] Lead submission result:", result)
+
+      if (result.success) {
+        setSubmitted(true)
+        setSubmittedLead(result.lead)
+      } else {
+        setSubmitError(result.error || "Failed to submit quote. Please try again.")
+      }
+    } catch (error) {
+      console.error("[v0] Lead submission error:", error)
+      setSubmitError("An unexpected error occurred. Please try again.")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handlePayDeposit = async () => {
+    if (!submittedLead || !estimate) return
+
+    setIsSubmitting(true)
+    setSubmitError(null)
+    console.log("[v0] Initiating deposit payment for lead:", submittedLead.id)
+
+    try {
+      const result = await createDepositCheckoutSession(
+        submittedLead.id,
+        depositAmount * 100, // Convert to cents
+        email,
+      )
+
+      console.log("[v0] Checkout session result:", result)
+
+      if (result.success && result.clientSecret) {
+        setPaymentClientSecret(result.clientSecret)
+        setShowPayment(true)
+      } else {
+        setSubmitError(result.error || "Failed to initiate payment. Please try again.")
+      }
+    } catch (error) {
+      console.error("[v0] Payment initiation error:", error)
+      setSubmitError("An unexpected error occurred. Please try again.")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handlePaymentComplete = useCallback(async () => {
+    if (!submittedLead) return
+
+    console.log("[v0] Payment completed, updating lead status...")
+    await markDepositPaid(submittedLead.id)
+    setPaymentComplete(true)
+    setShowPayment(false)
+  }, [submittedLead])
+
+  const fetchClientSecret = useCallback(() => {
+    return Promise.resolve(paymentClientSecret!)
+  }, [paymentClientSecret])
+
+  const handleTypeClick = (typeId: string) => {
+    if (expandedType === typeId) {
+      setSelectedType(typeId)
+      setExpandedType(null)
+    } else {
+      setExpandedType(typeId)
+      setSelectedType(typeId)
+    }
+  }
 
   const toggleService = (serviceId: string) => {
     setSelectedServices((prev) =>
@@ -179,450 +286,509 @@ export function QuoteBuilder() {
     )
   }
 
-  const handleSubmit = async () => {
-    if (!email || !selectedType || !estimate) return
-
-    setIsSubmitting(true)
-
-    const result = await submitLead({
-      lead_type: "instant_quote",
-      email,
-      phone: phone || undefined,
-      company_name: companyName || undefined,
-      contact_name: contactName || undefined,
-      move_type: selectedType,
-      origin_suburb: originSuburb || undefined,
-      destination_suburb: destSuburb || undefined,
-      distance_km: distance ? Number.parseInt(distance) : undefined,
-      square_meters: squareMeters[0],
-      estimated_total: estimate,
-      additional_services: selectedServices.length > 0 ? selectedServices : undefined,
-    })
-
-    setIsSubmitting(false)
-
-    if (result.success) {
-      setSubmitted(true)
-      setSubmittedLead(result.lead)
-    }
+  if (paymentComplete) {
+    return (
+      <div className="border border-primary/30 bg-black/50 p-8">
+        <div className="text-center space-y-6">
+          <div className="w-20 h-20 mx-auto border-2 border-secondary flex items-center justify-center">
+            <CheckCircle2 className="w-10 h-10 text-secondary" />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground font-mono mb-2">PAYMENT_CONFIRMED</p>
+            <h3 className="text-2xl font-bold text-secondary">Booking Confirmed!</h3>
+          </div>
+          <div className="border border-secondary/30 bg-secondary/5 p-4 text-left font-mono text-sm">
+            <p className="text-muted-foreground">
+              REFERENCE: <span className="text-foreground">{submittedLead?.id?.slice(0, 8).toUpperCase()}</span>
+            </p>
+            <p className="text-muted-foreground">
+              DEPOSIT_PAID: <span className="text-secondary">${depositAmount.toLocaleString()} AUD</span>
+            </p>
+            <p className="text-muted-foreground">
+              REMAINING: <span className="text-foreground">${depositAmount.toLocaleString()} AUD</span>
+            </p>
+            <p className="text-muted-foreground">
+              STATUS: <span className="text-secondary">CONFIRMED</span>
+            </p>
+          </div>
+          <p className="text-muted-foreground">
+            Our team will contact you within 24 hours to finalize your move details.
+          </p>
+          <Link href="/">
+            <Button className="bg-primary hover:bg-primary/80 text-primary-foreground">Return to Homepage</Button>
+          </Link>
+        </div>
+      </div>
+    )
   }
 
-  const selectedMoveType = moveTypes.find((t) => t.id === selectedType)
-
-  if (submitted) {
+  if (showPayment && paymentClientSecret) {
     return (
-      <Card className="border-secondary bg-card">
-        <CardContent className="py-16">
-          <div className="text-center space-y-4">
-            <div className="w-20 h-20 mx-auto bg-secondary flex items-center justify-center">
-              <CheckCircle2 className="w-10 h-10 text-secondary-foreground" />
-            </div>
-            <h2 className="text-2xl font-bold text-foreground">Quote Request Received</h2>
-            <div className="font-mono text-secondary">
-              QUOTE_ID: MM-{submittedLead?.id?.slice(0, 8).toUpperCase() || Date.now().toString(36).toUpperCase()}
-            </div>
-            <div className="text-3xl font-bold text-primary">${estimate?.toLocaleString()} AUD</div>
-            <p className="text-muted-foreground max-w-md mx-auto">
-              Our team will review your quote request and contact you within 24 hours to confirm details and schedule
-              your move.
-            </p>
-            <div className="pt-4 flex flex-col sm:flex-row gap-3 justify-center">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSubmitted(false)
-                  setEmail("")
-                  setPhone("")
-                  setCompanyName("")
-                  setContactName("")
-                  setSelectedType(null)
-                  setSelectedServices([])
-                }}
-              >
-                Request Another Quote
-              </Button>
-              <Button asChild>
-                <Link href="/quote/custom">Need Custom Quote?</Link>
-              </Button>
-            </div>
+      <div className="border border-primary/30 bg-black/50 p-6">
+        <div className="mb-6">
+          <p className="text-xs text-muted-foreground font-mono mb-2">SECURE_PAYMENT_PORTAL</p>
+          <h3 className="text-xl font-bold">Pay 50% Deposit</h3>
+          <p className="text-muted-foreground text-sm mt-2">
+            Deposit Amount: <span className="text-secondary font-bold">${depositAmount.toLocaleString()} AUD</span>
+          </p>
+        </div>
+        <div className="bg-white rounded-sm overflow-hidden">
+          <EmbeddedCheckoutProvider
+            stripe={stripePromise}
+            options={{
+              fetchClientSecret,
+              onComplete: handlePaymentComplete,
+            }}
+          >
+            <EmbeddedCheckout />
+          </EmbeddedCheckoutProvider>
+        </div>
+        <Button
+          variant="outline"
+          className="mt-4 w-full bg-transparent"
+          onClick={() => {
+            setShowPayment(false)
+            setPaymentClientSecret(null)
+          }}
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Quote
+        </Button>
+      </div>
+    )
+  }
+
+  if (submitted && submittedLead) {
+    return (
+      <div className="border border-primary/30 bg-black/50 p-8">
+        <div className="text-center space-y-6">
+          <div className="w-20 h-20 mx-auto border-2 border-secondary flex items-center justify-center">
+            <CheckCircle2 className="w-10 h-10 text-secondary" />
           </div>
-        </CardContent>
-      </Card>
+          <div>
+            <p className="text-xs text-muted-foreground font-mono mb-2">QUOTE_CONFIRMED</p>
+            <h3 className="text-2xl font-bold text-secondary">Quote Submitted!</h3>
+          </div>
+          <div className="border border-secondary/30 bg-secondary/5 p-4 text-left font-mono text-sm">
+            <p className="text-muted-foreground">
+              REFERENCE: <span className="text-foreground">{submittedLead.id.slice(0, 8).toUpperCase()}</span>
+            </p>
+            <p className="text-muted-foreground">
+              ESTIMATE: <span className="text-secondary">${estimate?.toLocaleString()} AUD</span>
+            </p>
+            <p className="text-muted-foreground">
+              STATUS: <span className="text-foreground">PENDING_REVIEW</span>
+            </p>
+          </div>
+
+          <div className="border border-primary/30 bg-black/30 p-6 text-left space-y-4">
+            <div>
+              <p className="text-xs text-muted-foreground font-mono mb-2">PAYMENT_OPTIONS</p>
+              <h4 className="font-bold">Secure Your Booking</h4>
+            </div>
+            <div className="flex items-center justify-between border border-secondary/30 bg-secondary/5 p-4">
+              <div>
+                <p className="font-mono text-sm text-muted-foreground">50% DEPOSIT</p>
+                <p className="text-2xl font-bold text-secondary">${depositAmount.toLocaleString()} AUD</p>
+                <p className="text-xs text-muted-foreground">Remaining balance due on completion</p>
+              </div>
+              <CreditCard className="w-8 h-8 text-secondary" />
+            </div>
+            {submitError && (
+              <div className="flex items-center gap-2 text-destructive text-sm">
+                <AlertCircle className="w-4 h-4" />
+                {submitError}
+              </div>
+            )}
+            <Button
+              className="w-full bg-secondary hover:bg-secondary/80 text-secondary-foreground"
+              onClick={handlePayDeposit}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  Pay Deposit Now
+                </>
+              )}
+            </Button>
+            <p className="text-xs text-muted-foreground text-center">
+              Or our team will contact you within 24 hours to discuss payment options
+            </p>
+          </div>
+
+          <Link href="/">
+            <Button variant="outline" className="border-primary/50 bg-transparent">
+              Return to Homepage
+            </Button>
+          </Link>
+        </div>
+      </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      {/* Move Type Selection with Details */}
-      <Card className="border-border bg-card">
-        <CardHeader className="border-b border-border">
-          <CardTitle className="flex items-center gap-2 text-lg font-mono">
-            <span className="text-primary">[01]</span> SELECT_MOVE_TYPE
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-6">
-          <div className="space-y-4">
-            {moveTypes.map((type) => {
-              const Icon = type.icon
-              const isSelected = selectedType === type.id
-              const isExpanded = expandedType === type.id
+    <div className="border border-primary/30 bg-black/50">
+      {/* Progress Bar */}
+      <div className="border-b border-primary/30 p-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-mono text-muted-foreground">QUOTE_PROGRESS</span>
+          <span className="text-xs font-mono text-primary">{step}/3</span>
+        </div>
+        <div className="h-1 bg-muted">
+          <div className="h-full bg-primary transition-all duration-300" style={{ width: `${(step / 3) * 100}%` }} />
+        </div>
+      </div>
 
-              return (
-                <div key={type.id} className="border border-border">
-                  {/* Type Header */}
-                  <button
-                    onClick={() => {
-                      setSelectedType(type.id)
-                      setExpandedType(isExpanded ? null : type.id)
-                    }}
-                    className={`w-full p-4 text-left transition-all flex items-center gap-4 ${
-                      isSelected ? "bg-primary/10 border-b border-primary" : "bg-background hover:bg-muted/50"
-                    }`}
-                  >
-                    <div
-                      className={`w-12 h-12 flex items-center justify-center shrink-0 ${
-                        isSelected ? "bg-primary" : "bg-muted"
+      <div className="p-6">
+        {/* Step 1: Select Move Type */}
+        {step === 1 && (
+          <div className="space-y-6">
+            <div>
+              <p className="text-xs text-muted-foreground font-mono mb-2">STEP_01: SELECT_SERVICE</p>
+              <h3 className="text-xl font-bold">Choose Your Move Type</h3>
+              <p className="text-sm text-muted-foreground mt-1">Click to view details and select</p>
+            </div>
+
+            <div className="grid gap-3">
+              {moveTypes.map((type) => {
+                const Icon = type.icon
+                const isSelected = selectedType === type.id
+                const isExpanded = expandedType === type.id
+
+                return (
+                  <div key={type.id}>
+                    <button
+                      onClick={() => handleTypeClick(type.id)}
+                      className={`w-full p-4 border text-left transition-all ${
+                        isSelected
+                          ? "border-primary bg-primary/10"
+                          : "border-muted-foreground/30 hover:border-primary/50"
                       }`}
                     >
-                      <Icon className={`w-6 h-6 ${isSelected ? "text-primary-foreground" : "text-muted-foreground"}`} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className={`font-semibold ${isSelected ? "text-foreground" : "text-muted-foreground"}`}>
-                          {type.label}
-                        </span>
-                        {isSelected && <Check className="w-4 h-4 text-primary" />}
-                      </div>
-                      <div className="text-sm font-mono text-muted-foreground">
-                        From ${type.basePrice.toLocaleString()} AUD
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Info className="w-4 h-4" />
-                      {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </div>
-                  </button>
-
-                  {/* Expanded Details */}
-                  {isExpanded && (
-                    <div className="p-4 bg-muted/30 space-y-4">
-                      <p className="text-sm text-muted-foreground">{type.description}</p>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Minimum Requirements */}
-                        <div className="space-y-2">
-                          <h4 className="text-xs font-mono text-primary uppercase tracking-wider">
-                            // Minimum Requirements
-                          </h4>
-                          <ul className="space-y-1">
-                            {type.minRequirements.map((req, idx) => (
-                              <li key={idx} className="text-sm text-muted-foreground flex items-start gap-2">
-                                <span className="text-primary mt-1">›</span>
-                                {req}
-                              </li>
-                            ))}
-                          </ul>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div
+                            className={`w-12 h-12 flex items-center justify-center border ${
+                              isSelected ? "border-primary bg-primary/20" : "border-muted-foreground/30"
+                            }`}
+                          >
+                            <Icon className={`w-6 h-6 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
+                          </div>
+                          <div>
+                            <p className="font-bold">{type.name}</p>
+                            <p className="text-xs text-muted-foreground font-mono">{type.code}</p>
+                          </div>
                         </div>
-
-                        {/* What's Included */}
-                        <div className="space-y-2">
-                          <h4 className="text-xs font-mono text-secondary uppercase tracking-wider">
-                            // What's Included
-                          </h4>
-                          <ul className="space-y-1">
-                            {type.included.map((item, idx) => (
-                              <li key={idx} className="text-sm text-muted-foreground flex items-start gap-2">
-                                <Check className="w-3 h-3 text-secondary mt-1 shrink-0" />
-                                {item}
-                              </li>
-                            ))}
-                          </ul>
+                        <div className="text-right">
+                          <p className="text-sm text-muted-foreground">from</p>
+                          <p className="font-bold text-primary">${type.baseRate.toLocaleString()}</p>
                         </div>
                       </div>
+                    </button>
 
-                      <div className="flex flex-wrap gap-4 pt-2 border-t border-border">
-                        <div className="text-xs">
-                          <span className="text-muted-foreground font-mono">IDEAL_FOR: </span>
-                          <span className="text-foreground">{type.idealFor}</span>
+                    {/* Expanded Details */}
+                    {isExpanded && (
+                      <div className="border border-t-0 border-primary/30 bg-black/30 p-4 space-y-4">
+                        <p className="text-sm text-muted-foreground">{type.description}</p>
+
+                        <div className="grid md:grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-xs font-mono text-primary mb-2">MINIMUM_REQUIREMENTS</p>
+                            <ul className="space-y-1">
+                              {type.minRequirements.map((req, i) => (
+                                <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
+                                  <span className="text-primary">▸</span>
+                                  {req}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <p className="text-xs font-mono text-secondary mb-2">WHATS_INCLUDED</p>
+                            <ul className="space-y-1">
+                              {type.included.map((item, i) => (
+                                <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
+                                  <CheckCircle2 className="w-3 h-3 text-secondary mt-0.5" />
+                                  {item}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
                         </div>
-                        <div className="text-xs">
-                          <span className="text-muted-foreground font-mono">DURATION: </span>
-                          <span className="text-foreground">{type.typicalDuration}</span>
+
+                        <div className="flex flex-wrap gap-4 pt-2 border-t border-primary/20">
+                          <div>
+                            <p className="text-xs font-mono text-muted-foreground">IDEAL_FOR</p>
+                            <p className="text-xs">{type.idealFor.join(", ")}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-mono text-muted-foreground">TYPICAL_DURATION</p>
+                            <p className="text-xs">{type.typicalDuration}</p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Selected Type Summary */}
-      {selectedMoveType && (
-        <Card className="border-secondary/50 bg-secondary/5">
-          <CardContent className="py-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-secondary flex items-center justify-center">
-                <selectedMoveType.icon className="w-5 h-5 text-secondary-foreground" />
-              </div>
-              <div className="flex-1">
-                <div className="font-semibold text-foreground">{selectedMoveType.label} Selected</div>
-                <div className="text-xs text-muted-foreground">
-                  Typical duration: {selectedMoveType.typicalDuration}
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-sm font-mono text-muted-foreground">Base Price</div>
-                <div className="text-lg font-bold text-secondary">${selectedMoveType.basePrice.toLocaleString()}</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Location Details */}
-      <Card className="border-border bg-card">
-        <CardHeader className="border-b border-border">
-          <CardTitle className="flex items-center gap-2 text-lg font-mono">
-            <span className="text-primary">[02]</span> LOCATION_PARAMETERS
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-6 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-sm font-mono text-muted-foreground flex items-center gap-2">
-                <MapPin className="w-4 h-4" /> ORIGIN_SUBURB
-              </Label>
-              <Input
-                placeholder="e.g., Melbourne CBD"
-                value={originSuburb}
-                onChange={(e) => setOriginSuburb(e.target.value)}
-                className="bg-background border-border"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-mono text-muted-foreground flex items-center gap-2">
-                <MapPin className="w-4 h-4" /> DESTINATION_SUBURB
-              </Label>
-              <Input
-                placeholder="e.g., South Yarra"
-                value={destSuburb}
-                onChange={(e) => setDestSuburb(e.target.value)}
-                className="bg-background border-border"
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label className="text-sm font-mono text-muted-foreground">DISTANCE_KM: {distance || "0"}</Label>
-            <Input
-              type="number"
-              placeholder="Estimated distance in kilometers"
-              value={distance}
-              onChange={(e) => setDistance(e.target.value)}
-              className="bg-background border-border"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Space Size */}
-      <Card className="border-border bg-card">
-        <CardHeader className="border-b border-border">
-          <CardTitle className="flex items-center gap-2 text-lg font-mono">
-            <span className="text-primary">[03]</span> SPACE_DIMENSIONS
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-6">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-mono text-muted-foreground">SQUARE_METERS</Label>
-              <span className="font-mono text-primary text-xl">{squareMeters[0]} m²</span>
-            </div>
-            <Slider
-              value={squareMeters}
-              onValueChange={setSquareMeters}
-              min={50}
-              max={2000}
-              step={50}
-              className="w-full"
-            />
-            <div className="flex justify-between text-xs text-muted-foreground font-mono">
-              <span>50 m²</span>
-              <span>2000 m²</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Additional Services */}
-      <Card className="border-border bg-card">
-        <CardHeader className="border-b border-border">
-          <CardTitle className="flex items-center gap-2 text-lg font-mono">
-            <span className="text-primary">[04]</span> ADDITIONAL_MODULES
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {additionalServices.map((service) => {
-              const isSelected = selectedServices.includes(service.id)
-              return (
-                <div
-                  key={service.id}
-                  onClick={() => toggleService(service.id)}
-                  className={`flex items-start gap-3 p-4 border cursor-pointer transition-all ${
-                    isSelected ? "border-secondary bg-secondary/10" : "border-border hover:border-muted-foreground"
-                  }`}
-                >
-                  <Checkbox
-                    checked={isSelected}
-                    className="mt-1 data-[state=checked]:bg-secondary data-[state=checked]:border-secondary"
-                  />
-                  <div className="flex-1">
-                    <div className="font-medium text-foreground">{service.label}</div>
-                    <div className="text-xs text-muted-foreground mb-1">{service.description}</div>
-                    <div className="text-sm font-mono text-secondary">+${service.price}</div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="border-border bg-card">
-        <CardHeader className="border-b border-border">
-          <CardTitle className="flex items-center gap-2 text-lg font-mono">
-            <span className="text-primary">[05]</span> CONTACT_DETAILS
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-6 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-sm font-mono text-muted-foreground">CONTACT_NAME</Label>
-              <Input
-                placeholder="Your name"
-                value={contactName}
-                onChange={(e) => setContactName(e.target.value)}
-                className="bg-background border-border"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-mono text-muted-foreground">COMPANY_NAME</Label>
-              <Input
-                placeholder="Your company"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                className="bg-background border-border"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-sm font-mono text-muted-foreground">EMAIL_ADDRESS *</Label>
-              <Input
-                type="email"
-                required
-                placeholder="your@email.com.au"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="bg-background border-border"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-mono text-muted-foreground">PHONE_NUMBER</Label>
-              <Input
-                type="tel"
-                placeholder="04XX XXX XXX"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="bg-background border-border"
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Quote Summary */}
-      <Card className="border-primary bg-card">
-        <CardHeader className="border-b border-primary bg-primary/5">
-          <CardTitle className="flex items-center gap-2 text-lg font-mono">
-            <Calculator className="w-5 h-5 text-primary" />
-            QUOTE_SUMMARY
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-6">
-          {estimate ? (
-            <div className="space-y-6">
-              <div className="flex items-end justify-between">
-                <div>
-                  <div className="text-sm font-mono text-muted-foreground mb-1">ESTIMATED_TOTAL</div>
-                  <div className="text-5xl font-bold text-primary">${estimate.toLocaleString()}</div>
-                  <div className="text-sm text-muted-foreground mt-1">AUD + GST</div>
-                </div>
-                <div className="text-right space-y-1 text-sm font-mono text-muted-foreground">
-                  <div className="flex items-center gap-2 justify-end">
-                    <Truck className="w-4 h-4" />
-                    {moveTypes.find((t) => t.id === selectedType)?.label}
-                  </div>
-                  <div className="flex items-center gap-2 justify-end">
-                    <Shield className="w-4 h-4" />
-                    {selectedServices.length} modules
-                  </div>
-                  <div className="flex items-center gap-2 justify-end">
-                    <Clock className="w-4 h-4" />~{Math.ceil(squareMeters[0] / 100)} days
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t border-border pt-4 space-y-3">
-                <div className="text-xs font-mono text-muted-foreground">
-                  * This is an estimate only. Final pricing may vary based on site inspection.
-                </div>
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <Button
-                    className="flex-1 uppercase tracking-wider"
-                    size="lg"
-                    onClick={handleSubmit}
-                    disabled={!email || isSubmitting}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        Confirm & Book
-                        <ArrowRight className="w-4 h-4 ml-2" />
-                      </>
                     )}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1 uppercase tracking-wider bg-transparent"
-                    size="lg"
-                    asChild
-                  >
-                    <Link href="/quote/custom">Request Custom Quote</Link>
-                  </Button>
+                  </div>
+                )
+              })}
+            </div>
+
+            <Button
+              onClick={() => setStep(2)}
+              disabled={!selectedType}
+              className="w-full bg-primary hover:bg-primary/80 text-primary-foreground"
+            >
+              Continue
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </div>
+        )}
+
+        {/* Step 2: Configure Details */}
+        {step === 2 && (
+          <div className="space-y-6">
+            <div>
+              <p className="text-xs text-muted-foreground font-mono mb-2">STEP_02: CONFIGURE</p>
+              <h3 className="text-xl font-bold">Configure Your Move</h3>
+            </div>
+
+            {/* Location */}
+            <div className="space-y-4">
+              <p className="text-xs font-mono text-muted-foreground">LOCATION_DATA</p>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs">Origin Suburb</Label>
+                  <div className="relative">
+                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="e.g. Melbourne CBD"
+                      value={originSuburb}
+                      onChange={(e) => setOriginSuburb(e.target.value)}
+                      className="pl-10 bg-black/50 border-muted-foreground/30"
+                    />
+                  </div>
                 </div>
-                {!email && selectedType && (
-                  <div className="text-xs text-primary font-mono">* Enter your email address to submit quote</div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Destination Suburb</Label>
+                  <div className="relative">
+                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="e.g. Richmond"
+                      value={destSuburb}
+                      onChange={(e) => setDestSuburb(e.target.value)}
+                      className="pl-10 bg-black/50 border-muted-foreground/30"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Estimated Distance (km)</Label>
+                <Input
+                  type="number"
+                  placeholder="e.g. 15"
+                  value={distance}
+                  onChange={(e) => setDistance(e.target.value)}
+                  className="bg-black/50 border-muted-foreground/30"
+                />
+              </div>
+            </div>
+
+            {/* Square Meters */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-mono text-muted-foreground">SPACE_SIZE</p>
+                <p className="text-sm font-bold text-primary">{squareMeters[0]} sqm</p>
+              </div>
+              <Slider
+                value={squareMeters}
+                onValueChange={setSquareMeters}
+                min={20}
+                max={2000}
+                step={10}
+                className="py-4"
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>20 sqm</span>
+                <span>2000 sqm</span>
+              </div>
+            </div>
+
+            {/* Additional Services */}
+            <div className="space-y-4">
+              <p className="text-xs font-mono text-muted-foreground">ADDITIONAL_SERVICES</p>
+              <div className="grid gap-2">
+                {additionalServices.map((service) => (
+                  <label
+                    key={service.id}
+                    className={`flex items-center justify-between p-3 border cursor-pointer transition-all ${
+                      selectedServices.includes(service.id)
+                        ? "border-secondary bg-secondary/10"
+                        : "border-muted-foreground/30 hover:border-secondary/50"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Checkbox
+                        checked={selectedServices.includes(service.id)}
+                        onCheckedChange={() => toggleService(service.id)}
+                      />
+                      <div>
+                        <p className="text-sm font-medium">{service.name}</p>
+                        <p className="text-xs text-muted-foreground">{service.description}</p>
+                      </div>
+                    </div>
+                    <p className="text-sm font-bold text-secondary">+${service.price}</p>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={() => setStep(1)} className="flex-1 border-primary/50">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back
+              </Button>
+              <Button
+                onClick={() => setStep(3)}
+                className="flex-1 bg-primary hover:bg-primary/80 text-primary-foreground"
+              >
+                Continue
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Contact & Confirm */}
+        {step === 3 && (
+          <div className="space-y-6">
+            <div>
+              <p className="text-xs text-muted-foreground font-mono mb-2">STEP_03: CONFIRM</p>
+              <h3 className="text-xl font-bold">Review & Confirm</h3>
+            </div>
+
+            {/* Estimate Display */}
+            <div className="border border-secondary bg-secondary/10 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-xs font-mono text-muted-foreground">ESTIMATED_TOTAL</p>
+                <p className="text-xs font-mono text-secondary">AUD</p>
+              </div>
+              <p className="text-4xl font-bold text-secondary">${estimate?.toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground mt-2">*Final quote may vary based on site assessment</p>
+
+              <div className="mt-4 pt-4 border-t border-secondary/30">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">50% Deposit Required</p>
+                  <p className="text-lg font-bold text-foreground">${depositAmount.toLocaleString()}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Contact Form */}
+            <div className="space-y-4">
+              <p className="text-xs font-mono text-muted-foreground">CONTACT_INFORMATION</p>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs">
+                    Email <span className="text-primary">*</span>
+                  </Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      type="email"
+                      placeholder="you@company.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="pl-10 bg-black/50 border-muted-foreground/30"
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Phone</Label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      type="tel"
+                      placeholder="04XX XXX XXX"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="pl-10 bg-black/50 border-muted-foreground/30"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Contact Name</Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="John Smith"
+                      value={contactName}
+                      onChange={(e) => setContactName(e.target.value)}
+                      className="pl-10 bg-black/50 border-muted-foreground/30"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Company Name</Label>
+                  <div className="relative">
+                    <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Acme Pty Ltd"
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      className="pl-10 bg-black/50 border-muted-foreground/30"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {submitError && (
+              <div className="flex items-center gap-2 p-3 border border-destructive bg-destructive/10 text-destructive text-sm">
+                <AlertCircle className="w-4 h-4" />
+                {submitError}
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={() => setStep(2)} className="flex-1 border-primary/50">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back
+              </Button>
+              <Button
+                className="flex-1 bg-primary hover:bg-primary/80 text-primary-foreground"
+                onClick={handleSubmit}
+                disabled={!email || isSubmitting}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    Confirm & Book
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </>
                 )}
-              </div>
+              </Button>
             </div>
-          ) : (
-            <div className="text-center py-8">
-              <div className="w-16 h-16 mx-auto mb-4 border border-dashed border-muted-foreground flex items-center justify-center">
-                <Calculator className="w-8 h-8 text-muted-foreground" />
-              </div>
-              <div className="text-muted-foreground font-mono">SELECT_MOVE_TYPE_TO_BEGIN</div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+
+            <p className="text-xs text-muted-foreground text-center">
+              Need a custom solution?{" "}
+              <Link href="/quote/custom" className="text-primary hover:underline">
+                Request a custom quote
+              </Link>
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
