@@ -99,8 +99,19 @@ export function Footer() {
 
         <div className="border-t border-border mt-6 pt-6 text-center">
           <p className="text-xs text-muted-foreground">
-            * A subsidiary of <span className="text-foreground font-medium">Sharp Horizons Technology</span> | ABN: 71
-            661 027 309
+            * A subsidiary of <span className="text-foreground font-medium">Sharp Horizons Technology Pty Ltd</span> |
+            ABN: 71 661 027 309
+          </p>
+          <p className="text-xs text-muted-foreground mt-2">
+            Website built by{" "}
+            <a
+              href="https://www.sharphorizons.tech"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-foreground font-medium hover:text-primary transition-colors"
+            >
+              Sharp Horizons Technology
+            </a>
           </p>
         </div>
       </div>
