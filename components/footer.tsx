@@ -1,4 +1,4 @@
-import { Truck, Phone } from "lucide-react"
+import { Truck, Phone, Mail } from "lucide-react"
 import Link from "next/link"
 
 export function Footer() {
@@ -21,10 +21,17 @@ export function Footer() {
             </p>
             <a
               href="tel:+61388201801"
-              className="flex items-center gap-2 text-foreground hover:text-primary transition-colors"
+              className="flex items-center gap-2 text-foreground hover:text-primary transition-colors mb-2"
             >
               <Phone className="w-4 h-4" />
               <span className="font-mono">(03) 8820 1801</span>
+            </a>
+            <a
+              href="mailto:sales@m2mmoving.au"
+              className="flex items-center gap-2 text-foreground hover:text-primary transition-colors"
+            >
+              <Mail className="w-4 h-4" />
+              <span className="font-mono">sales@m2mmoving.au</span>
             </a>
           </div>
 
@@ -44,11 +51,6 @@ export function Footer() {
               <li>
                 <a href="#" className="hover:text-primary transition-colors">
                   IT Equipment
-                </a>
-              </li>
-              <li>
-                <a href="#" className="hover:text-primary transition-colors">
-                  Industrial Moves
                 </a>
               </li>
             </ul>

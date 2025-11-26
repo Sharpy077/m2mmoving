@@ -51,7 +51,7 @@ export function CTASection() {
               </div>
               <div>
                 <div className="text-xs text-muted-foreground uppercase tracking-wider">Email</div>
-                <div className="text-lg font-bold text-foreground">ops@mmmoving.com.au</div>
+                <div className="text-lg font-bold text-foreground">sales@m2mmoving.au</div>
               </div>
             </div>
 
