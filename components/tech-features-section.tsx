@@ -1,4 +1,7 @@
+"use client"
+
 import { Cpu, Radar, Lock, BarChart3 } from "lucide-react"
+import { useEffect, useState } from "react"
 
 const features = [
   {
@@ -30,7 +33,41 @@ const features = [
   },
 ]
 
+interface FleetStats {
+  totalVehicles: number
+  activeDeployments: number
+  pipelineCount: number
+  trackingUptime: number
+  securityBreaches: number
+}
+
 export function TechFeaturesSection() {
+  const [stats, setStats] = useState<FleetStats>({
+    totalVehicles: 1,
+    activeDeployments: 0,
+    pipelineCount: 0,
+    trackingUptime: 100,
+    securityBreaches: 0,
+  })
+
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const res = await fetch("/api/fleet-stats")
+        if (res.ok) {
+          const data = await res.json()
+          setStats(data)
+        }
+      } catch (error) {
+        console.error("Failed to fetch fleet stats:", error)
+      }
+    }
+    fetchStats()
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchStats, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
   return (
     <section id="technology" className="py-16 md:py-24 bg-card border-y border-border">
       <div className="container mx-auto px-4">
@@ -82,7 +119,7 @@ export function TechFeaturesSection() {
           ))}
         </div>
 
-        {/* Terminal-style status */}
+        {/* Terminal-style status - now with real-time data */}
         <div className="mt-12 p-6 bg-background border border-border font-mono text-sm">
           <div className="flex items-center gap-2 mb-4">
             <div className="w-3 h-3 bg-primary" />
@@ -94,15 +131,24 @@ export function TechFeaturesSection() {
             <p>
               <span className="text-secondary">$</span> fleet_status --all
             </p>
-            <p className="text-foreground">→ 47 vehicles online | 12 active deployments</p>
+            <p className="text-foreground">
+              → {stats.totalVehicles} vehicle{stats.totalVehicles !== 1 ? "s" : ""} online | {stats.activeDeployments}{" "}
+              active deployment{stats.activeDeployments !== 1 ? "s" : ""}
+              {stats.pipelineCount > 0 && <span className="text-accent"> | {stats.pipelineCount} in pipeline</span>}
+            </p>
             <p>
               <span className="text-secondary">$</span> tracking_uptime
             </p>
-            <p className="text-foreground">→ 99.99% uptime | Last 365 days</p>
+            <p className="text-foreground">
+              → {stats.trackingUptime}% uptime | <span className="text-muted-foreground">GPS: Traccar</span>
+            </p>
             <p>
               <span className="text-secondary">$</span> security_audit
             </p>
-            <p className="text-primary">→ All systems nominal | Zero breaches_</p>
+            <p className={stats.securityBreaches === 0 ? "text-primary" : "text-destructive"}>
+              → {stats.securityBreaches === 0 ? "All systems nominal" : `${stats.securityBreaches} incidents`} |{" "}
+              {stats.securityBreaches === 0 ? "Zero breaches" : "Review required"}_
+            </p>
           </div>
         </div>
       </div>
