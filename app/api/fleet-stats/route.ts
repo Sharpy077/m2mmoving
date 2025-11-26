@@ -2,69 +2,72 @@ import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
 export async function GET() {
+  const defaults = {
+    totalVehicles: 1,
+    activeDeployments: 0,
+    pipelineCount: 0,
+    trackingUptime: 100,
+    securityBreaches: 0,
+  }
+
   try {
     const supabase = await createClient()
 
-    // Get vehicle count
-    const { data: vehicles, error: vehiclesError } = await supabase.from("vehicles").select("id, status, gps_last_ping")
+    let pipelineCount = 0
+    let activeDeployments = 0
 
-    if (vehiclesError) {
-      console.error("[v0] Error fetching vehicles:", vehiclesError)
-      // Return defaults if table doesn't exist yet
-      return NextResponse.json({
-        totalVehicles: 1,
-        activeDeployments: 0,
-        pipelineCount: 0,
-        trackingUptime: 100,
-        securityBreaches: 0,
-      })
+    try {
+      const { data: pipelineLeads } = await supabase
+        .from("leads")
+        .select("id, status")
+        .in("status", ["new", "contacted", "quoted"])
+
+      pipelineCount = pipelineLeads?.length || 0
+
+      // Check for active deployments (leads marked as won/in-progress)
+      const { data: activeJobs } = await supabase.from("leads").select("id").eq("status", "won")
+
+      activeDeployments = activeJobs?.length || 0
+    } catch (e) {
+      // Leads table doesn't exist yet, use defaults
+      console.log("[v0] Leads table not ready yet")
     }
 
-    const totalVehicles = vehicles?.length || 1
+    let totalVehicles = 1
+    let trackingUptime = 100
 
-    // Get active deployments (leads with deployment_status = 'in_progress')
-    const { data: activeJobs, error: activeError } = await supabase
-      .from("leads")
-      .select("id")
-      .eq("deployment_status", "in_progress")
+    try {
+      const { data: vehicles, error: vehiclesError } = await supabase
+        .from("vehicles")
+        .select("id, status, gps_last_ping")
 
-    const activeDeployments = activeJobs?.length || 0
+      if (!vehiclesError && vehicles) {
+        totalVehicles = vehicles.length || 1
 
-    // Get pipeline count (leads that are new, contacted, or quoted - not yet won/lost)
-    const { data: pipelineLeads, error: pipelineError } = await supabase
-      .from("leads")
-      .select("id")
-      .in("status", ["new", "contacted", "quoted"])
-
-    const pipelineCount = pipelineLeads?.length || 0
-
-    // Calculate tracking uptime based on GPS pings (simplified)
-    // In production, this would query a GPS tracking service like Traccar
-    const now = new Date()
-    const onlineVehicles = vehicles?.filter((v) => {
-      if (!v.gps_last_ping) return true // Assume online if no GPS yet
-      const lastPing = new Date(v.gps_last_ping)
-      const diffMinutes = (now.getTime() - lastPing.getTime()) / 1000 / 60
-      return diffMinutes < 10 // Consider online if pinged in last 10 minutes
-    })
-    const trackingUptime =
-      totalVehicles > 0 ? Math.round(((onlineVehicles?.length || totalVehicles) / totalVehicles) * 100) : 100
+        // Calculate tracking uptime based on GPS pings
+        const now = new Date()
+        const onlineVehicles = vehicles.filter((v) => {
+          if (!v.gps_last_ping) return true
+          const lastPing = new Date(v.gps_last_ping)
+          const diffMinutes = (now.getTime() - lastPing.getTime()) / 1000 / 60
+          return diffMinutes < 10
+        })
+        trackingUptime = totalVehicles > 0 ? Math.round((onlineVehicles.length / totalVehicles) * 100) : 100
+      }
+    } catch (e) {
+      // Vehicles table doesn't exist yet, use defaults
+      console.log("[v0] Vehicles table not ready yet")
+    }
 
     return NextResponse.json({
       totalVehicles,
       activeDeployments,
       pipelineCount,
       trackingUptime,
-      securityBreaches: 0, // Track manually or via incident reports
+      securityBreaches: 0,
     })
   } catch (error) {
     console.error("[v0] Fleet stats error:", error)
-    return NextResponse.json({
-      totalVehicles: 1,
-      activeDeployments: 0,
-      pipelineCount: 0,
-      trackingUptime: 100,
-      securityBreaches: 0,
-    })
+    return NextResponse.json(defaults)
   }
 }
