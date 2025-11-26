@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Building2, Server, MonitorDot, Factory, Warehouse, Package } from "lucide-react"
+import { Building2, Server, MonitorDot, Package } from "lucide-react"
 
 const services = [
   {
@@ -13,7 +13,7 @@ const services = [
     icon: Server,
     title: "Data Center Migration",
     description:
-      "Secure server rack relocation with climate-controlled transport and zero-downtime deployment protocols.",
+      "Secure server rack and infrastructure relocation with anti-static handling and careful coordination for mission-critical systems.",
     code: "DC_MIG",
   },
   {
@@ -21,18 +21,6 @@ const services = [
     title: "IT Equipment Transfer",
     description: "Specialized handling for sensitive electronics, networking gear, and mission-critical hardware.",
     code: "IT_TRF",
-  },
-  {
-    icon: Factory,
-    title: "Industrial Moves",
-    description: "Heavy machinery and manufacturing equipment relocation with precision rigging and installation.",
-    code: "IND_MOV",
-  },
-  {
-    icon: Warehouse,
-    title: "Warehouse Operations",
-    description: "Large-scale inventory transfers with real-time tracking and inventory management systems.",
-    code: "WH_OPS",
   },
   {
     icon: Package,
@@ -64,7 +52,7 @@ export function ServicesSection() {
               <CardHeader>
                 <div className="flex items-start justify-between mb-4">
                   <div className="w-12 h-12 bg-primary/10 border border-primary/30 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                    <service.icon className="w-6 h-6 text-primary" />
+                    {service.icon && <service.icon className="w-6 h-6 text-primary" />}
                   </div>
                   <span className="text-xs font-mono text-muted-foreground">[{service.code}]</span>
                 </div>

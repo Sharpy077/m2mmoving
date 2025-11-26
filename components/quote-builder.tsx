@@ -9,7 +9,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import {
   Building2,
   Server,
-  Warehouse,
   ArrowRight,
   ArrowLeft,
   CheckCircle2,
@@ -66,7 +65,7 @@ const moveTypes = [
     code: "DC-MIG",
     minSqm: 50,
     description:
-      "Specialized data centre relocations with climate-controlled transport, anti-static handling, and minimal downtime planning for mission-critical infrastructure.",
+      "Specialized data centre relocations with anti-static handling and careful planning for mission-critical infrastructure.",
     minRequirements: [
       "Technical site assessment required",
       "4 weeks minimum planning period",
@@ -75,10 +74,10 @@ const moveTypes = [
     ],
     included: [
       "Anti-static equipment handling",
-      "Climate-controlled transport",
+      "Secure transport vehicles",
       "Cable management & documentation",
       "Rack disassembly & reassembly",
-      "24/7 project coordination",
+      "Project coordination",
     ],
     idealFor: ["Data centres", "Server rooms", "Network operations centres"],
     typicalDuration: "3-7 days with staged migration",
@@ -103,32 +102,6 @@ const moveTypes = [
     ],
     idealFor: ["IT departments", "Tech companies", "Equipment refreshes"],
     typicalDuration: "1-2 days",
-  },
-  {
-    id: "warehouse",
-    name: "Warehouse Relocation",
-    icon: Warehouse,
-    baseRate: 4000,
-    perSqm: 55,
-    code: "WH-REL",
-    minSqm: 100,
-    description:
-      "Large-scale warehouse and industrial facility moves including racking systems, heavy machinery, and inventory transfer with minimal business disruption.",
-    minRequirements: [
-      "Site survey required",
-      "3 weeks minimum planning",
-      "Forklift access at both locations",
-      "Inventory reconciliation plan",
-    ],
-    included: [
-      "Racking disassembly & installation",
-      "Heavy machinery moving",
-      "Inventory management",
-      "Forklift operations",
-      "Loading dock coordination",
-    ],
-    idealFor: ["Distribution centres", "Manufacturing facilities", "Storage operations"],
-    typicalDuration: "3-10 days depending on scale",
   },
 ]
 
