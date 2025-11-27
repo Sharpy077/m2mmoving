@@ -1,8 +1,37 @@
 "use client"
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, Shield, Zap, Target, Phone } from "lucide-react"
+import { ArrowRight, Shield, Zap, Target, Phone, MessageSquare } from "lucide-react"
 import { QuoteAssistant, type QuoteAssistantHandle } from "@/components/quote-assistant"
+import { ErrorBoundary } from "@/components/error-boundary"
+import { Card, CardContent } from "@/components/ui/card"
+
+function QuoteAssistantFallback() {
+  return (
+    <Card className="h-[500px] rounded-xl border shadow-lg">
+      <CardContent className="h-full flex flex-col items-center justify-center text-center p-8">
+        <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+          <MessageSquare className="w-8 h-8 text-primary" />
+        </div>
+        <h3 className="text-xl font-semibold mb-2">Get Your Free Quote</h3>
+        <p className="text-muted-foreground mb-6 max-w-sm">
+          Our quote assistant is temporarily unavailable. Please call us directly for a free quote.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Button size="lg" asChild>
+            <a href="tel:+61388201801" className="flex items-center gap-2">
+              <Phone className="w-5 h-5" />
+              03 8820 1801
+            </a>
+          </Button>
+          <Button size="lg" variant="outline" asChild>
+            <a href="/quote">Request Quote Online</a>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 export function HeroSection() {
   const [showFloatingAssistant, setShowFloatingAssistant] = useState(false)
@@ -122,13 +151,19 @@ export function HeroSection() {
 
             {/* Right Column - AI Quote Assistant */}
             <div ref={assistantContainerRef} className="lg:mt-0">
-              <QuoteAssistant embedded />
+              <ErrorBoundary fallback={<QuoteAssistantFallback />}>
+                <QuoteAssistant embedded />
+              </ErrorBoundary>
             </div>
           </div>
         </div>
       </section>
 
-      {showFloatingAssistant && <QuoteAssistant ref={floatingAssistantRef} />}
+      {showFloatingAssistant && (
+        <ErrorBoundary fallback={null}>
+          <QuoteAssistant ref={floatingAssistantRef} />
+        </ErrorBoundary>
+      )}
     </>
   )
 }

@@ -23,6 +23,8 @@ import {
   Bot,
   User,
   Loader2,
+  AlertTriangle,
+  RefreshCw,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -115,6 +117,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
     const [paymentComplete, setPaymentComplete] = useState(false)
     const [hasStarted, setHasStarted] = useState(false)
+    const [hasError, setHasError] = useState(false)
+    const [errorMessage, setErrorMessage] = useState<string | null>(null)
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLInputElement>(null)
     const recognitionRef = useRef<any>(null)
@@ -131,10 +135,14 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const { messages, sendMessage, status, error, setMessages } = useChat({
       transport: new DefaultChatTransport({ api: "/api/quote-assistant" }),
       onError: (err) => {
-        console.log("[v0] Chat error:", err)
+        console.log("[v0] Chat error:", err.message)
+        setHasError(true)
+        setErrorMessage(err.message || "Failed to connect to the quote assistant")
       },
       onFinish: (message) => {
         console.log("[v0] Message finished:", message.role)
+        setHasError(false)
+        setErrorMessage(null)
       },
     })
 
@@ -366,6 +374,26 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       sendMessage({
         text: "Payment completed",
       })
+    }
+
+    const handleReset = () => {
+      setHasError(false)
+      setErrorMessage(null)
+      setMessages([])
+      setHasStarted(false)
+      setCurrentQuote(null)
+      setBusinessLookupResults(null)
+      setConfirmedBusiness(null)
+      setShowCalendar(false)
+      setShowPayment(false)
+    }
+
+    const handleRetry = () => {
+      setHasError(false)
+      setErrorMessage(null)
+      if (messages.length === 0) {
+        sendMessage({ text: "Hi, I'd like to get a quote for a commercial move." })
+      }
     }
 
     // Message bubble component
@@ -613,6 +641,37 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       )
     }
 
+    const ErrorDisplay = () => {
+      if (!hasError && !error) return null
+
+      return (
+        <div className="p-4 m-4 rounded-lg bg-destructive/10 border border-destructive/20">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-medium text-destructive mb-1">Connection Issue</p>
+              <p className="text-sm text-muted-foreground mb-3">
+                {errorMessage ||
+                  "We're having trouble connecting to our quote system. Please try again or call us directly."}
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={handleRetry}>
+                  <RefreshCw className="w-3 h-3 mr-1" />
+                  Try Again
+                </Button>
+                <Button variant="outline" size="sm" asChild>
+                  <a href="tel:+61388201801">
+                    <Phone className="w-3 h-3 mr-1" />
+                    03 8820 1801
+                  </a>
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
     const suggestedPrompts = ["Office relocation", "Warehouse move", "Retail fit-out", "Medical equipment"]
 
     const chatContent = (
@@ -629,6 +688,17 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             <span className="font-semibold">M&M Quote Assistant</span>
           </div>
           <div className="flex items-center gap-1">
+            {(hasError || messages.length > 0) && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10"
+                onClick={handleReset}
+                title="Start over"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"
@@ -660,8 +730,10 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           </div>
         </div>
 
+        {(hasError || error) && <ErrorDisplay />}
+
         {/* Confirmed business badge */}
-        <ConfirmedBusinessBadge />
+        {!hasError && <ConfirmedBusinessBadge />}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">

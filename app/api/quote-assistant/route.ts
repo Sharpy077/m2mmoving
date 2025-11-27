@@ -1,5 +1,5 @@
 import { convertToModelMessages, streamText, tool, validateUIMessages } from "ai"
-import { z } from "zod/v4"
+import { z } from "zod"
 
 export const maxDuration = 60
 
