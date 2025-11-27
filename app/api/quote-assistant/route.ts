@@ -11,6 +11,12 @@ const moveTypes = {
     perSqm: 45,
     minSqm: 20,
     description: "Complete office moves including workstations, furniture, and equipment.",
+    icon: "building",
+    qualifyingQuestions: [
+      "How many workstations or desks need to be moved?",
+      "Do you have any server rooms or IT infrastructure?",
+      "Are there any large items like boardroom tables or reception desks?",
+    ],
   },
   warehouse: {
     name: "Warehouse Relocation",
@@ -18,6 +24,12 @@ const moveTypes = {
     perSqm: 55,
     minSqm: 50,
     description: "Industrial and warehouse moves with heavy equipment handling.",
+    icon: "warehouse",
+    qualifyingQuestions: [
+      "Do you have pallet racking that needs to be moved?",
+      "Is there any heavy machinery or forklifts?",
+      "What type of stock or inventory will be moved?",
+    ],
   },
   datacenter: {
     name: "Data Centre Migration",
@@ -25,6 +37,12 @@ const moveTypes = {
     perSqm: 85,
     minSqm: 50,
     description: "Specialised data centre relocations with anti-static handling.",
+    icon: "server",
+    qualifyingQuestions: [
+      "How many server racks need to be relocated?",
+      "Is there a maximum downtime window we need to work within?",
+      "Do you need us to coordinate with your IT team for reconnection?",
+    ],
   },
   "it-equipment": {
     name: "IT Equipment Transport",
@@ -32,6 +50,12 @@ const moveTypes = {
     perSqm: 35,
     minSqm: 10,
     description: "Safe transport of computers, servers, and networking equipment.",
+    icon: "computer",
+    qualifyingQuestions: [
+      "Approximately how many computers and monitors are being moved?",
+      "Are there any servers or network switches included?",
+      "Do you need packing materials for fragile equipment?",
+    ],
   },
   retail: {
     name: "Retail Store Relocation",
@@ -39,6 +63,12 @@ const moveTypes = {
     perSqm: 40,
     minSqm: 15,
     description: "Retail fit-out moves including displays, POS systems, and stock.",
+    icon: "store",
+    qualifyingQuestions: [
+      "Do you have display fixtures or shelving that needs to be moved?",
+      "Is there refrigeration equipment or other specialised fixtures?",
+      "Will stock be included in the move?",
+    ],
   },
 }
 
@@ -55,72 +85,115 @@ const additionalServices = {
   disposal: { name: "Rubbish Removal", price: 250, description: "Remove unwanted items and dispose" },
 }
 
-const systemPrompt = `You are Maya, a friendly and professional quote assistant for M&M Commercial Moving, a trusted commercial moving company in Melbourne, Australia. Your goal is to help potential customers get an accurate quote and book their move quickly and easily.
+const systemPrompt = `You are Maya, a friendly and professional quote assistant for M&M Commercial Moving, Melbourne's trusted commercial moving specialists. Your goal is to guide customers through getting a quote and booking their move in a smooth, effortless experience.
 
-PERSONALITY & TONE:
-- Warm, helpful, and conversational - not robotic
-- Use Australian English spelling (e.g., "centre" not "center", "organisation" not "organization")  
-- Keep responses concise but friendly
-- Show empathy for the stress of moving
-- Be proactive in offering helpful suggestions
+PERSONALITY:
+- Warm, helpful, and conversational - like talking to a knowledgeable friend
+- Use Australian English spelling (centre, organisation, specialised)
+- Keep responses concise (2-3 sentences max per message)
+- Show empathy - moving is stressful!
+- Be proactive in offering help
 
-CRITICAL RULES:
-1. Ask ONE question at a time - never overwhelm users with multiple questions
-2. ALWAYS wait for the user's response before asking the next question
-3. After each user response, acknowledge what they said before asking the next question
-4. Use tools proactively when you have enough information
-5. If something seems complex, offer to arrange a callback with the team
+CRITICAL CONVERSATION RULES:
+1. Ask ONE question at a time - never overwhelm users
+2. ALWAYS acknowledge what the user said before asking the next question
+3. Use tools immediately when you have the information needed
+4. Keep the conversation moving forward smoothly
 
-START OF CONVERSATION:
-When the conversation starts with just "start" or similar, introduce yourself warmly and ask for their company name or ABN to begin.
+CONVERSATION FLOW:
 
-QUALIFYING QUESTIONS FLOW (ask in this order, ONE AT A TIME):
-1. Company name or ABN (use lookupBusiness to verify and auto-fill details)
-2. Type of move needed (office, warehouse, data centre, IT equipment, retail)
-3. Approximate size in square metres (help estimate if unsure)
-4. Current location (suburb/area)
-5. New location (suburb/area)  
-6. Preferred moving timeframe (use checkAvailability after quote to show dates)
-7. Any additional services needed?
-8. Contact details (name, email, phone) to finalise
+STEP 1 - WELCOME & IDENTIFY BUSINESS:
+When conversation starts, say something like:
+"G'day! I'm Maya, your M&M Moving assistant. I'll help you get a quote in just a few minutes. First, what's your business name or ABN so I can look up your details?"
 
-MOVE TYPES & PRICING:
-- Office Relocation: Base $2,500 + $45/sqm (min 20sqm)
-- Warehouse Relocation: Base $3,500 + $55/sqm (min 50sqm)
-- Data Centre Migration: Base $5,000 + $85/sqm (min 50sqm)
-- IT Equipment Transport: Base $1,500 + $35/sqm (min 10sqm)
-- Retail Store Relocation: Base $2,000 + $40/sqm (min 15sqm)
+Then use lookupBusiness immediately when they provide a name/ABN.
 
-ADDITIONAL SERVICES:
+STEP 2 - CONFIRM BUSINESS (if found):
+"I found [Business Name]. Is this correct?"
+Use showServiceOptions tool once confirmed.
+
+STEP 3 - SELECT SERVICE TYPE:
+After business is confirmed, use showServiceOptions to display the visual service picker.
+"What type of move are you planning?"
+
+STEP 4 - QUALIFYING QUESTIONS (based on service type):
+Ask 2-3 relevant questions based on the selected move type:
+
+For Office Relocation:
+- "Roughly how big is your office in square metres? (A typical small office is 50-100sqm)"
+- "How many workstations need to move?"
+- "Any server rooms or specialised IT equipment?"
+
+For Warehouse:
+- "What's the warehouse size in square metres?"
+- "Is there racking or heavy machinery to move?"
+- "Will we be moving stock as well?"
+
+For Data Centre:
+- "How many server racks are involved?"
+- "What's the maximum downtime window?"
+- "Need IT reconnection assistance?"
+
+For IT Equipment:
+- "Approximately how many computers/monitors?"
+- "Any servers or networking equipment?"
+- "Need us to provide packing materials?"
+
+For Retail:
+- "What's the store size in square metres?"
+- "Are there fixtures, displays, or fridges?"
+- "Will stock be included?"
+
+STEP 5 - LOCATIONS:
+"Where are you moving from? Just the suburb is fine."
+"And where are you moving to?"
+
+STEP 6 - GENERATE QUOTE:
+Once you have move type, size, and locations - immediately use calculateQuote.
+Present the quote clearly and use checkAvailability to show booking options.
+
+STEP 7 - SELECT DATE:
+"Here are our available dates. When would you like to move?"
+
+STEP 8 - COLLECT DETAILS:
+"Almost done! Just need your contact details:
+- Your name
+- Best phone number
+- Email address"
+
+STEP 9 - PAYMENT:
+"To lock in your booking, we just need a 50% deposit of $[amount]. You can pay securely right here."
+Use initiatePayment to show the payment form.
+
+STEP 10 - CONFIRMATION:
+"You're all set! You'll receive a confirmation email with your booking details and invoice."
+
+HELPFUL TIPS:
+- If the user seems unsure about square metres, help them estimate (e.g., "A typical 10-person office is around 150sqm")
+- If they mention urgency, acknowledge it and assure them you have availability
+- If they want to speak to someone, use requestCallback - don't make them feel trapped
+- Always offer the phone number (03 8820 1801) as an alternative
+
+MOVE TYPE PRICING REFERENCE:
+- Office: Base $2,500 + $45/sqm (min 20sqm)
+- Warehouse: Base $3,500 + $55/sqm (min 50sqm)
+- Data Centre: Base $5,000 + $85/sqm (min 50sqm)
+- IT Equipment: Base $1,500 + $35/sqm (min 10sqm)
+- Retail: Base $2,000 + $40/sqm (min 15sqm)
+
+ADDITIONAL SERVICES (offer when relevant):
 - Professional Packing: $450
-- Unpacking Service: $350
-- Temporary Storage: $300/week
-- Post-Move Cleaning: $350
-- Premium Insurance: $200
-- After Hours Service: $500
-- Weekend Service: $400
+- Unpacking: $350
 - IT Setup Assistance: $600
-- Furniture Assembly: $400
-- Rubbish Removal: $250
-
-BOOKING FLOW:
-1. Once you have move type, size, and locations - use calculateQuote to generate estimate
-2. After quote is shown - use checkAvailability to show available dates
-3. When date is selected - confirm the booking
-4. Collect contact details with the scheduled date
-5. Use initiatePayment to set up the 50% deposit payment
-
-BUSINESS LOOKUP:
-When customer mentions company name or ABN, use lookupBusiness immediately to verify and auto-fill their details. This saves time and ensures accuracy.
-
-Remember: Be helpful, efficient, and make the booking process as smooth as possible!`
+- After Hours/Weekend: $400-500
+- Storage: $300/week`
 
 const lookupBusinessTool = tool({
   description:
-    "Look up an Australian business by name or ABN to get their registered details. Use this when the customer mentions their company name or provides an ABN.",
+    "Look up an Australian business by name or ABN. Use immediately when customer mentions their company name or ABN.",
   inputSchema: z.object({
     query: z.string().describe("Business name or ABN to search for"),
-    searchType: z.string().describe("Type of search - 'name' for business name search, 'abn' for direct ABN lookup"),
+    searchType: z.string().describe("Type of search - 'name' or 'abn'"),
   }),
   execute: async ({ query, searchType }) => {
     try {
@@ -158,7 +231,7 @@ const lookupBusinessTool = tool({
       return {
         success: false,
         results: [],
-        message: "No businesses found matching that search. Please try a different name or provide the ABN directly.",
+        message: "No businesses found. No worries - we can proceed without the ABN. What's your company name?",
       }
     } catch (error) {
       return { success: false, error: "Lookup service unavailable", results: [] }
@@ -182,17 +255,41 @@ const confirmBusinessTool = tool({
       abn,
       entityType,
       state,
-      message: `Great! I've confirmed your business as ${name} (ABN: ${abn}). Now, what type of move are you planning?`,
+      showServiceOptions: true,
+      message: `Great! I've got ${name} on file. Now, what type of move are you planning?`,
+    }
+  },
+})
+
+const showServiceOptionsTool = tool({
+  description:
+    "Display the visual service type picker for the customer to choose their move type. Use after business is confirmed or at start of conversation.",
+  inputSchema: z.object({
+    context: z
+      .string()
+      .describe("Brief context about why showing options, e.g. 'after_business_confirmed' or 'initial'"),
+  }),
+  execute: async ({ context }) => {
+    return {
+      success: true,
+      showServicePicker: true,
+      services: [
+        { id: "office", name: "Office Relocation", icon: "building", description: "Desks, furniture, equipment" },
+        { id: "warehouse", name: "Warehouse Move", icon: "warehouse", description: "Racking, machinery, stock" },
+        { id: "datacenter", name: "Data Centre", icon: "server", description: "Servers, racks, IT infrastructure" },
+        { id: "it-equipment", name: "IT Equipment", icon: "computer", description: "Computers, monitors, networks" },
+        { id: "retail", name: "Retail Store", icon: "store", description: "Fixtures, displays, POS systems" },
+      ],
+      message: "Please select the type of move you need:",
     }
   },
 })
 
 const checkAvailabilityTool = tool({
-  description:
-    "Check available dates for scheduling a move. Returns a list of available dates for the next 45 days. Use this after calculating a quote to show the customer when they can book.",
+  description: "Check available dates for scheduling. Use after generating a quote to show booking options.",
   inputSchema: z.object({
-    monthName: z.string().describe("Month to check availability for, e.g. 'December 2024' or 'next month'"),
-    moveUrgency: z.string().describe("How urgent is the move - 'asap', 'flexible', or 'specific'"),
+    monthName: z.string().describe("Month to check, e.g. 'December 2024'"),
+    moveUrgency: z.string().describe("Urgency level - 'asap', 'flexible', or 'specific'"),
   }),
   execute: async ({ monthName, moveUrgency }) => {
     try {
@@ -210,7 +307,10 @@ const checkAvailabilityTool = tool({
           success: true,
           showCalendar: true,
           dates: generateFallbackDates(),
-          message: "Here are our available dates. Please select your preferred moving date.",
+          message:
+            moveUrgency === "asap"
+              ? "Good news - we have availability soon! Select your preferred date:"
+              : "Here are our available dates. When works best for you?",
         }
       }
 
@@ -229,44 +329,43 @@ const checkAvailabilityTool = tool({
         dates: availableDates || generateFallbackDates(),
         message:
           moveUrgency === "asap"
-            ? "We have availability soon! Please select your preferred date from the calendar."
-            : "Here are our available dates for the coming weeks. Please select your preferred moving date.",
+            ? "Good news - we have availability soon! Select your preferred date:"
+            : "Here are our available dates for the coming weeks:",
       }
     } catch (error) {
       return {
         success: true,
         showCalendar: true,
         dates: generateFallbackDates(),
-        message: "Please select your preferred moving date from the calendar.",
+        message: "Select your preferred moving date:",
       }
     }
   },
 })
 
 const confirmBookingDateTool = tool({
-  description: "Confirm a specific date the customer has selected for their move",
+  description: "Confirm a specific date the customer has selected",
   inputSchema: z.object({
-    selectedDate: z.string().describe("The date selected by the customer in YYYY-MM-DD format"),
+    selectedDate: z.string().describe("Selected date in YYYY-MM-DD format"),
   }),
   execute: async ({ selectedDate }) => {
     return {
       success: true,
       confirmedDate: selectedDate,
-      message: `Excellent! ${formatDate(selectedDate)} has been reserved for your move. Now I just need a few contact details to finalise your booking.`,
+      message: `Perfect! ${formatDate(selectedDate)} is locked in. Now I just need your contact details to finalise the booking.`,
     }
   },
 })
 
 const calculateQuoteTool = tool({
-  description:
-    "Calculate a quote estimate based on the collected information. Use this once you have move type, size, and locations.",
+  description: "Calculate quote estimate. Use once you have move type, size, and locations.",
   inputSchema: z.object({
-    moveType: z.string().describe("Type of move: office, warehouse, datacenter, it-equipment, or retail"),
+    moveType: z.string().describe("Move type: office, warehouse, datacenter, it-equipment, or retail"),
     squareMeters: z.number().describe("Size in square metres"),
-    originSuburb: z.string().describe("Origin location or suburb"),
-    destinationSuburb: z.string().describe("Destination location or suburb"),
-    estimatedDistanceKm: z.number().describe("Estimated distance in km, use 10 if unknown"),
-    additionalServicesList: z.string().describe("Comma-separated list of additional services needed"),
+    originSuburb: z.string().describe("Origin suburb"),
+    destinationSuburb: z.string().describe("Destination suburb"),
+    estimatedDistanceKm: z.number().describe("Estimated distance in km (use 15 if unknown)"),
+    additionalServicesList: z.string().describe("Comma-separated additional services"),
   }),
   execute: async ({
     moveType,
@@ -295,7 +394,6 @@ const calculateQuoteTool = tool({
 
     const estimatedHours =
       Math.ceil(effectiveSqm / 15) + (estimatedDistanceKm ? Math.ceil(estimatedDistanceKm / 30) : 1)
-    const hourlyRate = 150 * crewSize
 
     const serviceDetails: { name: string; price: number }[] = []
     let servicesCost = 0
@@ -329,15 +427,14 @@ const calculateQuoteTool = tool({
       additionalServices: serviceDetails.map((s) => s.name),
       estimatedTotal: estimate,
       depositRequired: depositAmount,
-      hourlyRate,
       estimatedHours,
       crewSize,
       truckSize,
       showAvailability: true,
       breakdown: [
         { label: "Base Rate", amount: type.baseRate },
-        { label: `Area Cost (${effectiveSqm}sqm × $${type.perSqm})`, amount: type.perSqm * effectiveSqm },
-        ...(distanceCost > 0 ? [{ label: "Distance Cost", amount: distanceCost }] : []),
+        { label: `Area (${effectiveSqm}sqm × $${type.perSqm})`, amount: type.perSqm * effectiveSqm },
+        ...(distanceCost > 0 ? [{ label: "Distance", amount: distanceCost }] : []),
         ...(servicesCost > 0 ? [{ label: "Additional Services", amount: servicesCost }] : []),
       ],
     }
@@ -345,14 +442,13 @@ const calculateQuoteTool = tool({
 })
 
 const collectContactInfoTool = tool({
-  description:
-    "Collect and confirm customer contact details. Use this after all move details are confirmed to prepare for payment.",
+  description: "Collect customer contact details before payment.",
   inputSchema: z.object({
     contactName: z.string().describe("Customer's full name"),
-    email: z.string().describe("Customer's email address"),
+    email: z.string().describe("Customer's email"),
     phone: z.string().describe("Customer's phone number"),
     companyName: z.string().describe("Company name"),
-    scheduledDate: z.string().describe("The confirmed moving date in YYYY-MM-DD format"),
+    scheduledDate: z.string().describe("Moving date in YYYY-MM-DD format"),
   }),
   execute: async ({ contactName, email, phone, companyName, scheduledDate }) => {
     return {
@@ -363,16 +459,16 @@ const collectContactInfoTool = tool({
       phone,
       companyName,
       scheduledDate,
-      message: `Perfect! I have all your details. To secure your booking for ${formatDate(scheduledDate)}, we require a 50% deposit.`,
+      message: `Thanks ${contactName.split(" ")[0]}! To secure your booking for ${formatDate(scheduledDate)}, we just need the 50% deposit.`,
     }
   },
 })
 
 const initiatePaymentTool = tool({
-  description: "Show the Stripe payment form for the deposit. Use this after contact details are collected.",
+  description: "Show Stripe payment form for deposit.",
   inputSchema: z.object({
     amount: z.number().describe("Deposit amount in dollars"),
-    customerEmail: z.string().describe("Customer email for receipt"),
+    customerEmail: z.string().describe("Customer email"),
     customerName: z.string().describe("Customer name"),
     description: z.string().describe("Payment description"),
   }),
@@ -384,25 +480,24 @@ const initiatePaymentTool = tool({
       customerEmail,
       customerName,
       description,
-      message: `Please complete the $${amount.toLocaleString()} deposit payment below to confirm your booking. You'll receive a confirmation email and invoice once the payment is processed.`,
+      message: `Secure your booking with a $${amount.toLocaleString()} deposit. You'll receive a confirmation email and invoice once complete.`,
     }
   },
 })
 
 const requestCallbackTool = tool({
-  description:
-    "Request a callback from the M&M team for complex enquiries or when customer prefers to speak with someone.",
+  description: "Request a callback for complex enquiries or when customer prefers to speak with someone.",
   inputSchema: z.object({
     name: z.string().describe("Customer name"),
-    phone: z.string().describe("Phone number to call back"),
-    preferredTime: z.string().describe("Preferred callback time, e.g. morning, afternoon, or ASAP"),
+    phone: z.string().describe("Phone number"),
+    preferredTime: z.string().describe("Preferred callback time"),
     reason: z.string().describe("Brief reason for callback"),
   }),
   execute: async ({ name, phone, preferredTime, reason }) => {
     return {
       success: true,
       callbackRequested: true,
-      message: `No worries! I've requested a callback for you. One of our team members will call ${name} at ${phone} ${preferredTime}.`,
+      message: `No worries! I've arranged for our team to call you ${preferredTime}. They'll be in touch at ${phone} shortly.`,
     }
   },
 })
@@ -410,6 +505,7 @@ const requestCallbackTool = tool({
 const tools = {
   lookupBusiness: lookupBusinessTool,
   confirmBusiness: confirmBusinessTool,
+  showServiceOptions: showServiceOptionsTool,
   checkAvailability: checkAvailabilityTool,
   confirmBookingDate: confirmBookingDateTool,
   calculateQuote: calculateQuoteTool,
@@ -421,12 +517,8 @@ const tools = {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    console.log("[v0] Quote assistant request received")
-
     const rawMessages = body.messages || []
-    console.log("[v0] Raw messages count:", rawMessages.length)
 
-    // Handle initial conversation start
     const effectiveMessages =
       rawMessages.length === 0 ||
       (rawMessages.length === 1 &&
@@ -438,51 +530,37 @@ export async function POST(req: Request) {
         ? [{ role: "user" as const, content: "Hi, I'd like to get a quote for a commercial move." }]
         : rawMessages
 
-    console.log("[v0] Effective messages count:", effectiveMessages.length)
-
     let messages
     try {
       messages = await validateUIMessages({
         messages: effectiveMessages,
         tools,
       })
-      console.log("[v0] Messages validated successfully")
     } catch (validationError) {
       console.error("[v0] Message validation error:", validationError)
-      return new Response(JSON.stringify({ error: "Invalid message format", details: String(validationError) }), {
+      return new Response(JSON.stringify({ error: "Invalid message format" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       })
     }
 
-    try {
-      console.log("[v0] Starting streamText...")
-      const result = streamText({
-        model: "openai/gpt-4o",
-        system: systemPrompt,
-        messages: convertToModelMessages(messages),
-        tools,
-      })
+    const result = streamText({
+      model: "openai/gpt-4o",
+      system: systemPrompt,
+      messages: convertToModelMessages(messages),
+      tools,
+    })
 
-      console.log("[v0] Stream created, returning response")
-      return result.toUIMessageStreamResponse()
-    } catch (streamError) {
-      console.error("[v0] Stream error:", streamError)
-      return new Response(JSON.stringify({ error: "Failed to generate response", details: String(streamError) }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      })
-    }
+    return result.toUIMessageStreamResponse()
   } catch (error) {
     console.error("[v0] Quote assistant error:", error)
-    return new Response(JSON.stringify({ error: "Internal server error", details: String(error) }), {
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     })
   }
 }
 
-// Helper function to format dates nicely
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr)
   return date.toLocaleDateString("en-AU", {
@@ -493,7 +571,6 @@ function formatDate(dateStr: string): string {
   })
 }
 
-// Fallback date generator
 function generateFallbackDates() {
   const dates = []
   const today = new Date()
