@@ -71,7 +71,7 @@ export function CTASection() {
               <Button size="lg" variant="outline" className="uppercase tracking-wider bg-transparent" asChild>
                 <a href="tel:+61388201801">
                   <Phone className="w-4 h-4 mr-2" />
-                  (03) 8820 1801
+                  03 8820 1801
                 </a>
               </Button>
             </div>
@@ -86,8 +86,8 @@ export function CTASection() {
                   <Phone className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Direct Line</div>
-                  <div className="text-lg font-bold text-foreground">(03) 8820 1801</div>
+                  <div className="text-xs text-muted-foreground uppercase tracking-widest">Direct Line</div>
+                  <div className="text-lg font-bold text-foreground">03 8820 1801</div>
                 </div>
               </a>
 

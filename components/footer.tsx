@@ -24,7 +24,7 @@ export function Footer() {
               className="flex items-center gap-2 text-foreground hover:text-primary transition-colors mb-2"
             >
               <Phone className="w-4 h-4" />
-              <span className="font-mono">(03) 8820 1801</span>
+              <span className="font-mono">03 8820 1801</span>
             </a>
             <a
               href="mailto:sales@m2mmoving.au"

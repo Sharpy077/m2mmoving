@@ -98,7 +98,7 @@ export default function SettingsPage() {
                   <span className="text-primary font-mono">02.</span>
                   <div>
                     <p className="text-foreground">Purchase an Australian phone number</p>
-                    <p className="text-green-500 text-xs font-mono">✓ Current: +61 3 8820 1801</p>
+                    <p className="text-green-500 text-xs font-mono">✓ Current: 03 8820 1801</p>
                   </div>
                 </div>
 

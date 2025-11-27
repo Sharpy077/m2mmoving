@@ -143,7 +143,7 @@ export async function POST(req: Request) {
         }))
 
   const result = streamText({
-    model: "anthropic/claude-sonnet-4",
+    model: "openai/gpt-4o",
     system: systemPrompt,
     messages: effectiveMessages,
     tools: {

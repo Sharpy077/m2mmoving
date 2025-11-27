@@ -322,7 +322,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           customerEmail: contactInfo.email,
           customerName: contactInfo.contactName,
           description: `Deposit for ${currentQuote.moveType}: ${currentQuote.origin} to ${currentQuote.destination}`,
-          moveType: currentQuote.moveType,
+          moveType: currentQuote.moveTypeKey || "office",
           origin: currentQuote.origin,
           destination: currentQuote.destination,
           scheduledDate: selectedDate || undefined,
@@ -751,9 +751,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           </div>
           <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
             <span>{isListening ? "🎤 Listening..." : isSpeaking ? "🔊 Speaking..." : ""}</span>
-            <a href="tel:1300123456" className="flex items-center gap-1 hover:text-primary">
+            <a href="tel:+61388201801" className="flex items-center gap-1 hover:text-primary">
               <Phone className="w-3 h-3" />
-              Prefer to call? 1300 123 456
+              Prefer to call? 03 8820 1801
             </a>
           </div>
         </div>

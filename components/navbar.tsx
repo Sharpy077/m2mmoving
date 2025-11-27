@@ -46,7 +46,7 @@ export function Navbar() {
               className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
             >
               <Phone className="w-4 h-4" />
-              <span className="font-mono">(03) 8820 1801</span>
+              <span className="font-mono">03 8820 1801</span>
             </a>
             <Button className="uppercase tracking-wider" asChild>
               <Link href="/quote">Free Quote</Link>
@@ -79,7 +79,7 @@ export function Navbar() {
                 onClick={() => setIsOpen(false)}
               >
                 <Phone className="w-4 h-4" />
-                (03) 8820 1801
+                03 8820 1801
               </a>
               <Button className="uppercase tracking-wider w-full mt-2" asChild>
                 <Link href="/quote">Get Free Quote</Link>

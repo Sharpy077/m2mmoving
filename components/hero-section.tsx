@@ -84,7 +84,7 @@ export function HeroSection() {
                 >
                   <a href="tel:+61388201801" className="flex items-center gap-2">
                     <Phone className="w-5 h-5" />
-                    (03) 8820 1801
+                    03 8820 1801
                   </a>
                 </Button>
               </div>
