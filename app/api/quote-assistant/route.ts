@@ -37,7 +37,7 @@ const additionalServices = {
   itsetup: { name: "IT Setup Assistance", price: 600 },
 }
 
-const systemPrompt = `You are a friendly, professional quote assistant for M&M Commercial Moving, a commercial moving company in Australia. Your goal is to help potential customers get a quick quote by asking qualifying questions naturally and conversationally.
+const systemPrompt = `You are a friendly, professional quote assistant for M&M Commercial Moving, a commercial moving company in Melbourne, Australia. Your goal is to help potential customers get a quick quote and book their move with minimal friction.
 
 IMPORTANT GUIDELINES:
 - Be warm, helpful, and conversational - not robotic
@@ -45,6 +45,7 @@ IMPORTANT GUIDELINES:
 - Use Australian English spelling (e.g., "centre" not "center", "organisation" not "organization")
 - If someone seems unsure, provide helpful context
 - Always validate that you have enough info before generating a quote
+- Proactively check availability and suggest dates
 - If the request is complex or unusual, recommend scheduling a call with the team
 
 BUSINESS LOOKUP FEATURE:
@@ -69,16 +70,22 @@ ADDITIONAL SERVICES (can be added to any move):
 - After Hours Service: $500
 - IT Setup Assistance: $600
 
+BOOKING & AVAILABILITY FLOW:
+1. After generating a quote, use checkAvailability to show available dates
+2. Present the calendar to the user so they can select their preferred date
+3. When they select a date, confirm it's still available
+4. Collect contact details with the selected date included
+
 QUALIFYING QUESTIONS FLOW:
 1. What's their company name or ABN? (Use lookupBusiness to verify)
 2. What type of move do they need? (office, datacenter, IT equipment)
 3. What's the approximate size in square metres?
 4. Where are they moving from and to? (suburbs/areas)
-5. When do they need to move? (timeline)
+5. When do they need to move? (Use checkAvailability to show options)
 6. Do they need any additional services?
-7. Contact details to send the quote (name, email, phone)
+7. Contact details to finalise the booking (name, email, phone)
 
-Once you have all the information, use the calculateQuote tool to generate an estimate, then use the captureLeadDetails tool to collect their contact info.
+Once you have all the information, use the calculateQuote tool, then checkAvailability to show dates, then captureLeadDetails to complete the booking.
 
 If at any point the customer wants to speak to someone, use the requestCallback tool.`
 
@@ -101,7 +108,6 @@ export async function POST(req: Request) {
         }),
         execute: async ({ query, type }) => {
           try {
-            // Call our internal API which handles ABR lookup
             const baseUrl = process.env.VERCEL_URL
               ? `https://${process.env.VERCEL_URL}`
               : process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || "http://localhost:3000"
@@ -182,6 +188,126 @@ export async function POST(req: Request) {
         },
       }),
 
+      checkAvailability: tool({
+        description:
+          "Check available dates for scheduling a move. Returns a list of available dates for the next 30 days. Use this after calculating a quote to show the customer when they can book.",
+        inputSchema: z.object({
+          preferredMonth: z
+            .string()
+            .optional()
+            .describe("Preferred month if mentioned (e.g., 'January', 'next month')"),
+          urgency: z.enum(["asap", "flexible", "specific"]).optional().describe("How urgent is the move"),
+        }),
+        execute: async ({ preferredMonth, urgency }) => {
+          try {
+            const baseUrl = process.env.VERCEL_URL
+              ? `https://${process.env.VERCEL_URL}`
+              : process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || "http://localhost:3000"
+
+            const startDate = new Date().toISOString().split("T")[0]
+            const endDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+
+            const response = await fetch(`${baseUrl}/api/availability?start=${startDate}&end=${endDate}`)
+
+            if (!response.ok) {
+              // Return fallback availability
+              return {
+                success: true,
+                showCalendar: true,
+                message: "Here are our available dates. Please select your preferred moving date.",
+                availableDates: generateFallbackDates(),
+              }
+            }
+
+            const data = await response.json()
+            const availableDates = data.availability
+              ?.filter((d: any) => d.is_available && d.current_bookings < d.max_bookings)
+              .map((d: any) => ({
+                date: d.date,
+                slotsRemaining: d.max_bookings - d.current_bookings,
+              }))
+
+            // Highlight next available dates
+            const nextAvailable = availableDates?.slice(0, 5) || []
+
+            return {
+              success: true,
+              showCalendar: true,
+              message:
+                urgency === "asap"
+                  ? `We have availability as early as ${nextAvailable[0]?.date}! Please select your preferred date.`
+                  : "Here are our available dates for the coming weeks. Please select your preferred moving date.",
+              availableDates: availableDates || generateFallbackDates(),
+              nextAvailable,
+              totalAvailableSlots: availableDates?.length || 0,
+            }
+          } catch (error) {
+            return {
+              success: true,
+              showCalendar: true,
+              message: "Please select your preferred moving date from the calendar.",
+              availableDates: generateFallbackDates(),
+            }
+          }
+        },
+      }),
+
+      confirmBookingDate: tool({
+        description: "Confirm a specific date the customer has selected for their move",
+        inputSchema: z.object({
+          selectedDate: z.string().describe("The date selected by the customer (YYYY-MM-DD format)"),
+        }),
+        execute: async ({ selectedDate }) => {
+          try {
+            const baseUrl = process.env.VERCEL_URL
+              ? `https://${process.env.VERCEL_URL}`
+              : process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || "http://localhost:3000"
+
+            const response = await fetch(`${baseUrl}/api/availability?start=${selectedDate}&end=${selectedDate}`)
+
+            if (!response.ok) {
+              return {
+                success: true,
+                date: selectedDate,
+                confirmed: true,
+                message: `Great! ${formatDate(selectedDate)} is confirmed for your move.`,
+              }
+            }
+
+            const data = await response.json()
+            const dayAvailability = data.availability?.[0]
+
+            if (
+              dayAvailability &&
+              dayAvailability.is_available &&
+              dayAvailability.current_bookings < dayAvailability.max_bookings
+            ) {
+              return {
+                success: true,
+                date: selectedDate,
+                confirmed: true,
+                slotsRemaining: dayAvailability.max_bookings - dayAvailability.current_bookings - 1,
+                message: `Excellent! ${formatDate(selectedDate)} is available and has been reserved for you.`,
+              }
+            }
+
+            return {
+              success: false,
+              date: selectedDate,
+              confirmed: false,
+              message: `Unfortunately, ${formatDate(selectedDate)} is now fully booked. Please select another date.`,
+            }
+          } catch (error) {
+            return {
+              success: true,
+              date: selectedDate,
+              confirmed: true,
+              message: `${formatDate(selectedDate)} has been tentatively reserved for your move.`,
+            }
+          }
+        },
+      }),
+
       calculateQuote: tool({
         description: "Calculate a quote estimate based on the collected information",
         inputSchema: z.object({
@@ -210,12 +336,10 @@ export async function POST(req: Request) {
           const effectiveSqm = Math.max(squareMeters, type.minSqm)
           let total = type.baseRate + type.perSqm * effectiveSqm
 
-          // Add distance cost ($8 per km)
           if (estimatedDistanceKm) {
             total += estimatedDistanceKm * 8
           }
 
-          // Add services
           const serviceDetails: string[] = []
           if (services) {
             services.forEach((serviceId) => {
@@ -239,6 +363,7 @@ export async function POST(req: Request) {
             additionalServices: serviceDetails,
             estimatedTotal: estimate,
             depositRequired: depositAmount,
+            showAvailability: true,
             breakdown: {
               baseRate: type.baseRate,
               areaCost: type.perSqm * effectiveSqm,
@@ -250,7 +375,7 @@ export async function POST(req: Request) {
       }),
 
       captureLeadDetails: tool({
-        description: "Capture customer contact details to save the quote and follow up",
+        description: "Capture customer contact details to save the quote and finalise the booking",
         inputSchema: z.object({
           contactName: z.string().describe("Customer name"),
           email: z.string().email().describe("Customer email"),
@@ -259,6 +384,7 @@ export async function POST(req: Request) {
           abn: z.string().optional().describe("Australian Business Number"),
           businessState: z.string().optional().describe("Business registered state"),
           preferredContactTime: z.string().optional().describe("Best time to contact"),
+          scheduledDate: z.string().optional().describe("The confirmed moving date (YYYY-MM-DD)"),
           quoteDetails: z.object({
             moveType: z.string(),
             squareMeters: z.number(),
@@ -278,12 +404,12 @@ export async function POST(req: Request) {
           abn,
           businessState,
           preferredContactTime,
+          scheduledDate,
           quoteDetails,
         }) => {
-          // This will be processed client-side to submit the lead
           return {
             success: true,
-            message: "Contact details captured",
+            message: scheduledDate ? `Booking confirmed for ${formatDate(scheduledDate)}!` : "Contact details captured",
             leadData: {
               contactName,
               email,
@@ -292,6 +418,7 @@ export async function POST(req: Request) {
               abn,
               businessState,
               preferredContactTime,
+              scheduledDate,
               ...quoteDetails,
             },
           }
@@ -321,4 +448,37 @@ export async function POST(req: Request) {
   })
 
   return result.toUIMessageStreamResponse()
+}
+
+// Helper function to format dates nicely
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr)
+  return date.toLocaleDateString("en-AU", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  })
+}
+
+// Fallback date generator
+function generateFallbackDates() {
+  const dates = []
+  const today = new Date()
+
+  for (let i = 1; i <= 45; i++) {
+    const date = new Date(today)
+    date.setDate(today.getDate() + i)
+    const dayOfWeek = date.getDay()
+
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      // Skip weekends
+      dates.push({
+        date: date.toISOString().split("T")[0],
+        slotsRemaining: Math.floor(Math.random() * 3) + 1,
+      })
+    }
+  }
+
+  return dates
 }

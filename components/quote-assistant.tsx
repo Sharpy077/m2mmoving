@@ -2,31 +2,32 @@
 
 import type React from "react"
 
-import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from "react"
 import { useChat } from "@ai-sdk/react"
-import { DefaultChatTransport } from "ai"
-import { Button } from "@/components/ui/button"
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { submitLead } from "@/app/actions/leads"
 import {
-  MessageCircle,
-  X,
   Send,
   Mic,
   MicOff,
-  Phone,
-  CheckCircle2,
-  Loader2,
   Volume2,
   VolumeX,
   Sparkles,
-  Building2,
-  Search,
+  Loader2,
+  Phone,
+  MessageCircle,
+  X,
   Minimize2,
   Maximize2,
+  Building2,
+  CheckCircle2,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
+import { submitLead } from "@/app/actions/leads"
 
 interface QuoteEstimate {
   moveType: string
@@ -35,13 +36,14 @@ interface QuoteEstimate {
   destination: string
   estimatedTotal: number
   depositRequired: number
-  additionalServices: string[]
+  additionalServices?: string[]
   breakdown: {
     baseRate: number
     areaCost: number
     distanceCost: number
     servicesCost: number
   }
+  showAvailability?: boolean
 }
 
 interface BusinessResult {
@@ -54,9 +56,20 @@ interface BusinessResult {
   status: string
 }
 
+interface AvailableDate {
+  date: string
+  slotsRemaining: number
+}
+
+const suggestedPrompts = [
+  "I need to move my office",
+  "Data centre relocation",
+  "IT equipment transport",
+  "Get a quick quote",
+]
+
 export interface QuoteAssistantHandle {
   open: () => void
-  focus: () => void
 }
 
 interface QuoteAssistantProps {
@@ -77,6 +90,10 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const [leadSubmitted, setLeadSubmitted] = useState(false)
     const [businessLookupResults, setBusinessLookupResults] = useState<BusinessResult[] | null>(null)
     const [confirmedBusiness, setConfirmedBusiness] = useState<BusinessResult | null>(null)
+    const [showCalendar, setShowCalendar] = useState(false)
+    const [availableDates, setAvailableDates] = useState<AvailableDate[]>([])
+    const [selectedDate, setSelectedDate] = useState<string | null>(null)
+    const [calendarMonth, setCalendarMonth] = useState(new Date())
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLInputElement>(null)
     const recognitionRef = useRef<any>(null)
@@ -88,205 +105,153 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         setIsOpen(true)
         setIsMinimized(false)
       },
-      focus: () => {
-        inputRef.current?.focus()
-      },
     }))
 
-    const { messages, sendMessage, status, setMessages } = useChat({
-      transport: new DefaultChatTransport({ api: "/api/quote-assistant" }),
-      onError: (error) => {
-        console.error("[v0] Chat error:", error)
-      },
-    })
-
-    // Initialize speech services
-    useEffect(() => {
-      if (typeof window !== "undefined") {
-        const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-        if (SpeechRecognitionAPI) {
-          recognitionRef.current = new SpeechRecognitionAPI()
-          recognitionRef.current.continuous = false
-          recognitionRef.current.interimResults = true
-          recognitionRef.current.lang = "en-AU"
-
-          recognitionRef.current.onresult = (event: any) => {
-            const transcript = Array.from(event.results)
-              .map((result: any) => result[0].transcript)
-              .join("")
-            setInputValue(transcript)
-
-            if (event.results[0].isFinal) {
-              setIsListening(false)
-              if (transcript.trim()) {
-                sendMessageWithText(transcript.trim())
-                setInputValue("")
-              }
-            }
-          }
-
-          recognitionRef.current.onerror = (event: any) => {
-            console.error("[v0] Speech recognition error:", event.error)
-            setIsListening(false)
-          }
-
-          recognitionRef.current.onend = () => {
-            setIsListening(false)
+    const { messages, append, status, setMessages } = useChat({
+      api: "/api/quote-assistant",
+      onToolCall: async ({ toolCall }) => {
+        if (toolCall.toolName === "lookupBusiness") {
+          const result = toolCall.args as any
+          if (result?.results) {
+            setBusinessLookupResults(result.results)
           }
         }
-
-        synthRef.current = window.speechSynthesis
-      }
-    }, [])
-
-    const sendMessageWithText = useCallback(
-      (text: string) => {
-        if (!text || status === "streaming") return
-        sendMessage({ text })
+        if (toolCall.toolName === "calculateQuote") {
+          const quote = toolCall.args as unknown as QuoteEstimate
+          setCurrentQuote(quote)
+          if (quote.showAvailability) {
+            setShowCalendar(true)
+          }
+        }
+        if (toolCall.toolName === "checkAvailability") {
+          const result = toolCall.args as any
+          if (result?.showCalendar) {
+            setShowCalendar(true)
+            if (result.availableDates) {
+              setAvailableDates(result.availableDates)
+            }
+          }
+        }
+        if (toolCall.toolName === "confirmBookingDate") {
+          const result = toolCall.args as any
+          if (result?.confirmed) {
+            setSelectedDate(result.date)
+          }
+        }
+        if (toolCall.toolName === "captureLeadDetails") {
+          const result = toolCall.args as any
+          if (result?.leadData) {
+            setIsSubmittingLead(true)
+            try {
+              const leadData = {
+                lead_type: "ai_quote",
+                contact_name: result.leadData.contactName,
+                email: result.leadData.email,
+                phone: result.leadData.phone || "",
+                company_name: result.leadData.companyName || "",
+                move_type: result.leadData.moveType?.toLowerCase().replace(/\s+/g, "-") || "office",
+                origin_suburb: result.leadData.origin || "",
+                destination_suburb: result.leadData.destination || "",
+                square_meters: result.leadData.squareMeters || 0,
+                estimated_total: result.leadData.estimatedTotal || 0,
+                additional_services: result.leadData.additionalServices || [],
+                special_requirements: result.leadData.specialRequirements ? [result.leadData.specialRequirements] : [],
+                target_move_date: result.leadData.scheduledDate || result.leadData.targetDate || null,
+                scheduled_date: result.leadData.scheduledDate || null,
+                preferred_contact_time: result.leadData.preferredContactTime || null,
+                project_description: `AI Quote - ABN: ${result.leadData.abn || "N/A"}, State: ${result.leadData.businessState || "N/A"}`,
+              }
+              await submitLead(leadData)
+              setLeadSubmitted(true)
+            } catch (error) {
+              console.error("Failed to submit lead:", error)
+            } finally {
+              setIsSubmittingLead(false)
+            }
+          }
+        }
       },
-      [status, sendMessage],
-    )
+    })
 
     // Scroll to bottom on new messages
     useEffect(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-    }, [messages])
+    }, [messages, businessLookupResults, currentQuote, showCalendar])
 
-    // Speak assistant responses
+    // Initialize speech synthesis
+    useEffect(() => {
+      if (typeof window !== "undefined") {
+        synthRef.current = window.speechSynthesis
+      }
+    }, [])
+
+    // Speak assistant messages
     useEffect(() => {
       if (!voiceEnabled || !synthRef.current) return
-
       const lastMessage = messages[messages.length - 1]
-      if (lastMessage?.role === "assistant" && status === "ready") {
-        const textContent = lastMessage.parts
-          ?.filter((part): part is { type: "text"; text: string } => part.type === "text")
-          .map((part) => part.text)
-          .join(" ")
-
+      if (lastMessage?.role === "assistant" && status !== "streaming") {
+        const textContent =
+          typeof lastMessage.content === "string"
+            ? lastMessage.content
+            : lastMessage.parts
+                ?.filter((p) => p.type === "text")
+                .map((p) => (p as any).text)
+                .join(" ") || ""
         if (textContent && textContent.length < 500) {
-          speakText(textContent)
+          const utterance = new SpeechSynthesisUtterance(textContent)
+          utterance.lang = "en-AU"
+          utterance.rate = 1.0
+          utterance.onstart = () => setIsSpeaking(true)
+          utterance.onend = () => setIsSpeaking(false)
+          synthRef.current.speak(utterance)
         }
       }
     }, [messages, status, voiceEnabled])
 
-    // Process tool results
+    // Initialize speech recognition
     useEffect(() => {
-      const lastMessage = messages[messages.length - 1]
-      if (lastMessage?.role === "assistant") {
-        lastMessage.parts?.forEach((part: any) => {
-          if (part.type === "tool-calculateQuote" && part.state === "output-available") {
-            setCurrentQuote(part.output as QuoteEstimate)
+      if (typeof window !== "undefined") {
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+        if (SpeechRecognition) {
+          const recognition = new SpeechRecognition()
+          recognition.continuous = false
+          recognition.interimResults = false
+          recognition.lang = "en-AU"
+          recognition.onresult = (event: any) => {
+            const transcript = event.results[0][0].transcript
+            setInputValue(transcript)
+            setIsListening(false)
+            setTimeout(() => {
+              sendMessage({ text: transcript })
+            }, 300)
           }
-          if (part.type === "tool-captureLeadDetails" && part.state === "output-available") {
-            const result = part.output as { success: boolean; leadData: any }
-            if (result.success) {
-              handleLeadSubmission(result.leadData)
-            }
-          }
-          if (part.type === "tool-lookupBusiness" && part.state === "output-available") {
-            const result = part.output as { success: boolean; results: BusinessResult[]; message?: string }
-            if (result.success && result.results.length > 0) {
-              setBusinessLookupResults(result.results)
-            }
-          }
-          if (part.type === "tool-getBusinessDetails" && part.state === "output-available") {
-            const result = part.output as { success: boolean; business: any }
-            if (result.success) {
-              setConfirmedBusiness(result.business)
-            }
-          }
-        })
-      }
-    }, [messages])
-
-    const handleLeadSubmission = async (leadData: any) => {
-      if (isSubmittingLead || leadSubmitted) return
-      setIsSubmittingLead(true)
-
-      try {
-        const result = await submitLead({
-          lead_type: "instant_quote",
-          email: leadData.email,
-          contact_name: leadData.contactName,
-          company_name: leadData.companyName,
-          phone: leadData.phone,
-          move_type: leadData.moveType,
-          origin_suburb: leadData.origin,
-          destination_suburb: leadData.destination,
-          square_meters: leadData.squareMeters,
-          estimated_total: leadData.estimatedTotal,
-          additional_services: leadData.additionalServices,
-          target_move_date: leadData.targetDate,
-          preferred_contact_time: leadData.preferredContactTime,
-          abn: leadData.abn,
-        })
-
-        if (result.success) {
-          setLeadSubmitted(true)
+          recognition.onerror = () => setIsListening(false)
+          recognition.onend = () => setIsListening(false)
+          recognitionRef.current = recognition
         }
-      } catch (error) {
-        console.error("[v0] Lead submission error:", error)
-      } finally {
-        setIsSubmittingLead(false)
       }
-    }
-
-    const handleSelectBusiness = (business: BusinessResult) => {
-      setConfirmedBusiness(business)
-      setBusinessLookupResults(null)
-      sendMessage({
-        text: `Yes, that's correct - ${business.name} (ABN: ${business.abn})`,
-      })
-    }
-
-    const speakText = (text: string) => {
-      if (!synthRef.current) return
-
-      synthRef.current.cancel()
-
-      const utterance = new SpeechSynthesisUtterance(text)
-      utterance.lang = "en-AU"
-      utterance.rate = 1.0
-      utterance.pitch = 1.0
-
-      const voices = synthRef.current.getVoices()
-      const ausVoice = voices.find((v) => v.lang === "en-AU" || v.name.toLowerCase().includes("australia"))
-      if (ausVoice) {
-        utterance.voice = ausVoice
-      }
-
-      utterance.onstart = () => setIsSpeaking(true)
-      utterance.onend = () => setIsSpeaking(false)
-      utterance.onerror = () => setIsSpeaking(false)
-
-      synthRef.current.speak(utterance)
-    }
+    }, [])
 
     const toggleListening = () => {
-      if (!recognitionRef.current) {
-        alert("Speech recognition is not supported in your browser. Please try Chrome or Edge.")
-        return
-      }
-
+      if (!recognitionRef.current) return
       if (isListening) {
         recognitionRef.current.stop()
         setIsListening(false)
       } else {
-        synthRef.current?.cancel()
-        setIsSpeaking(false)
-
+        if (synthRef.current) synthRef.current.cancel()
         recognitionRef.current.start()
         setIsListening(true)
       }
     }
 
-    const handleSendMessage = useCallback(() => {
-      const messageText = inputValue.trim()
-      if (!messageText || status === "streaming") return
-
-      sendMessage({ text: messageText })
+    const sendMessage = async ({ text }: { text: string }) => {
+      if (!text.trim()) return
       setInputValue("")
-    }, [inputValue, status, sendMessage])
+      setBusinessLookupResults(null)
+      await append({ role: "user", content: text })
+    }
+
+    const handleSendMessage = () => sendMessage({ text: inputValue })
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
       if (e.key === "Enter" && !e.shiftKey) {
@@ -295,26 +260,307 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       }
     }
 
-    const resetChat = () => {
-      setMessages([])
-      setCurrentQuote(null)
-      setLeadSubmitted(false)
+    const handleSelectBusiness = (business: BusinessResult) => {
+      setConfirmedBusiness(business)
       setBusinessLookupResults(null)
-      setConfirmedBusiness(null)
+      append({
+        role: "user",
+        content: `Yes, that's correct - ${business.name} (ABN: ${business.abn})`,
+      })
     }
 
-    const suggestedPrompts = [
-      "I need to move my office",
-      "Get a quote for IT equipment",
-      "Relocating our data centre",
-      "Speak with someone",
-    ]
+    const handleSelectDate = (date: string) => {
+      setSelectedDate(date)
+      setShowCalendar(false)
+      const formattedDate = new Date(date).toLocaleDateString("en-AU", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+      append({
+        role: "user",
+        content: `I'd like to book for ${formattedDate}`,
+      })
+    }
 
+    // Message bubble component
+    const MessageBubble = ({ message }: { message: any }) => {
+      const isUser = message.role === "user"
+      const textParts = message.parts?.filter((p: any) => p.type === "text") || []
+
+      if (textParts.length === 0 && typeof message.content !== "string") return null
+
+      const content =
+        typeof message.content === "string" ? message.content : textParts.map((p: any) => p.text).join("\n")
+
+      if (!content.trim()) return null
+
+      return (
+        <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
+          <div
+            className={cn(
+              "max-w-[85%] rounded-xl px-4 py-2.5 text-sm",
+              isUser ? "bg-primary text-primary-foreground" : "bg-muted text-foreground",
+            )}
+          >
+            {content}
+          </div>
+        </div>
+      )
+    }
+
+    // Business lookup card
+    const BusinessLookupCard = ({
+      results,
+      onSelect,
+    }: {
+      results: BusinessResult[]
+      onSelect: (b: BusinessResult) => void
+    }) => (
+      <Card className="bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800">
+        <CardContent className="p-3">
+          <p className="text-xs text-blue-700 dark:text-blue-300 mb-2 font-medium">
+            Found {results.length} matching business{results.length > 1 ? "es" : ""}:
+          </p>
+          <div className="space-y-2">
+            {results.slice(0, 3).map((business) => (
+              <button
+                key={business.abn}
+                onClick={() => onSelect(business)}
+                className="w-full text-left p-2 bg-background rounded-lg border hover:border-primary transition-colors"
+              >
+                <div className="flex items-start gap-2">
+                  <Building2 className="h-4 w-4 text-muted-foreground mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">{business.name}</p>
+                    {business.tradingName && (
+                      <p className="text-xs text-muted-foreground">Trading as: {business.tradingName}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      ABN: {business.abn} | {business.state}
+                    </p>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    )
+
+    // Confirmed business badge
+    const ConfirmedBusinessBadge = ({ business }: { business: BusinessResult }) => (
+      <div className="flex items-center gap-2 p-2 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
+        <CheckCircle2 className="h-4 w-4 text-green-600" />
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium text-green-800 dark:text-green-200">{business.name}</p>
+          <p className="text-xs text-green-700 dark:text-green-300">ABN: {business.abn}</p>
+        </div>
+      </div>
+    )
+
+    // Quote card
+    const QuoteCard = ({ quote }: { quote: QuoteEstimate }) => (
+      <Card className="bg-primary/5 border-primary/30">
+        <CardContent className="p-3">
+          <div className="flex items-center justify-between mb-2">
+            <p className="font-semibold text-sm">Your Quote Estimate</p>
+            <Badge variant="outline" className="text-xs">
+              {quote.moveType}
+            </Badge>
+          </div>
+          <div className="text-2xl font-bold text-primary mb-2">${quote.estimatedTotal.toLocaleString()}</div>
+          <div className="text-xs text-muted-foreground space-y-1">
+            <p>
+              {quote.origin} → {quote.destination}
+            </p>
+            <p>{quote.squareMeters} sqm</p>
+            <p className="text-primary">50% deposit: ${quote.depositRequired.toLocaleString()}</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+
+    const CalendarPicker = () => {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+
+      const monthStart = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1)
+      const monthEnd = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0)
+      const startPadding = monthStart.getDay()
+
+      const days: (Date | null)[] = []
+
+      // Add padding for days before month starts
+      for (let i = 0; i < startPadding; i++) {
+        days.push(null)
+      }
+
+      // Add all days of the month
+      for (let d = 1; d <= monthEnd.getDate(); d++) {
+        days.push(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), d))
+      }
+
+      const isDateAvailable = (date: Date): boolean => {
+        const dateStr = date.toISOString().split("T")[0]
+        const dayOfWeek = date.getDay()
+
+        // Skip weekends
+        if (dayOfWeek === 0 || dayOfWeek === 6) return false
+
+        // Skip past dates
+        if (date < today) return false
+
+        // Check availability data
+        const availability = availableDates.find((d) => d.date === dateStr)
+        return !availability || availability.slotsRemaining > 0
+      }
+
+      const getSlotsRemaining = (date: Date): number | null => {
+        const dateStr = date.toISOString().split("T")[0]
+        const availability = availableDates.find((d) => d.date === dateStr)
+        return availability?.slotsRemaining ?? null
+      }
+
+      const prevMonth = () => {
+        setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))
+      }
+
+      const nextMonth = () => {
+        setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))
+      }
+
+      const canGoPrev = calendarMonth > new Date(today.getFullYear(), today.getMonth(), 1)
+
+      return (
+        <Card className="bg-background border-primary/30">
+          <CardHeader className="p-3 pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-primary" />
+                Select Moving Date
+              </CardTitle>
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={prevMonth} disabled={!canGoPrev}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm font-medium w-28 text-center">
+                  {calendarMonth.toLocaleDateString("en-AU", { month: "long", year: "numeric" })}
+                </span>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={nextMonth}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-3 pt-0">
+            <div className="grid grid-cols-7 gap-1 mb-2">
+              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
+                <div key={day} className="text-center text-xs text-muted-foreground font-medium py-1">
+                  {day}
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {days.map((date, i) => {
+                if (!date) {
+                  return <div key={`empty-${i}`} className="h-9" />
+                }
+
+                const isAvailable = isDateAvailable(date)
+                const isPast = date < today
+                const isWeekend = date.getDay() === 0 || date.getDay() === 6
+                const slots = getSlotsRemaining(date)
+                const dateStr = date.toISOString().split("T")[0]
+                const isSelected = selectedDate === dateStr
+
+                return (
+                  <button
+                    key={dateStr}
+                    onClick={() => isAvailable && handleSelectDate(dateStr)}
+                    disabled={!isAvailable}
+                    className={cn(
+                      "h-9 rounded-md text-sm relative transition-colors",
+                      isPast || isWeekend
+                        ? "text-muted-foreground/40 cursor-not-allowed"
+                        : isAvailable
+                          ? "hover:bg-primary hover:text-primary-foreground cursor-pointer"
+                          : "text-muted-foreground/40 cursor-not-allowed line-through",
+                      isSelected && "bg-primary text-primary-foreground",
+                      slots !== null && slots <= 1 && isAvailable && "bg-amber-50 dark:bg-amber-950/20",
+                    )}
+                  >
+                    {date.getDate()}
+                    {slots !== null && slots <= 1 && isAvailable && (
+                      <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-amber-500" />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+              <div className="flex items-center gap-1">
+                <span className="w-3 h-3 rounded bg-amber-50 dark:bg-amber-950 border" />
+                <span>Limited slots</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="w-3 h-3 rounded bg-muted border line-through text-[8px] flex items-center justify-center">
+                  x
+                </span>
+                <span>Unavailable</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )
+    }
+
+    // Lead submitted card
+    const LeadSubmittedCard = () => (
+      <Card className="bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-800">
+        <CardContent className="p-3 flex items-center gap-3">
+          <CheckCircle2 className="h-5 w-5 text-green-600" />
+          <div>
+            <p className="font-semibold text-sm text-green-800 dark:text-green-200">
+              {selectedDate ? "Booking Confirmed!" : "Quote Request Submitted!"}
+            </p>
+            <p className="text-xs text-green-700 dark:text-green-300">
+              {selectedDate
+                ? `Your move is scheduled for ${new Date(selectedDate).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" })}`
+                : "We'll be in touch within 24 hours."}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+
+    // Confirmed date badge
+    const ConfirmedDateBadge = () => {
+      if (!selectedDate) return null
+      return (
+        <div className="flex items-center gap-2 p-2 bg-primary/10 rounded-lg border border-primary/30">
+          <Calendar className="h-4 w-4 text-primary" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium text-primary">Moving Date Confirmed</p>
+            <p className="text-xs text-foreground">
+              {new Date(selectedDate).toLocaleDateString("en-AU", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              })}
+            </p>
+          </div>
+        </div>
+      )
+    }
+
+    // Embedded version
     if (embedded) {
       return (
         <div ref={containerRef} className="w-full">
           <Card className="border-primary/30 bg-card/95 backdrop-blur-sm overflow-hidden">
-            {/* Header */}
             <CardHeader className="bg-primary text-primary-foreground p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -342,16 +588,15 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
               </div>
             </CardHeader>
 
-            {/* Messages */}
-            <CardContent className="h-[320px] overflow-y-auto p-4 space-y-4">
+            <CardContent className="h-[380px] overflow-y-auto p-4 space-y-4">
               {messages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center px-2">
                   <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
                     <MessageCircle className="h-6 w-6 text-primary" />
                   </div>
-                  <h3 className="font-semibold text-sm mb-1">Get an Instant Quote</h3>
+                  <h3 className="font-semibold text-sm mb-1">Get an Instant Quote & Book</h3>
                   <p className="text-muted-foreground text-xs mb-4">
-                    Tell me about your move or tap a suggestion below
+                    Tell me about your move and I'll give you a quote with available dates
                   </p>
                   <div className="flex flex-wrap gap-2 justify-center">
                     {suggestedPrompts.map((prompt) => (
@@ -381,6 +626,10 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
 
                   {currentQuote && <QuoteCard quote={currentQuote} />}
 
+                  {showCalendar && !selectedDate && <CalendarPicker />}
+
+                  {selectedDate && <ConfirmedDateBadge />}
+
                   {leadSubmitted && <LeadSubmittedCard />}
 
                   {status === "streaming" && (
@@ -394,7 +643,6 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
               )}
             </CardContent>
 
-            {/* Input Area */}
             <div className="border-t bg-muted/30 p-3">
               <div className="flex items-center gap-2">
                 <Button
@@ -447,9 +695,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       )
     }
 
+    // Floating version
     return (
       <>
-        {/* Floating Trigger Button */}
         <Button
           onClick={() => {
             setIsOpen(true)
@@ -466,18 +714,16 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           <span className="font-semibold">Get Quote</span>
         </Button>
 
-        {/* Floating Chat Window */}
         {isOpen && (
           <Card
             className={cn(
               "fixed z-50 flex flex-col shadow-2xl border-primary/30",
               isMinimized
                 ? "bottom-20 md:bottom-6 right-4 md:right-6 w-72 h-auto rounded-xl"
-                : "bottom-0 right-0 left-0 top-0 rounded-none md:bottom-6 md:right-6 md:left-auto md:top-auto md:w-[400px] md:h-[550px] md:rounded-xl",
+                : "bottom-0 right-0 left-0 top-0 rounded-none md:bottom-6 md:right-6 md:left-auto md:top-auto md:w-[400px] md:h-[600px] md:rounded-xl",
               "bg-background",
             )}
           >
-            {/* Header */}
             <CardHeader
               className={cn(
                 "flex-shrink-0 border-b bg-primary text-primary-foreground p-3",
@@ -490,7 +736,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
                     <Sparkles className="h-4 w-4" />
                   </div>
                   <div>
-                    <CardTitle className="text-sm">Quote Assistant</CardTitle>
+                    <CardTitle className="text-sm">Quote & Book</CardTitle>
                     {!isMinimized && (
                       <p className="text-xs text-primary-foreground/80">
                         {status === "streaming" ? "Typing..." : "Voice & chat"}
@@ -531,14 +777,13 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
 
             {!isMinimized && (
               <>
-                {/* Messages */}
                 <CardContent className="flex-1 overflow-y-auto p-3 space-y-3">
                   {messages.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-center px-2">
                       <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
                         <MessageCircle className="h-6 w-6 text-primary" />
                       </div>
-                      <h3 className="font-semibold text-sm mb-1">Get an Instant Quote</h3>
+                      <h3 className="font-semibold text-sm mb-1">Get a Quote & Book</h3>
                       <p className="text-muted-foreground text-xs mb-4">Describe your move or tap a suggestion</p>
                       <div className="flex flex-wrap gap-2 justify-center">
                         {suggestedPrompts.map((prompt) => (
@@ -568,6 +813,10 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
 
                       {currentQuote && <QuoteCard quote={currentQuote} />}
 
+                      {showCalendar && !selectedDate && <CalendarPicker />}
+
+                      {selectedDate && <ConfirmedDateBadge />}
+
                       {leadSubmitted && <LeadSubmittedCard />}
 
                       {status === "streaming" && (
@@ -581,7 +830,6 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
                   )}
                 </CardContent>
 
-                {/* Input Area */}
                 <div className="border-t bg-muted/30 p-3">
                   <div className="flex items-center gap-2">
                     <Button
@@ -623,155 +871,3 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
 )
 
 QuoteAssistant.displayName = "QuoteAssistant"
-
-function MessageBubble({ message }: { message: any }) {
-  const isUser = message.role === "user"
-
-  return (
-    <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
-      <div
-        className={cn(
-          "max-w-[85%] rounded-xl px-3 py-2",
-          isUser ? "bg-primary text-primary-foreground" : "bg-muted text-foreground",
-        )}
-      >
-        {message.parts?.map((part: any, index: number) => {
-          if (part.type === "text") {
-            return (
-              <p key={index} className="text-sm whitespace-pre-wrap">
-                {part.text}
-              </p>
-            )
-          }
-          return null
-        })}
-      </div>
-    </div>
-  )
-}
-
-function BusinessLookupCard({
-  results,
-  onSelect,
-}: {
-  results: BusinessResult[]
-  onSelect: (business: BusinessResult) => void
-}) {
-  return (
-    <Card className="bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800">
-      <CardContent className="p-3">
-        <div className="flex items-center gap-2 mb-2">
-          <Search className="h-4 w-4 text-blue-600" />
-          <span className="font-semibold text-sm text-blue-800 dark:text-blue-200">
-            {results.length === 1 ? "Is this your business?" : "Select your business"}
-          </span>
-        </div>
-        <div className="space-y-2">
-          {results.slice(0, 3).map((business) => (
-            <button
-              key={business.abn}
-              onClick={() => onSelect(business)}
-              className="w-full text-left p-2 rounded-lg bg-white dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors border border-blue-200 dark:border-blue-700"
-            >
-              <div className="flex items-start gap-2">
-                <Building2 className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-xs truncate">{business.name}</p>
-                  {business.tradingName && (
-                    <p className="text-xs text-muted-foreground truncate">Trading: {business.tradingName}</p>
-                  )}
-                  <div className="flex items-center gap-1 mt-1">
-                    <Badge variant="secondary" className="text-[10px] h-5">
-                      ABN: {business.abn}
-                    </Badge>
-                    {business.state && (
-                      <Badge variant="outline" className="text-[10px] h-5">
-                        {business.state}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-function ConfirmedBusinessBadge({ business }: { business: BusinessResult }) {
-  return (
-    <Card className="bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-800">
-      <CardContent className="p-2">
-        <div className="flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="font-medium text-xs text-green-800 dark:text-green-200 truncate">{business.name}</p>
-            <p className="text-[10px] text-green-700 dark:text-green-300">
-              ABN: {business.abn} • {business.state}
-            </p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-function QuoteCard({ quote }: { quote: QuoteEstimate }) {
-  return (
-    <Card className="bg-primary/5 border-primary/20">
-      <CardContent className="p-3">
-        <div className="flex items-center gap-2 mb-2">
-          <CheckCircle2 className="h-4 w-4 text-primary" />
-          <span className="font-semibold text-sm">Your Quote Estimate</span>
-        </div>
-        <div className="space-y-1 text-xs">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Move Type</span>
-            <span className="font-medium">{quote.moveType}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Size</span>
-            <span className="font-medium">{quote.squareMeters} sqm</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Route</span>
-            <span className="font-medium truncate max-w-[180px]">
-              {quote.origin} → {quote.destination}
-            </span>
-          </div>
-          {quote.additionalServices.length > 0 && (
-            <div className="pt-1 border-t">
-              <div className="flex flex-wrap gap-1 mt-1">
-                {quote.additionalServices.map((service) => (
-                  <Badge key={service} variant="secondary" className="text-[10px]">
-                    {service}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-          <div className="pt-2 border-t flex justify-between items-center">
-            <span className="font-semibold">Estimated Total</span>
-            <span className="text-lg font-bold text-primary">${quote.estimatedTotal.toLocaleString()}</span>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-function LeadSubmittedCard() {
-  return (
-    <Card className="bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-800">
-      <CardContent className="p-3 flex items-center gap-3">
-        <CheckCircle2 className="h-5 w-5 text-green-600" />
-        <div>
-          <p className="font-semibold text-sm text-green-800 dark:text-green-200">Quote Request Submitted!</p>
-          <p className="text-xs text-green-700 dark:text-green-300">We'll be in touch within 24 hours.</p>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
