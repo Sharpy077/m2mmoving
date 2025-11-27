@@ -1,5 +1,5 @@
-import { streamText } from "ai"
-import { z } from "zod"
+import { convertToModelMessages, streamText, tool, validateUIMessages } from "ai"
+import { z } from "zod/v4"
 
 export const maxDuration = 60
 
@@ -115,339 +115,336 @@ When customer mentions company name or ABN, use lookupBusiness immediately to ve
 
 Remember: Be helpful, efficient, and make the booking process as smooth as possible!`
 
+const lookupBusinessTool = tool({
+  description:
+    "Look up an Australian business by name or ABN to get their registered details. Use this when the customer mentions their company name or provides an ABN.",
+  inputSchema: z.object({
+    query: z.string().describe("Business name or ABN to search for"),
+    searchType: z.string().describe("Type of search - 'name' for business name search, 'abn' for direct ABN lookup"),
+  }),
+  execute: async ({ query, searchType }) => {
+    try {
+      const baseUrl = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || "http://localhost:3000"
+
+      const response = await fetch(`${baseUrl}/api/business-lookup?q=${encodeURIComponent(query)}&type=${searchType}`)
+
+      if (!response.ok) {
+        return { success: false, error: "Failed to lookup business", results: [] }
+      }
+
+      const data = await response.json()
+
+      if (data.results && data.results.length > 0) {
+        return {
+          success: true,
+          results: data.results.map((r: any) => ({
+            abn: r.abn,
+            name: r.name,
+            tradingName: r.tradingName || null,
+            entityType: r.entityType || null,
+            state: r.state,
+            postcode: r.postcode,
+            status: r.status || "Active",
+          })),
+          message:
+            data.results.length === 1
+              ? `Found: ${data.results[0].name} (ABN: ${data.results[0].abn})`
+              : `Found ${data.results.length} matching businesses`,
+        }
+      }
+
+      return {
+        success: false,
+        results: [],
+        message: "No businesses found matching that search. Please try a different name or provide the ABN directly.",
+      }
+    } catch (error) {
+      return { success: false, error: "Lookup service unavailable", results: [] }
+    }
+  },
+})
+
+const confirmBusinessTool = tool({
+  description: "Confirm the business details after customer validates the lookup result",
+  inputSchema: z.object({
+    name: z.string().describe("Confirmed business name"),
+    abn: z.string().describe("Confirmed ABN"),
+    entityType: z.string().describe("Business entity type"),
+    state: z.string().describe("Business state"),
+  }),
+  execute: async ({ name, abn, entityType, state }) => {
+    return {
+      success: true,
+      confirmed: true,
+      name,
+      abn,
+      entityType,
+      state,
+      message: `Great! I've confirmed your business as ${name} (ABN: ${abn}). Now, what type of move are you planning?`,
+    }
+  },
+})
+
+const checkAvailabilityTool = tool({
+  description:
+    "Check available dates for scheduling a move. Returns a list of available dates for the next 45 days. Use this after calculating a quote to show the customer when they can book.",
+  inputSchema: z.object({
+    monthName: z.string().describe("Month to check availability for, e.g. 'December 2024' or 'next month'"),
+    moveUrgency: z.string().describe("How urgent is the move - 'asap', 'flexible', or 'specific'"),
+  }),
+  execute: async ({ monthName, moveUrgency }) => {
+    try {
+      const baseUrl = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || "http://localhost:3000"
+
+      const startDate = new Date().toISOString().split("T")[0]
+      const endDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+
+      const response = await fetch(`${baseUrl}/api/availability?start=${startDate}&end=${endDate}`)
+
+      if (!response.ok) {
+        return {
+          success: true,
+          showCalendar: true,
+          dates: generateFallbackDates(),
+          message: "Here are our available dates. Please select your preferred moving date.",
+        }
+      }
+
+      const data = await response.json()
+      const availableDates = data.availability
+        ?.filter((d: any) => d.is_available && d.current_bookings < d.max_bookings)
+        .map((d: any) => ({
+          date: d.date,
+          available: true,
+          slots: d.max_bookings - d.current_bookings,
+        }))
+
+      return {
+        success: true,
+        showCalendar: true,
+        dates: availableDates || generateFallbackDates(),
+        message:
+          moveUrgency === "asap"
+            ? "We have availability soon! Please select your preferred date from the calendar."
+            : "Here are our available dates for the coming weeks. Please select your preferred moving date.",
+      }
+    } catch (error) {
+      return {
+        success: true,
+        showCalendar: true,
+        dates: generateFallbackDates(),
+        message: "Please select your preferred moving date from the calendar.",
+      }
+    }
+  },
+})
+
+const confirmBookingDateTool = tool({
+  description: "Confirm a specific date the customer has selected for their move",
+  inputSchema: z.object({
+    selectedDate: z.string().describe("The date selected by the customer in YYYY-MM-DD format"),
+  }),
+  execute: async ({ selectedDate }) => {
+    return {
+      success: true,
+      confirmedDate: selectedDate,
+      message: `Excellent! ${formatDate(selectedDate)} has been reserved for your move. Now I just need a few contact details to finalise your booking.`,
+    }
+  },
+})
+
+const calculateQuoteTool = tool({
+  description:
+    "Calculate a quote estimate based on the collected information. Use this once you have move type, size, and locations.",
+  inputSchema: z.object({
+    moveType: z.string().describe("Type of move: office, warehouse, datacenter, it-equipment, or retail"),
+    squareMeters: z.number().describe("Size in square metres"),
+    originSuburb: z.string().describe("Origin location or suburb"),
+    destinationSuburb: z.string().describe("Destination location or suburb"),
+    estimatedDistanceKm: z.number().describe("Estimated distance in km, use 10 if unknown"),
+    additionalServicesList: z.string().describe("Comma-separated list of additional services needed"),
+  }),
+  execute: async ({
+    moveType,
+    squareMeters,
+    originSuburb,
+    destinationSuburb,
+    estimatedDistanceKm,
+    additionalServicesList,
+  }) => {
+    const type = moveTypes[moveType as keyof typeof moveTypes] || moveTypes.office
+    const effectiveSqm = Math.max(squareMeters, type.minSqm)
+    let total = type.baseRate + type.perSqm * effectiveSqm
+
+    const distanceCost = estimatedDistanceKm ? estimatedDistanceKm * 8 : 0
+    total += distanceCost
+
+    let crewSize = 2
+    let truckSize = "Medium (45m³)"
+    if (effectiveSqm > 100) {
+      crewSize = 4
+      truckSize = "Large (75m³)"
+    } else if (effectiveSqm > 50) {
+      crewSize = 3
+      truckSize = "Large (75m³)"
+    }
+
+    const estimatedHours =
+      Math.ceil(effectiveSqm / 15) + (estimatedDistanceKm ? Math.ceil(estimatedDistanceKm / 30) : 1)
+    const hourlyRate = 150 * crewSize
+
+    const serviceDetails: { name: string; price: number }[] = []
+    let servicesCost = 0
+
+    const services = additionalServicesList
+      ? additionalServicesList
+          .split(",")
+          .map((s) => s.trim().toLowerCase())
+          .filter(Boolean)
+      : []
+
+    services.forEach((serviceId) => {
+      const service = additionalServices[serviceId as keyof typeof additionalServices]
+      if (service) {
+        total += service.price
+        servicesCost += service.price
+        serviceDetails.push({ name: service.name, price: service.price })
+      }
+    })
+
+    const estimate = Math.round(total)
+    const depositAmount = Math.round(estimate * 0.5)
+
+    return {
+      moveType: type.name,
+      moveTypeKey: moveType,
+      squareMeters: effectiveSqm,
+      origin: originSuburb,
+      destination: destinationSuburb,
+      distance: estimatedDistanceKm,
+      additionalServices: serviceDetails.map((s) => s.name),
+      estimatedTotal: estimate,
+      depositRequired: depositAmount,
+      hourlyRate,
+      estimatedHours,
+      crewSize,
+      truckSize,
+      showAvailability: true,
+      breakdown: [
+        { label: "Base Rate", amount: type.baseRate },
+        { label: `Area Cost (${effectiveSqm}sqm × $${type.perSqm})`, amount: type.perSqm * effectiveSqm },
+        ...(distanceCost > 0 ? [{ label: "Distance Cost", amount: distanceCost }] : []),
+        ...(servicesCost > 0 ? [{ label: "Additional Services", amount: servicesCost }] : []),
+      ],
+    }
+  },
+})
+
+const collectContactInfoTool = tool({
+  description:
+    "Collect and confirm customer contact details. Use this after all move details are confirmed to prepare for payment.",
+  inputSchema: z.object({
+    contactName: z.string().describe("Customer's full name"),
+    email: z.string().describe("Customer's email address"),
+    phone: z.string().describe("Customer's phone number"),
+    companyName: z.string().describe("Company name"),
+    scheduledDate: z.string().describe("The confirmed moving date in YYYY-MM-DD format"),
+  }),
+  execute: async ({ contactName, email, phone, companyName, scheduledDate }) => {
+    return {
+      success: true,
+      collected: true,
+      contactName,
+      email,
+      phone,
+      companyName,
+      scheduledDate,
+      message: `Perfect! I have all your details. To secure your booking for ${formatDate(scheduledDate)}, we require a 50% deposit.`,
+    }
+  },
+})
+
+const initiatePaymentTool = tool({
+  description: "Show the Stripe payment form for the deposit. Use this after contact details are collected.",
+  inputSchema: z.object({
+    amount: z.number().describe("Deposit amount in dollars"),
+    customerEmail: z.string().describe("Customer email for receipt"),
+    customerName: z.string().describe("Customer name"),
+    description: z.string().describe("Payment description"),
+  }),
+  execute: async ({ amount, customerEmail, customerName, description }) => {
+    return {
+      success: true,
+      showPayment: true,
+      amount,
+      customerEmail,
+      customerName,
+      description,
+      message: `Please complete the $${amount.toLocaleString()} deposit payment below to confirm your booking. You'll receive a confirmation email and invoice once the payment is processed.`,
+    }
+  },
+})
+
+const requestCallbackTool = tool({
+  description:
+    "Request a callback from the M&M team for complex enquiries or when customer prefers to speak with someone.",
+  inputSchema: z.object({
+    name: z.string().describe("Customer name"),
+    phone: z.string().describe("Phone number to call back"),
+    preferredTime: z.string().describe("Preferred callback time, e.g. morning, afternoon, or ASAP"),
+    reason: z.string().describe("Brief reason for callback"),
+  }),
+  execute: async ({ name, phone, preferredTime, reason }) => {
+    return {
+      success: true,
+      callbackRequested: true,
+      message: `No worries! I've requested a callback for you. One of our team members will call ${name} at ${phone} ${preferredTime}.`,
+    }
+  },
+})
+
+const tools = {
+  lookupBusiness: lookupBusinessTool,
+  confirmBusiness: confirmBusinessTool,
+  checkAvailability: checkAvailabilityTool,
+  confirmBookingDate: confirmBookingDateTool,
+  calculateQuote: calculateQuoteTool,
+  collectContactInfo: collectContactInfoTool,
+  initiatePayment: initiatePaymentTool,
+  requestCallback: requestCallbackTool,
+} as const
+
 export async function POST(req: Request) {
   const body = await req.json()
 
-  // Validate and convert messages
-  const messages = body.messages || []
+  const rawMessages = body.messages || []
 
   // Handle initial conversation start
   const effectiveMessages =
-    messages.length === 0 ||
-    (messages.length === 1 &&
-      messages[0].role === "user" &&
-      (messages[0].content === "start" ||
-        messages[0].content === "Start" ||
-        messages[0].content === "" ||
-        messages[0].parts?.[0]?.text?.includes("I'd like to get a quote")))
+    rawMessages.length === 0 ||
+    (rawMessages.length === 1 &&
+      rawMessages[0].role === "user" &&
+      (rawMessages[0].content === "start" ||
+        rawMessages[0].content === "Start" ||
+        rawMessages[0].content === "" ||
+        rawMessages[0].parts?.[0]?.text?.includes("I'd like to get a quote")))
       ? [{ role: "user" as const, content: "Hi, I'd like to get a quote for a commercial move." }]
-      : messages.map((m: any) => ({
-          role: m.role as "user" | "assistant",
-          content:
-            typeof m.content === "string"
-              ? m.content
-              : m.parts
-                  ?.filter((p: any) => p.type === "text")
-                  .map((p: any) => p.text)
-                  .join(" ") || "",
-        }))
+      : rawMessages
+
+  const messages = await validateUIMessages({
+    messages: effectiveMessages,
+    tools,
+  })
 
   const result = streamText({
     model: "openai/gpt-4o",
     system: systemPrompt,
-    messages: effectiveMessages,
-    tools: {
-      lookupBusiness: {
-        description:
-          "Look up an Australian business by name or ABN to get their registered details. Use this when the customer mentions their company name or provides an ABN.",
-        parameters: z.object({
-          query: z.string().describe("Business name or ABN to search for"),
-          searchType: z
-            .string()
-            .describe("Type of search - 'name' for business name search, 'abn' for direct ABN lookup"),
-        }),
-        execute: async ({ query, searchType }) => {
-          try {
-            const baseUrl = process.env.VERCEL_URL
-              ? `https://${process.env.VERCEL_URL}`
-              : process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || "http://localhost:3000"
-
-            const response = await fetch(
-              `${baseUrl}/api/business-lookup?q=${encodeURIComponent(query)}&type=${searchType}`,
-            )
-
-            if (!response.ok) {
-              return { success: false, error: "Failed to lookup business", results: [] }
-            }
-
-            const data = await response.json()
-
-            if (data.results && data.results.length > 0) {
-              return {
-                success: true,
-                results: data.results.map((r: any) => ({
-                  abn: r.abn,
-                  name: r.name,
-                  tradingName: r.tradingName || null,
-                  entityType: r.entityType || null,
-                  state: r.state,
-                  postcode: r.postcode,
-                  status: r.status || "Active",
-                })),
-                message:
-                  data.results.length === 1
-                    ? `Found: ${data.results[0].name} (ABN: ${data.results[0].abn})`
-                    : `Found ${data.results.length} matching businesses`,
-              }
-            }
-
-            return {
-              success: false,
-              results: [],
-              message:
-                "No businesses found matching that search. Please try a different name or provide the ABN directly.",
-            }
-          } catch (error) {
-            return { success: false, error: "Lookup service unavailable", results: [] }
-          }
-        },
-      },
-
-      confirmBusiness: {
-        description: "Confirm the business details after customer validates the lookup result",
-        parameters: z.object({
-          name: z.string().describe("Confirmed business name"),
-          abn: z.string().describe("Confirmed ABN"),
-          entityType: z.string().describe("Business entity type"),
-          state: z.string().describe("Business state"),
-        }),
-        execute: async ({ name, abn, entityType, state }) => {
-          return {
-            success: true,
-            confirmed: true,
-            name,
-            abn,
-            entityType,
-            state,
-            message: `Great! I've confirmed your business as ${name} (ABN: ${abn}). Now, what type of move are you planning?`,
-          }
-        },
-      },
-
-      checkAvailability: {
-        description:
-          "Check available dates for scheduling a move. Returns a list of available dates for the next 45 days. Use this after calculating a quote to show the customer when they can book.",
-        parameters: z.object({
-          monthName: z.string().describe("Month to check availability for, e.g. 'December 2024' or 'next month'"),
-          moveUrgency: z.string().describe("How urgent is the move - 'asap', 'flexible', or 'specific'"),
-        }),
-        execute: async ({ monthName, moveUrgency }) => {
-          try {
-            const baseUrl = process.env.VERCEL_URL
-              ? `https://${process.env.VERCEL_URL}`
-              : process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || "http://localhost:3000"
-
-            const startDate = new Date().toISOString().split("T")[0]
-            const endDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
-
-            const response = await fetch(`${baseUrl}/api/availability?start=${startDate}&end=${endDate}`)
-
-            if (!response.ok) {
-              return {
-                success: true,
-                showCalendar: true,
-                dates: generateFallbackDates(),
-                message: "Here are our available dates. Please select your preferred moving date.",
-              }
-            }
-
-            const data = await response.json()
-            const availableDates = data.availability
-              ?.filter((d: any) => d.is_available && d.current_bookings < d.max_bookings)
-              .map((d: any) => ({
-                date: d.date,
-                available: true,
-                slots: d.max_bookings - d.current_bookings,
-              }))
-
-            return {
-              success: true,
-              showCalendar: true,
-              dates: availableDates || generateFallbackDates(),
-              message:
-                moveUrgency === "asap"
-                  ? "We have availability soon! Please select your preferred date from the calendar."
-                  : "Here are our available dates for the coming weeks. Please select your preferred moving date.",
-            }
-          } catch (error) {
-            return {
-              success: true,
-              showCalendar: true,
-              dates: generateFallbackDates(),
-              message: "Please select your preferred moving date from the calendar.",
-            }
-          }
-        },
-      },
-
-      confirmBookingDate: {
-        description: "Confirm a specific date the customer has selected for their move",
-        parameters: z.object({
-          selectedDate: z.string().describe("The date selected by the customer in YYYY-MM-DD format"),
-        }),
-        execute: async ({ selectedDate }) => {
-          return {
-            success: true,
-            confirmedDate: selectedDate,
-            message: `Excellent! ${formatDate(selectedDate)} has been reserved for your move. Now I just need a few contact details to finalise your booking.`,
-          }
-        },
-      },
-
-      calculateQuote: {
-        description:
-          "Calculate a quote estimate based on the collected information. Use this once you have move type, size, and locations.",
-        parameters: z.object({
-          moveType: z.string().describe("Type of move: office, warehouse, datacenter, it-equipment, or retail"),
-          squareMeters: z.number().describe("Size in square metres"),
-          originSuburb: z.string().describe("Origin location or suburb"),
-          destinationSuburb: z.string().describe("Destination location or suburb"),
-          estimatedDistanceKm: z.number().describe("Estimated distance in km, use 10 if unknown"),
-          additionalServicesList: z.string().describe("Comma-separated list of additional services needed"),
-        }),
-        execute: async ({
-          moveType,
-          squareMeters,
-          originSuburb,
-          destinationSuburb,
-          estimatedDistanceKm,
-          additionalServicesList,
-        }) => {
-          const type = moveTypes[moveType as keyof typeof moveTypes] || moveTypes.office
-          const effectiveSqm = Math.max(squareMeters, type.minSqm)
-          let total = type.baseRate + type.perSqm * effectiveSqm
-
-          // Distance cost
-          const distanceCost = estimatedDistanceKm ? estimatedDistanceKm * 8 : 0
-          total += distanceCost
-
-          // Crew and truck calculation
-          let crewSize = 2
-          let truckSize = "Medium (45m³)"
-          if (effectiveSqm > 100) {
-            crewSize = 4
-            truckSize = "Large (75m³)"
-          } else if (effectiveSqm > 50) {
-            crewSize = 3
-            truckSize = "Large (75m³)"
-          }
-
-          // Hours estimate
-          const estimatedHours =
-            Math.ceil(effectiveSqm / 15) + (estimatedDistanceKm ? Math.ceil(estimatedDistanceKm / 30) : 1)
-          const hourlyRate = 150 * crewSize
-
-          const serviceDetails: { name: string; price: number }[] = []
-          let servicesCost = 0
-
-          // Parse additional services from comma-separated string
-          const services = additionalServicesList
-            ? additionalServicesList
-                .split(",")
-                .map((s) => s.trim().toLowerCase())
-                .filter(Boolean)
-            : []
-
-          services.forEach((serviceId) => {
-            const service = additionalServices[serviceId as keyof typeof additionalServices]
-            if (service) {
-              total += service.price
-              servicesCost += service.price
-              serviceDetails.push({ name: service.name, price: service.price })
-            }
-          })
-
-          const estimate = Math.round(total)
-          const depositAmount = Math.round(estimate * 0.5)
-
-          return {
-            moveType: type.name,
-            moveTypeKey: moveType,
-            squareMeters: effectiveSqm,
-            origin: originSuburb,
-            destination: destinationSuburb,
-            distance: estimatedDistanceKm,
-            additionalServices: serviceDetails.map((s) => s.name),
-            estimatedTotal: estimate,
-            depositRequired: depositAmount,
-            hourlyRate,
-            estimatedHours,
-            crewSize,
-            truckSize,
-            showAvailability: true,
-            breakdown: [
-              { label: "Base Rate", amount: type.baseRate },
-              { label: `Area Cost (${effectiveSqm}sqm × $${type.perSqm})`, amount: type.perSqm * effectiveSqm },
-              ...(distanceCost > 0 ? [{ label: "Distance Cost", amount: distanceCost }] : []),
-              ...(servicesCost > 0 ? [{ label: "Additional Services", amount: servicesCost }] : []),
-            ],
-          }
-        },
-      },
-
-      collectContactInfo: {
-        description:
-          "Collect and confirm customer contact details. Use this after all move details are confirmed to prepare for payment.",
-        parameters: z.object({
-          contactName: z.string().describe("Customer's full name"),
-          email: z.string().describe("Customer's email address"),
-          phone: z.string().describe("Customer's phone number"),
-          companyName: z.string().describe("Company name"),
-          scheduledDate: z.string().describe("The confirmed moving date in YYYY-MM-DD format"),
-        }),
-        execute: async ({ contactName, email, phone, companyName, scheduledDate }) => {
-          return {
-            success: true,
-            collected: true,
-            contactName,
-            email,
-            phone,
-            companyName,
-            scheduledDate,
-            message: `Perfect! I have all your details. To secure your booking for ${formatDate(scheduledDate)}, we require a 50% deposit.`,
-          }
-        },
-      },
-
-      initiatePayment: {
-        description: "Show the Stripe payment form for the deposit. Use this after contact details are collected.",
-        parameters: z.object({
-          amount: z.number().describe("Deposit amount in dollars"),
-          customerEmail: z.string().describe("Customer email for receipt"),
-          customerName: z.string().describe("Customer name"),
-          description: z.string().describe("Payment description"),
-        }),
-        execute: async ({ amount, customerEmail, customerName, description }) => {
-          return {
-            success: true,
-            showPayment: true,
-            amount,
-            customerEmail,
-            customerName,
-            description,
-            message: `Please complete the $${amount.toLocaleString()} deposit payment below to confirm your booking. You'll receive a confirmation email and invoice once the payment is processed.`,
-          }
-        },
-      },
-
-      requestCallback: {
-        description:
-          "Request a callback from the M&M team for complex enquiries or when customer prefers to speak with someone.",
-        parameters: z.object({
-          name: z.string().describe("Customer name"),
-          phone: z.string().describe("Phone number to call back"),
-          preferredTime: z.string().describe("Preferred callback time, e.g. morning, afternoon, or ASAP"),
-          reason: z.string().describe("Brief reason for callback"),
-        }),
-        execute: async ({ name, phone, preferredTime, reason }) => {
-          return {
-            success: true,
-            callbackRequested: true,
-            message: `No worries! I've requested a callback for you. One of our team members will call ${name} at ${phone} ${preferredTime}.`,
-          }
-        },
-      },
-    },
+    messages: convertToModelMessages(messages),
+    tools,
   })
 
   return result.toUIMessageStreamResponse()
