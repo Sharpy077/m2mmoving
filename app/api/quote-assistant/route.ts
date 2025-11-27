@@ -1,4 +1,4 @@
-import { streamText, tool, type UIMessage } from "ai"
+import { streamText, tool } from "ai"
 import { z } from "zod"
 
 export const maxDuration = 60
@@ -116,20 +116,22 @@ When customer mentions company name or ABN, use lookupBusiness immediately to ve
 Remember: Be helpful, efficient, and make the booking process as smooth as possible!`
 
 export async function POST(req: Request) {
-  const { messages }: { messages: UIMessage[] } = await req.json()
+  const body = await req.json()
 
+  // Validate and convert messages
+  const messages = body.messages || []
+
+  // Handle initial conversation start
   const effectiveMessages =
     messages.length === 0 ||
     (messages.length === 1 &&
       messages[0].role === "user" &&
-      (messages[0].content === "start" || messages[0].content === "Start" || messages[0].content === ""))
-      ? [
-          {
-            role: "user" as const,
-            content: "Hi, I'd like to get a quote for a commercial move.",
-          },
-        ]
-      : messages.map((m) => ({
+      (messages[0].content === "start" ||
+        messages[0].content === "Start" ||
+        messages[0].content === "" ||
+        messages[0].parts?.[0]?.text?.includes("I'd like to get a quote")))
+      ? [{ role: "user" as const, content: "Hi, I'd like to get a quote for a commercial move." }]
+      : messages.map((m: any) => ({
           role: m.role as "user" | "assistant",
           content:
             typeof m.content === "string"
@@ -199,6 +201,29 @@ export async function POST(req: Request) {
         },
       }),
 
+      confirmBusiness: tool({
+        description: "Confirm the business details after customer validates the lookup result",
+        parameters: z.object({
+          name: z.string().describe("Confirmed business name"),
+          abn: z.string().describe("Confirmed ABN"),
+          type: z.string().optional().describe("Business entity type"),
+          state: z.string().optional().describe("Business state"),
+          address: z.string().optional().describe("Business address if available"),
+        }),
+        execute: async ({ name, abn, type, state, address }) => {
+          return {
+            success: true,
+            confirmed: true,
+            name,
+            abn,
+            type,
+            state,
+            address,
+            message: `Great! I've confirmed your business as ${name} (ABN: ${abn}). Now, what type of move are you planning?`,
+          }
+        },
+      }),
+
       checkAvailability: tool({
         description:
           "Check available dates for scheduling a move. Returns a list of available dates for the next 45 days. Use this after calculating a quote to show the customer when they can book.",
@@ -224,8 +249,8 @@ export async function POST(req: Request) {
               return {
                 success: true,
                 showCalendar: true,
+                dates: generateFallbackDates(),
                 message: "Here are our available dates. Please select your preferred moving date.",
-                availableDates: generateFallbackDates(),
               }
             }
 
@@ -234,28 +259,25 @@ export async function POST(req: Request) {
               ?.filter((d: any) => d.is_available && d.current_bookings < d.max_bookings)
               .map((d: any) => ({
                 date: d.date,
-                slotsRemaining: d.max_bookings - d.current_bookings,
+                available: true,
+                slots: d.max_bookings - d.current_bookings,
               }))
-
-            const nextAvailable = availableDates?.slice(0, 5) || []
 
             return {
               success: true,
               showCalendar: true,
+              dates: availableDates || generateFallbackDates(),
               message:
                 urgency === "asap"
-                  ? `We have availability as early as ${nextAvailable[0]?.date}! Please select your preferred date from the calendar.`
-                  : "Here are our available dates for the coming weeks. Please select your preferred moving date from the calendar.",
-              availableDates: availableDates || generateFallbackDates(),
-              nextAvailable,
-              totalAvailableSlots: availableDates?.length || 0,
+                  ? "We have availability soon! Please select your preferred date from the calendar."
+                  : "Here are our available dates for the coming weeks. Please select your preferred moving date.",
             }
           } catch (error) {
             return {
               success: true,
               showCalendar: true,
+              dates: generateFallbackDates(),
               message: "Please select your preferred moving date from the calendar.",
-              availableDates: generateFallbackDates(),
             }
           }
         },
@@ -315,15 +337,33 @@ export async function POST(req: Request) {
           const effectiveSqm = Math.max(squareMeters, type.minSqm)
           let total = type.baseRate + type.perSqm * effectiveSqm
 
-          if (estimatedDistanceKm) {
-            total += estimatedDistanceKm * 8
+          // Distance cost
+          const distanceCost = estimatedDistanceKm ? estimatedDistanceKm * 8 : 0
+          total += distanceCost
+
+          // Crew and truck calculation
+          let crewSize = 2
+          let truckSize = "Medium (45m³)"
+          if (effectiveSqm > 100) {
+            crewSize = 4
+            truckSize = "Large (75m³)"
+          } else if (effectiveSqm > 50) {
+            crewSize = 3
+            truckSize = "Large (75m³)"
           }
 
+          // Hours estimate
+          const estimatedHours =
+            Math.ceil(effectiveSqm / 15) + (estimatedDistanceKm ? Math.ceil(estimatedDistanceKm / 30) : 1)
+          const hourlyRate = 150 * crewSize
+
           const serviceDetails: { name: string; price: number }[] = []
+          let servicesCost = 0
           if (services) {
             services.forEach((serviceId) => {
               const service = additionalServices[serviceId]
               total += service.price
+              servicesCost += service.price
               serviceDetails.push({ name: service.name, price: service.price })
             })
           }
@@ -339,23 +379,27 @@ export async function POST(req: Request) {
             destination: destinationSuburb,
             distance: estimatedDistanceKm,
             specialRequirements,
-            additionalServices: serviceDetails.map((s) => `${s.name}: $${s.price}`),
+            additionalServices: serviceDetails.map((s) => s.name),
             estimatedTotal: estimate,
             depositRequired: depositAmount,
+            hourlyRate,
+            estimatedHours,
+            crewSize,
+            truckSize,
             showAvailability: true,
-            breakdown: {
-              baseRate: type.baseRate,
-              areaCost: type.perSqm * effectiveSqm,
-              distanceCost: estimatedDistanceKm ? estimatedDistanceKm * 8 : 0,
-              servicesCost: services ? services.reduce((sum, s) => sum + additionalServices[s].price, 0) : 0,
-            },
+            breakdown: [
+              { label: "Base Rate", amount: type.baseRate },
+              { label: `Area Cost (${effectiveSqm}sqm × $${type.perSqm})`, amount: type.perSqm * effectiveSqm },
+              ...(distanceCost > 0 ? [{ label: "Distance Cost", amount: distanceCost }] : []),
+              ...(servicesCost > 0 ? [{ label: "Additional Services", amount: servicesCost }] : []),
+            ],
           }
         },
       }),
 
       collectContactInfo: tool({
         description:
-          "Collect customer contact details to save the booking and prepare for payment. Use this after the date is confirmed.",
+          "Collect and confirm customer contact details. Use this after all move details are confirmed to prepare for payment.",
         parameters: z.object({
           contactName: z.string().describe("Customer's full name"),
           email: z.string().describe("Customer's email address"),
@@ -367,22 +411,20 @@ export async function POST(req: Request) {
         execute: async ({ contactName, email, phone, companyName, abn, scheduledDate }) => {
           return {
             success: true,
-            contactInfo: {
-              contactName,
-              email,
-              phone,
-              companyName,
-              abn,
-              scheduledDate,
-            },
-            showPayment: true,
-            message: `Perfect! I have all your details. To secure your booking for ${scheduledDate ? formatDate(scheduledDate) : "your move"}, we require a 50% deposit. I'll show you the payment form now.`,
+            collected: true,
+            contactName,
+            email,
+            phone,
+            companyName,
+            abn,
+            scheduledDate,
+            message: `Perfect! I have all your details. To secure your booking${scheduledDate ? ` for ${formatDate(scheduledDate)}` : ""}, we require a 50% deposit.`,
           }
         },
       }),
 
       initiatePayment: tool({
-        description: "Initiate the Stripe payment flow for the deposit. Use this after contact details are collected.",
+        description: "Show the Stripe payment form for the deposit. Use this after contact details are collected.",
         parameters: z.object({
           amount: z.number().describe("Deposit amount in dollars"),
           customerEmail: z.string().describe("Customer email for receipt"),
@@ -392,7 +434,7 @@ export async function POST(req: Request) {
         execute: async ({ amount, customerEmail, customerName, description }) => {
           return {
             success: true,
-            showStripePayment: true,
+            showPayment: true,
             amount,
             customerEmail,
             customerName,
@@ -449,7 +491,7 @@ function generateFallbackDates() {
     if (dayOfWeek !== 0 && dayOfWeek !== 6) {
       dates.push({
         date: date.toISOString().split("T")[0],
-        slotsRemaining: Math.floor(Math.random() * 3) + 1,
+        slots: Math.floor(Math.random() * 3) + 1,
       })
     }
   }

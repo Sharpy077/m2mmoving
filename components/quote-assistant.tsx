@@ -1,71 +1,75 @@
 "use client"
 
 import type React from "react"
-
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react"
 import { useChat } from "@ai-sdk/react"
-import { useState, useRef, useEffect, forwardRef, useImperativeHandle, useCallback } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { cn } from "@/lib/utils"
+import { DefaultChatTransport } from "ai"
 import {
+  MessageSquare,
+  X,
+  Minimize2,
+  Maximize2,
   Send,
   Mic,
   MicOff,
   Volume2,
   VolumeX,
-  Sparkles,
-  Loader2,
-  Phone,
-  MessageCircle,
-  X,
-  Minimize2,
-  Maximize2,
   Building2,
-  CheckCircle2,
-  Calendar,
+  CheckCircle,
   ChevronLeft,
   ChevronRight,
   CreditCard,
+  Phone,
+  Bot,
+  User,
+  Loader2,
 } from "lucide-react"
-import { submitLead } from "@/app/actions/leads"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js"
 import { loadStripe } from "@stripe/stripe-js"
-import { EmbeddedCheckout, EmbeddedCheckoutProvider } from "@stripe/react-stripe-js"
+import { submitLead } from "@/app/actions/leads"
 import { createDepositCheckout } from "@/app/actions/stripe"
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
 
+interface BusinessResult {
+  name: string
+  abn: string
+  type: string
+  state: string
+  status: string
+  tradingNames?: string[]
+  address?: string
+  gstRegistered?: boolean
+}
+
 interface QuoteEstimate {
   moveType: string
   moveTypeKey?: string
+  estimatedTotal: number
+  depositRequired: number
+  hourlyRate: number
+  estimatedHours: number
+  crewSize: number
+  truckSize: string
   squareMeters: number
   origin: string
   destination: string
-  estimatedTotal: number
-  depositRequired: number
   additionalServices?: string[]
   breakdown: {
-    baseRate: number
-    areaCost: number
-    distanceCost: number
-    servicesCost: number
-  }
+    label: string
+    amount: number
+  }[]
   showAvailability?: boolean
-}
-
-interface BusinessResult {
-  abn: string
-  name: string
-  tradingName?: string
-  entityType?: string
-  state: string
-  postcode?: string
-  status: string
 }
 
 interface AvailableDate {
   date: string
-  slotsRemaining: number
+  available: boolean
+  slots?: number
 }
 
 interface ContactInfo {
@@ -73,23 +77,12 @@ interface ContactInfo {
   email: string
   phone: string
   companyName?: string
-  abn?: string
-  scheduledDate?: string
 }
 
 interface PaymentInfo {
+  clientSecret: string
   amount: number
-  customerEmail: string
-  customerName: string
-  description: string
 }
-
-const suggestedPrompts = [
-  "I need to move my office",
-  "Data centre relocation quote",
-  "IT equipment transport",
-  "Warehouse move",
-]
 
 export interface QuoteAssistantHandle {
   open: () => void
@@ -135,8 +128,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       },
     }))
 
-    const { messages, append, isLoading, error, setMessages } = useChat({
-      api: "/api/quote-assistant",
+    const { messages, sendMessage, status, error, setMessages } = useChat({
+      transport: new DefaultChatTransport({ api: "/api/quote-assistant" }),
       onError: (err) => {
         console.log("[v0] Chat error:", err)
       },
@@ -144,6 +137,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         console.log("[v0] Message finished:", message.role)
       },
     })
+
+    const isLoading = status === "streaming" || status === "submitted"
 
     useEffect(() => {
       const lastMessage = messages[messages.length - 1]
@@ -163,31 +158,36 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
               }
             }
 
-            if (toolCall.toolName === "checkAvailability" && result?.showCalendar) {
+            if (toolCall.toolName === "checkAvailability" && result?.dates) {
+              setAvailableDates(result.dates)
               setShowCalendar(true)
-              if (result.availableDates) {
-                setAvailableDates(result.availableDates)
-              }
             }
 
-            if (toolCall.toolName === "confirmBookingDate" && result?.confirmedDate) {
-              setSelectedDate(result.confirmedDate)
-              setShowCalendar(false)
+            if (toolCall.toolName === "collectContactInfo" && result?.collected) {
+              setContactInfo({
+                contactName: result.contactName,
+                email: result.email,
+                phone: result.phone,
+                companyName: result.companyName,
+              })
             }
 
-            if (toolCall.toolName === "collectContactInfo" && result?.contactInfo) {
-              setContactInfo(result.contactInfo)
-              if (result.showPayment) {
-                setShowPayment(true)
-              }
-            }
-
-            if (toolCall.toolName === "initiatePayment" && result?.showStripePayment) {
+            if (toolCall.toolName === "initiatePayment" && result?.showPayment) {
+              setShowPayment(true)
               setPaymentInfo({
+                clientSecret: result.clientSecret || "",
                 amount: result.amount,
-                customerEmail: result.customerEmail,
-                customerName: result.customerName,
-                description: result.description,
+              })
+            }
+
+            if (toolCall.toolName === "confirmBusiness" && result?.confirmed) {
+              setConfirmedBusiness({
+                name: result.name,
+                abn: result.abn,
+                type: result.type || "",
+                state: result.state || "",
+                status: "Active",
+                address: result.address,
               })
             }
           }
@@ -198,15 +198,13 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     useEffect(() => {
       if ((isOpen || embedded) && !hasStarted && messages.length === 0) {
         setHasStarted(true)
-        // Send initial greeting trigger
         setTimeout(() => {
-          append({
-            role: "user",
-            content: "Hi, I'd like to get a quote for a commercial move.",
+          sendMessage({
+            text: "Hi, I'd like to get a quote for a commercial move.",
           })
         }, 500)
       }
-    }, [isOpen, embedded, hasStarted, messages.length, append])
+    }, [isOpen, embedded, hasStarted, messages.length, sendMessage])
 
     // Scroll to bottom on new messages
     useEffect(() => {
@@ -251,7 +249,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             setInputValue(transcript)
             setIsListening(false)
             setTimeout(() => {
-              append({ role: "user", content: transcript })
+              sendMessage({ text: transcript })
               setInputValue("")
             }, 300)
           }
@@ -260,7 +258,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           recognitionRef.current = recognition
         }
       }
-    }, [append])
+    }, [sendMessage])
 
     const toggleListening = () => {
       if (!recognitionRef.current) return
@@ -279,7 +277,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       const text = inputValue
       setInputValue("")
       setBusinessLookupResults(null)
-      append({ role: "user", content: text })
+      sendMessage({ text })
     }
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -292,9 +290,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const handleSelectBusiness = (business: BusinessResult) => {
       setConfirmedBusiness(business)
       setBusinessLookupResults(null)
-      append({
-        role: "user",
-        content: `Yes, that's correct - ${business.name} (ABN: ${business.abn})`,
+      sendMessage({
+        text: `Yes, that's correct - ${business.name} (ABN: ${business.abn})`,
       })
     }
 
@@ -307,14 +304,13 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         month: "long",
         year: "numeric",
       })
-      append({
-        role: "user",
-        content: `I'd like to book for ${formattedDate}`,
+      sendMessage({
+        text: `I'd like to book for ${formattedDate}`,
       })
     }
 
     const handlePromptClick = (prompt: string) => {
-      append({ role: "user", content: prompt })
+      sendMessage({ text: prompt })
     }
 
     const fetchClientSecret = useCallback(async () => {
@@ -367,9 +363,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         }
       }
 
-      append({
-        role: "user",
-        content: "Payment completed",
+      sendMessage({
+        text: "Payment completed",
       })
     }
 
@@ -378,578 +373,444 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       const isUser = message.role === "user"
       const content = typeof message.content === "string" ? message.content : ""
 
-      // Don't show empty messages or just "start" messages
-      if (!content.trim() || content.toLowerCase() === "start") return null
-
-      // Don't show the auto-generated initial message from user
-      if (
-        isUser &&
-        content === "Hi, I'd like to get a quote for a commercial move." &&
-        messages.indexOf(message) === 0
-      ) {
-        return null
-      }
-
       return (
-        <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
+        <div className={`flex gap-2 ${isUser ? "justify-end" : "justify-start"}`}>
+          {!isUser && (
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+              <Bot className="w-4 h-4 text-primary" />
+            </div>
+          )}
           <div
-            className={cn(
-              "max-w-[85%] rounded-xl px-4 py-2.5 text-sm whitespace-pre-wrap",
-              isUser ? "bg-primary text-primary-foreground" : "bg-muted text-foreground",
-            )}
+            className={`max-w-[80%] rounded-2xl px-4 py-2 ${
+              isUser ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
+            }`}
           >
-            {content}
+            <p className="text-sm whitespace-pre-wrap">{content}</p>
           </div>
+          {isUser && (
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+              <User className="w-4 h-4 text-primary-foreground" />
+            </div>
+          )}
         </div>
       )
     }
 
-    // Business lookup card
-    const BusinessLookupCard = ({
-      results,
-      onSelect,
-    }: {
-      results: BusinessResult[]
-      onSelect: (b: BusinessResult) => void
-    }) => (
-      <Card className="bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800">
-        <CardContent className="p-3">
-          <p className="text-xs text-blue-700 dark:text-blue-300 mb-2 font-medium">
-            Found {results.length} matching business{results.length > 1 ? "es" : ""}. Tap to confirm:
-          </p>
-          <div className="space-y-2">
-            {results.slice(0, 3).map((business) => (
-              <button
-                key={business.abn}
-                onClick={() => onSelect(business)}
-                className="w-full text-left p-2 bg-background rounded-lg border hover:border-primary transition-colors"
-              >
-                <div className="flex items-start gap-2">
-                  <Building2 className="h-4 w-4 text-muted-foreground mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{business.name}</p>
-                    {business.tradingName && (
-                      <p className="text-xs text-muted-foreground">Trading as: {business.tradingName}</p>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      ABN: {business.abn} | {business.state}
-                    </p>
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    )
-
-    // Confirmed business badge
-    const ConfirmedBusinessBadge = ({ business }: { business: BusinessResult }) => (
-      <div className="flex items-center gap-2 p-2 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
-        <CheckCircle2 className="h-4 w-4 text-green-600" />
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-green-800 dark:text-green-200">{business.name}</p>
-          <p className="text-xs text-green-700 dark:text-green-300">ABN: {business.abn}</p>
-        </div>
-      </div>
-    )
-
-    // Quote card
-    const QuoteCard = ({ quote }: { quote: QuoteEstimate }) => (
-      <Card className="bg-primary/5 border-primary/30">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between mb-3">
-            <p className="font-semibold text-sm">Your Quote Estimate</p>
-            <Badge variant="outline" className="text-xs">
-              {quote.moveType}
-            </Badge>
-          </div>
-          <div className="text-3xl font-bold text-primary mb-3">${quote.estimatedTotal.toLocaleString()}</div>
-          <div className="space-y-2 text-sm text-muted-foreground">
-            <div className="flex justify-between">
-              <span>Route:</span>
-              <span className="text-foreground">
-                {quote.origin} → {quote.destination}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span>Size:</span>
-              <span className="text-foreground">{quote.squareMeters} sqm</span>
-            </div>
-            <div className="border-t pt-2 mt-2">
-              <div className="flex justify-between">
-                <span>Base rate:</span>
-                <span>${quote.breakdown.baseRate.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Area cost:</span>
-                <span>${quote.breakdown.areaCost.toLocaleString()}</span>
-              </div>
-              {quote.breakdown.distanceCost > 0 && (
-                <div className="flex justify-between">
-                  <span>Distance:</span>
-                  <span>${quote.breakdown.distanceCost.toLocaleString()}</span>
-                </div>
-              )}
-              {quote.breakdown.servicesCost > 0 && (
-                <div className="flex justify-between">
-                  <span>Services:</span>
-                  <span>${quote.breakdown.servicesCost.toLocaleString()}</span>
-                </div>
-              )}
-            </div>
-            <div className="border-t pt-2 mt-2">
-              <div className="flex justify-between font-semibold text-primary">
-                <span>50% Deposit Required:</span>
-                <span>${quote.depositRequired.toLocaleString()}</span>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    )
-
-    // Calendar picker
+    // Calendar component
     const CalendarPicker = () => {
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
+      const daysInMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate()
+      const firstDay = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).getDay()
+      const days = []
 
-      const monthStart = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1)
-      const monthEnd = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0)
-      const startPadding = monthStart.getDay()
-
-      const days: (Date | null)[] = []
-
-      for (let i = 0; i < startPadding; i++) {
-        days.push(null)
+      for (let i = 0; i < firstDay; i++) {
+        days.push(<div key={`empty-${i}`} className="p-2" />)
       }
 
-      for (let d = 1; d <= monthEnd.getDate(); d++) {
-        days.push(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), d))
-      }
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${calendarMonth.getFullYear()}-${String(calendarMonth.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+        const dateInfo = availableDates.find((d) => d.date === dateStr)
+        const isAvailable = dateInfo?.available !== false
+        const isLimitedSlots = dateInfo?.slots !== undefined && dateInfo.slots <= 2
+        const isPast = new Date(dateStr) < new Date()
 
-      const isDateAvailable = (date: Date): boolean => {
-        const dateStr = date.toISOString().split("T")[0]
-        const dayOfWeek = date.getDay()
-        if (dayOfWeek === 0 || dayOfWeek === 6) return false
-        if (date < today) return false
-        const availability = availableDates.find((d) => d.date === dateStr)
-        return !availability || availability.slotsRemaining > 0
-      }
-
-      const getSlotsRemaining = (date: Date): number | null => {
-        const dateStr = date.toISOString().split("T")[0]
-        const availability = availableDates.find((d) => d.date === dateStr)
-        return availability?.slotsRemaining ?? null
-      }
-
-      const prevMonth = () => {
-        setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))
-      }
-
-      const nextMonth = () => {
-        setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))
-      }
-
-      const canGoPrev = calendarMonth > new Date(today.getFullYear(), today.getMonth(), 1)
-
-      return (
-        <Card className="bg-background border-primary/30">
-          <CardHeader className="p-3 pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-primary" />
-                Select Moving Date
-              </CardTitle>
-              <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={prevMonth} disabled={!canGoPrev}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <span className="text-sm font-medium w-28 text-center">
-                  {calendarMonth.toLocaleDateString("en-AU", { month: "long", year: "numeric" })}
-                </span>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={nextMonth}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="p-3 pt-0">
-            <div className="grid grid-cols-7 gap-1 mb-2">
-              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
-                <div key={day} className="text-center text-xs text-muted-foreground font-medium py-1">
-                  {day}
-                </div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7 gap-1">
-              {days.map((date, i) => {
-                if (!date) {
-                  return <div key={`empty-${i}`} className="h-9" />
-                }
-
-                const isAvailable = isDateAvailable(date)
-                const isPast = date < today
-                const isWeekend = date.getDay() === 0 || date.getDay() === 6
-                const slots = getSlotsRemaining(date)
-                const dateStr = date.toISOString().split("T")[0]
-                const isSelected = selectedDate === dateStr
-
-                return (
-                  <button
-                    key={dateStr}
-                    onClick={() => isAvailable && handleSelectDate(dateStr)}
-                    disabled={!isAvailable}
-                    className={cn(
-                      "h-9 rounded-md text-sm relative transition-colors",
-                      isPast || isWeekend
-                        ? "text-muted-foreground/40 cursor-not-allowed"
-                        : isAvailable
-                          ? "hover:bg-primary hover:text-primary-foreground cursor-pointer"
-                          : "text-muted-foreground/40 cursor-not-allowed line-through",
-                      isSelected && "bg-primary text-primary-foreground",
-                      slots !== null && slots <= 1 && isAvailable && "bg-amber-50 dark:bg-amber-950/20",
-                    )}
-                  >
-                    {date.getDate()}
-                    {slots !== null && slots <= 1 && isAvailable && (
-                      <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-amber-500" />
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-            <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
-              <div className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded bg-amber-50 dark:bg-amber-950 border" />
-                <span>Limited slots</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )
-    }
-
-    const PaymentSection = () => {
-      if (!currentQuote || !contactInfo) return null
-
-      if (paymentComplete) {
-        return (
-          <Card className="bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800">
-            <CardContent className="p-4 text-center">
-              <CheckCircle2 className="h-12 w-12 text-green-600 mx-auto mb-3" />
-              <h3 className="font-semibold text-green-800 dark:text-green-200 mb-1">Payment Successful!</h3>
-              <p className="text-sm text-green-700 dark:text-green-300">
-                Your booking is confirmed. You'll receive a confirmation email and invoice shortly.
-              </p>
-            </CardContent>
-          </Card>
+        days.push(
+          <button
+            key={day}
+            disabled={!isAvailable || isPast}
+            onClick={() => handleSelectDate(dateStr)}
+            className={`p-2 rounded-lg text-sm font-medium transition-colors ${
+              !isAvailable || isPast
+                ? "text-muted-foreground/40 cursor-not-allowed"
+                : isLimitedSlots
+                  ? "bg-amber-100 text-amber-800 hover:bg-amber-200"
+                  : "bg-green-100 text-green-800 hover:bg-green-200"
+            } ${selectedDate === dateStr ? "ring-2 ring-primary" : ""}`}
+          >
+            {day}
+          </button>,
         )
       }
 
       return (
-        <Card className="border-primary/30">
-          <CardHeader className="p-3 pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <CreditCard className="h-4 w-4 text-primary" />
-              Secure Deposit Payment
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 pt-0">
-            <div className="mb-3 p-2 bg-muted rounded-lg">
-              <div className="flex justify-between text-sm">
-                <span>Deposit Amount:</span>
-                <span className="font-semibold">${currentQuote.depositRequired.toLocaleString()}</span>
-              </div>
-            </div>
-            <div className="min-h-[300px]">
-              <EmbeddedCheckoutProvider stripe={stripePromise} options={{ fetchClientSecret }}>
-                <EmbeddedCheckout />
-              </EmbeddedCheckoutProvider>
-            </div>
-          </CardContent>
-        </Card>
-      )
-    }
-
-    // Render embedded version
-    if (embedded) {
-      return (
-        <div
-          ref={containerRef}
-          className="w-full h-[500px] flex flex-col bg-background rounded-xl border shadow-lg overflow-hidden"
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-primary/10 to-primary/5">
-            <div className="flex items-center gap-2">
-              <div className="p-2 bg-primary rounded-lg">
-                <Sparkles className="h-4 w-4 text-primary-foreground" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-sm">AI Quote Assistant</h3>
-                <p className="text-xs text-muted-foreground">Get an instant quote</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1">
+        <Card className="mt-3">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-4">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
-                onClick={() => setVoiceEnabled(!voiceEnabled)}
-                title={voiceEnabled ? "Mute voice" : "Enable voice"}
+                onClick={() => setCalendarMonth(new Date(calendarMonth.setMonth(calendarMonth.getMonth() - 1)))}
               >
-                {voiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                <ChevronLeft className="w-4 h-4" />
               </Button>
-            </div>
-          </div>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {confirmedBusiness && <ConfirmedBusinessBadge business={confirmedBusiness} />}
-
-            {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
-            ))}
-
-            {businessLookupResults && businessLookupResults.length > 0 && (
-              <BusinessLookupCard results={businessLookupResults} onSelect={handleSelectBusiness} />
-            )}
-
-            {currentQuote && <QuoteCard quote={currentQuote} />}
-
-            {showCalendar && availableDates.length > 0 && <CalendarPicker />}
-
-            {showPayment && <PaymentSection />}
-
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-muted rounded-xl px-4 py-2.5">
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <div className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-300">
-                Something went wrong. Please try again.
-              </div>
-            )}
-
-            {messages.length <= 1 && !isLoading && (
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground text-center">Quick options:</p>
-                <div className="flex flex-wrap gap-2 justify-center">
-                  {suggestedPrompts.map((prompt) => (
-                    <Button
-                      key={prompt}
-                      variant="outline"
-                      size="sm"
-                      className="text-xs h-8 bg-transparent"
-                      onClick={() => handlePromptClick(prompt)}
-                    >
-                      {prompt}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input */}
-          <div className="p-3 border-t bg-muted/30">
-            <div className="flex items-center gap-2">
-              <div className="flex-1 relative">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Type your message..."
-                  className="w-full px-4 py-2.5 pr-10 rounded-full border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  disabled={isLoading}
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    "absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8",
-                    isListening && "text-red-500 animate-pulse",
-                  )}
-                  onClick={toggleListening}
-                  disabled={isLoading}
-                >
-                  {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                </Button>
-              </div>
+              <span className="font-medium">
+                {calendarMonth.toLocaleDateString("en-AU", {
+                  month: "long",
+                  year: "numeric",
+                })}
+              </span>
               <Button
+                variant="ghost"
                 size="icon"
-                className="h-10 w-10 rounded-full shrink-0"
-                onClick={handleSendMessage}
-                disabled={!inputValue.trim() || isLoading}
+                onClick={() => setCalendarMonth(new Date(calendarMonth.setMonth(calendarMonth.getMonth() + 1)))}
               >
-                <Send className="h-4 w-4" />
+                <ChevronRight className="w-4 h-4" />
               </Button>
             </div>
-            <div className="flex items-center justify-center gap-4 mt-2 text-xs text-muted-foreground">
-              <a href="tel:1300123456" className="flex items-center gap-1 hover:text-primary">
-                <Phone className="h-3 w-3" />
-                <span>1300 123 456</span>
-              </a>
-            </div>
-          </div>
-        </div>
-      )
-    }
-
-    // Floating version
-    if (!isOpen) {
-      return (
-        <Button
-          onClick={() => setIsOpen(true)}
-          className="fixed bottom-4 right-4 h-14 w-14 rounded-full shadow-lg z-50"
-          size="icon"
-        >
-          <MessageCircle className="h-6 w-6" />
-        </Button>
-      )
-    }
-
-    if (isMinimized) {
-      return (
-        <div
-          className="fixed bottom-4 right-4 bg-primary text-primary-foreground rounded-full px-4 py-2 shadow-lg cursor-pointer z-50 flex items-center gap-2"
-          onClick={() => setIsMinimized(false)}
-        >
-          <Sparkles className="h-4 w-4" />
-          <span className="text-sm font-medium">Quote Assistant</span>
-          <Maximize2 className="h-4 w-4" />
-        </div>
-      )
-    }
-
-    return (
-      <div className="fixed bottom-4 right-4 w-[380px] max-w-[calc(100vw-2rem)] h-[600px] max-h-[calc(100vh-2rem)] z-50">
-        <Card className="h-full flex flex-col shadow-2xl">
-          {/* Header */}
-          <CardHeader className="p-3 border-b flex-row items-center justify-between space-y-0 bg-gradient-to-r from-primary/10 to-primary/5">
-            <div className="flex items-center gap-2">
-              <div className="p-2 bg-primary rounded-lg">
-                <Sparkles className="h-4 w-4 text-primary-foreground" />
-              </div>
-              <div>
-                <CardTitle className="text-sm">AI Quote Assistant</CardTitle>
-                <p className="text-xs text-muted-foreground">Get an instant quote</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setVoiceEnabled(!voiceEnabled)}>
-                {voiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-              </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsMinimized(true)}>
-                <Minimize2 className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsOpen(false)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </CardHeader>
-
-          {/* Messages */}
-          <CardContent className="flex-1 overflow-y-auto p-3 space-y-3">
-            {confirmedBusiness && <ConfirmedBusinessBadge business={confirmedBusiness} />}
-
-            {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
-            ))}
-
-            {businessLookupResults && businessLookupResults.length > 0 && (
-              <BusinessLookupCard results={businessLookupResults} onSelect={handleSelectBusiness} />
-            )}
-
-            {currentQuote && <QuoteCard quote={currentQuote} />}
-
-            {showCalendar && availableDates.length > 0 && <CalendarPicker />}
-
-            {showPayment && <PaymentSection />}
-
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-muted rounded-xl px-4 py-2.5">
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            <div className="grid grid-cols-7 gap-1 text-center mb-2">
+              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+                <div key={d} className="text-xs font-medium text-muted-foreground p-2">
+                  {d}
                 </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1">{days}</div>
+            <div className="flex gap-4 mt-4 text-xs">
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded bg-green-100" />
+                <span>Available</span>
               </div>
-            )}
-
-            {error && (
-              <div className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-300">
-                Something went wrong. Please try again.
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded bg-amber-100" />
+                <span>Limited</span>
               </div>
-            )}
-
-            {messages.length <= 1 && !isLoading && (
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground text-center">Quick options:</p>
-                <div className="flex flex-wrap gap-2 justify-center">
-                  {suggestedPrompts.map((prompt) => (
-                    <Button
-                      key={prompt}
-                      variant="outline"
-                      size="sm"
-                      className="text-xs h-8 bg-transparent"
-                      onClick={() => handlePromptClick(prompt)}
-                    >
-                      {prompt}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
+            </div>
           </CardContent>
+        </Card>
+      )
+    }
 
-          {/* Input */}
-          <div className="p-3 border-t bg-muted/30">
-            <div className="flex items-center gap-2">
-              <div className="flex-1 relative">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Type your message..."
-                  className="w-full px-4 py-2.5 pr-10 rounded-full border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  disabled={isLoading}
-                />
+    // Quote display component
+    const QuoteDisplay = () => {
+      if (!currentQuote) return null
+
+      return (
+        <Card className="mt-3 border-primary/20 bg-primary/5">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <CheckCircle className="w-5 h-5 text-primary" />
+              <span className="font-semibold">Your Quote</span>
+            </div>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Move Type:</span>
+                <span className="font-medium">{currentQuote.moveType}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">From:</span>
+                <span className="font-medium">{currentQuote.origin}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">To:</span>
+                <span className="font-medium">{currentQuote.destination}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Crew Size:</span>
+                <span className="font-medium">{currentQuote.crewSize} movers</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Truck:</span>
+                <span className="font-medium">{currentQuote.truckSize}</span>
+              </div>
+              <hr className="my-2" />
+              {currentQuote.breakdown.map((item, i) => (
+                <div key={i} className="flex justify-between">
+                  <span className="text-muted-foreground">{item.label}:</span>
+                  <span className="font-medium">${item.amount.toLocaleString()}</span>
+                </div>
+              ))}
+              <hr className="my-2" />
+              <div className="flex justify-between text-base font-bold">
+                <span>Estimated Total:</span>
+                <span className="text-primary">${currentQuote.estimatedTotal.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Deposit Required:</span>
+                <span className="font-medium text-primary">${currentQuote.depositRequired.toLocaleString()}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )
+    }
+
+    // Payment component
+    const PaymentSection = () => {
+      if (!showPayment || paymentComplete) return null
+
+      return (
+        <Card className="mt-3">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <CreditCard className="w-5 h-5 text-primary" />
+              <span className="font-semibold">Secure Deposit Payment</span>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Pay your deposit of ${currentQuote?.depositRequired.toLocaleString()} to confirm your booking.
+            </p>
+            <EmbeddedCheckoutProvider stripe={stripePromise} options={{ fetchClientSecret }}>
+              <EmbeddedCheckout />
+            </EmbeddedCheckoutProvider>
+            <Button variant="outline" size="sm" className="w-full mt-3 bg-transparent" onClick={handlePaymentComplete}>
+              I've completed payment
+            </Button>
+          </CardContent>
+        </Card>
+      )
+    }
+
+    // Business lookup results component
+    const BusinessLookupResults = () => {
+      if (!businessLookupResults || businessLookupResults.length === 0) return null
+
+      return (
+        <div className="space-y-2 mt-3">
+          <p className="text-sm text-muted-foreground">Is this your business? Click to confirm:</p>
+          {businessLookupResults.map((business, i) => (
+            <Card
+              key={i}
+              className="cursor-pointer hover:border-primary/50 transition-colors"
+              onClick={() => handleSelectBusiness(business)}
+            >
+              <CardContent className="p-3">
+                <div className="flex items-start gap-3">
+                  <Building2 className="w-5 h-5 text-primary mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm">{business.name}</p>
+                    <p className="text-xs text-muted-foreground">ABN: {business.abn}</p>
+                    {business.tradingNames && business.tradingNames.length > 0 && (
+                      <p className="text-xs text-muted-foreground">Trading as: {business.tradingNames[0]}</p>
+                    )}
+                    <div className="flex gap-2 mt-1">
+                      <Badge variant="secondary" className="text-xs">
+                        {business.state}
+                      </Badge>
+                      {business.gstRegistered && (
+                        <Badge variant="outline" className="text-xs">
+                          GST Registered
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )
+    }
+
+    // Confirmed business badge
+    const ConfirmedBusinessBadge = () => {
+      if (!confirmedBusiness) return null
+
+      return (
+        <div className="mx-4 my-2 p-2 rounded-lg bg-green-50 border border-green-200 flex items-center gap-2">
+          <CheckCircle className="w-4 h-4 text-green-600" />
+          <span className="text-sm text-green-800">
+            {confirmedBusiness.name} (ABN: {confirmedBusiness.abn})
+          </span>
+        </div>
+      )
+    }
+
+    const suggestedPrompts = ["Office relocation", "Warehouse move", "Retail fit-out", "Medical equipment"]
+
+    const chatContent = (
+      <div
+        ref={containerRef}
+        className={`flex flex-col bg-background ${
+          embedded ? "h-[500px] rounded-xl border shadow-lg" : "h-[600px] md:h-[700px]"
+        }`}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b bg-primary text-primary-foreground rounded-t-xl">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="w-5 h-5" />
+            <span className="font-semibold">M&M Quote Assistant</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10"
+              onClick={() => setVoiceEnabled(!voiceEnabled)}
+            >
+              {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </Button>
+            {!embedded && (
+              <>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={cn(
-                    "absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8",
-                    isListening && "text-red-500 animate-pulse",
-                  )}
-                  onClick={toggleListening}
-                  disabled={isLoading}
+                  className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10"
+                  onClick={() => setIsMinimized(!isMinimized)}
                 >
-                  {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                  {isMinimized ? <Maximize2 className="w-4 h-4" /> : <Minimize2 className="w-4 h-4" />}
                 </Button>
-              </div>
-              <Button
-                size="icon"
-                className="h-10 w-10 rounded-full shrink-0"
-                onClick={handleSendMessage}
-                disabled={!inputValue.trim() || isLoading}
-              >
-                <Send className="h-4 w-4" />
-              </Button>
-            </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10"
+                  onClick={() => setIsOpen(false)}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </>
+            )}
           </div>
-        </Card>
+        </div>
+
+        {/* Confirmed business badge */}
+        <ConfirmedBusinessBadge />
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {messages.length === 0 && !hasStarted && (
+            <div className="text-center py-8">
+              <Bot className="w-12 h-12 mx-auto text-primary/30 mb-4" />
+              <p className="text-muted-foreground mb-4">
+                Hi! I'm your M&M quote assistant. I'll help you get an instant quote for your commercial move.
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {suggestedPrompts.map((prompt) => (
+                  <Button
+                    key={prompt}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePromptClick(`I need a quote for a ${prompt.toLowerCase()}`)}
+                  >
+                    {prompt}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {messages.map((message, index) => (
+            <div key={message.id || index}>
+              <MessageBubble message={message} />
+              {/* Show business lookup results after assistant message */}
+              {message.role === "assistant" && index === messages.length - 1 && <BusinessLookupResults />}
+            </div>
+          ))}
+
+          {/* Quote display */}
+          {currentQuote && <QuoteDisplay />}
+
+          {/* Calendar picker */}
+          {showCalendar && <CalendarPicker />}
+
+          {/* Payment section */}
+          <PaymentSection />
+
+          {/* Loading indicator */}
+          {isLoading && (
+            <div className="flex gap-2 justify-start">
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                <Bot className="w-4 h-4 text-primary" />
+              </div>
+              <div className="bg-muted rounded-2xl px-4 py-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+              </div>
+            </div>
+          )}
+
+          {/* Error display */}
+          {error && (
+            <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+              Something went wrong. Please try again.
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Input area */}
+        <div className="p-4 border-t">
+          <div className="flex items-center gap-2">
+            <Button
+              variant={isListening ? "destructive" : "outline"}
+              size="icon"
+              onClick={toggleListening}
+              disabled={isLoading}
+            >
+              {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            </Button>
+            <Input
+              ref={inputRef}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={isListening ? "Listening..." : "Type your message..."}
+              disabled={isLoading || isListening}
+              className="flex-1"
+            />
+            <Button onClick={handleSendMessage} disabled={!inputValue.trim() || isLoading}>
+              <Send className="w-4 h-4" />
+            </Button>
+          </div>
+          <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+            <span>{isListening ? "🎤 Listening..." : isSpeaking ? "🔊 Speaking..." : ""}</span>
+            <a href="tel:1300123456" className="flex items-center gap-1 hover:text-primary">
+              <Phone className="w-3 h-3" />
+              Prefer to call? 1300 123 456
+            </a>
+          </div>
+        </div>
       </div>
+    )
+
+    if (embedded) {
+      return chatContent
+    }
+
+    // Floating button and chat window for non-embedded mode
+    return (
+      <>
+        {!isOpen && (
+          <button
+            onClick={() => setIsOpen(true)}
+            className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:scale-105 transition-transform flex items-center justify-center"
+          >
+            <MessageSquare className="w-6 h-6" />
+          </button>
+        )}
+
+        {isOpen && (
+          <div
+            className={`fixed z-50 ${
+              isMinimized ? "bottom-6 right-6 w-72" : "bottom-6 right-6 w-[400px] md:w-[450px]"
+            } transition-all duration-200`}
+          >
+            <Card className="shadow-2xl overflow-hidden">
+              {isMinimized ? (
+                <div
+                  className="p-4 bg-primary text-primary-foreground cursor-pointer flex items-center justify-between"
+                  onClick={() => setIsMinimized(false)}
+                >
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="w-5 h-5" />
+                    <span className="font-semibold">M&M Quote Assistant</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setIsOpen(false)
+                    }}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ) : (
+                chatContent
+              )}
+            </Card>
+          </div>
+        )}
+      </>
     )
   },
 )
