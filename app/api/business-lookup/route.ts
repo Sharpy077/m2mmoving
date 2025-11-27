@@ -1,70 +1,14 @@
 import { NextResponse } from "next/server"
 
-// This provides a realistic UX while the client can register for API access later
+const ABN_LOOKUP_GUID = "62b9db95-297e-49e0-8635-c42ca2518af3"
 
-function generateMockBusinesses(query: string) {
-  // Generate realistic-looking mock businesses based on the search query
-  const sanitizedQuery = query.trim()
-  const words = sanitizedQuery.split(/\s+/)
-  const primaryWord = words[0]?.charAt(0).toUpperCase() + words[0]?.slice(1).toLowerCase() || "Business"
-
-  // Generate a realistic ABN (11 digits)
-  const generateABN = (seed: number) => {
-    const base = (Math.abs(seed * 12345678) % 90000000000) + 10000000000
-    return base.toString().slice(0, 11)
+// Helper to parse JSONP response
+function parseJSONP(text: string): unknown {
+  const match = text.match(/^callback$$([\s\S]*)$$$/)
+  if (!match) {
+    throw new Error(`Invalid JSONP response: ${text.slice(0, 100)}`)
   }
-
-  const results = [
-    {
-      abn: generateABN(sanitizedQuery.length + 1),
-      name: `${sanitizedQuery.toUpperCase()} PTY LTD`,
-      tradingName: sanitizedQuery,
-      entityType: "Australian Private Company",
-      status: "Active",
-      state: "VIC",
-      postcode: "3000",
-      score: 100,
-    },
-    {
-      abn: generateABN(sanitizedQuery.length + 2),
-      name: `${primaryWord} SERVICES PTY LTD`,
-      tradingName: `${primaryWord} Services`,
-      entityType: "Australian Private Company",
-      status: "Active",
-      state: "VIC",
-      postcode: "3121",
-      score: 85,
-    },
-    {
-      abn: generateABN(sanitizedQuery.length + 3),
-      name: `THE ${primaryWord.toUpperCase()} GROUP PTY LTD`,
-      tradingName: `${primaryWord} Group`,
-      entityType: "Australian Private Company",
-      status: "Active",
-      state: "NSW",
-      postcode: "2000",
-      score: 75,
-    },
-  ]
-
-  return results
-}
-
-function generateMockBusinessDetails(abn: string, name?: string) {
-  return {
-    abn: abn,
-    acn: abn.slice(0, 9),
-    name: name || "BUSINESS PTY LTD",
-    tradingNames: name ? [name] : [],
-    entityType: "Australian Private Company",
-    entityTypeCode: "PRV",
-    status: "Active",
-    statusDate: "2020-01-15",
-    state: "VIC",
-    postcode: "3000",
-    gstRegistered: true,
-    gstRegisteredDate: "2020-02-01",
-  }
+  return JSON.parse(match[1])
 }
 
 export async function GET(req: Request) {
@@ -77,30 +21,80 @@ export async function GET(req: Request) {
   }
 
   try {
-    // For ABN lookups, generate a single result
+    // For ABN lookups - use ABN search endpoint
     if (type === "abn") {
       const cleanABN = query.replace(/\s/g, "")
       if (!/^\d{11}$/.test(cleanABN)) {
         return NextResponse.json({ results: [], message: "Invalid ABN format" })
       }
 
+      const abnUrl = `https://abr.business.gov.au/json/AbnDetails.aspx?abn=${cleanABN}&callback=callback&guid=${ABN_LOOKUP_GUID}`
+      const response = await fetch(abnUrl)
+      const text = await response.text()
+      const data = parseJSONP(text) as {
+        Abn?: string
+        EntityName?: string
+        EntityTypeName?: string
+        EntityStatusCode?: string
+        AddressState?: string
+        AddressPostcode?: string
+        BusinessName?: Array<{ Value?: string }>
+        Gst?: string
+        Message?: string
+      }
+
+      if (data.Message && !data.Abn) {
+        return NextResponse.json({ results: [], message: data.Message })
+      }
+
       return NextResponse.json({
         results: [
           {
-            abn: cleanABN,
-            name: "VERIFIED BUSINESS PTY LTD",
-            tradingName: "Verified Business",
-            entityType: "Australian Private Company",
-            status: "Active",
-            state: "VIC",
-            postcode: "3000",
+            abn: data.Abn || cleanABN,
+            name: data.EntityName || "Unknown",
+            tradingName: data.BusinessName?.[0]?.Value || data.EntityName || "Unknown",
+            entityType: data.EntityTypeName || "Unknown",
+            status: data.EntityStatusCode === "ACT" ? "Active" : "Inactive",
+            state: data.AddressState || "Unknown",
+            postcode: data.AddressPostcode || "Unknown",
+            gstRegistered: data.Gst === "Registered",
           },
         ],
       })
     }
 
-    // For name searches, generate matching results
-    const results = generateMockBusinesses(query)
+    // For name searches - use name search endpoint
+    const nameUrl = `https://abr.business.gov.au/json/MatchingNames.aspx?name=${encodeURIComponent(query)}&maxResults=10&callback=callback&guid=${ABN_LOOKUP_GUID}`
+    const response = await fetch(nameUrl)
+    const text = await response.text()
+    const data = parseJSONP(text) as {
+      Names?: Array<{
+        Abn?: string
+        Name?: string
+        NameType?: string
+        Score?: number
+        IsCurrentIndicator?: string
+        State?: string
+        Postcode?: string
+      }>
+      Message?: string
+    }
+
+    if (data.Message && (!data.Names || data.Names.length === 0)) {
+      return NextResponse.json({ results: [], message: data.Message })
+    }
+
+    const results = (data.Names || []).map((item) => ({
+      abn: item.Abn || "",
+      name: item.Name || "Unknown",
+      tradingName: item.NameType === "Trading Name" ? item.Name : undefined,
+      entityType: item.NameType || "Unknown",
+      status: item.IsCurrentIndicator === "Y" ? "Active" : "Inactive",
+      state: item.State || "Unknown",
+      postcode: item.Postcode || "Unknown",
+      score: item.Score || 0,
+    }))
+
     return NextResponse.json({ results })
   } catch (error) {
     console.error("[v0] Business lookup error:", error)
@@ -109,14 +103,51 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const { abn, name } = await req.json()
+  const { abn } = await req.json()
 
   if (!abn) {
     return NextResponse.json({ error: "ABN required" }, { status: 400 })
   }
 
   try {
-    const business = generateMockBusinessDetails(abn, name)
+    // Fetch full details using ABN
+    const cleanABN = abn.replace(/\s/g, "")
+    const abnUrl = `https://abr.business.gov.au/json/AbnDetails.aspx?abn=${cleanABN}&callback=callback&guid=${ABN_LOOKUP_GUID}`
+    const response = await fetch(abnUrl)
+    const text = await response.text()
+    const data = parseJSONP(text) as {
+      Abn?: string
+      Acn?: string
+      EntityName?: string
+      EntityTypeName?: string
+      EntityTypeCode?: string
+      EntityStatusCode?: string
+      AddressState?: string
+      AddressPostcode?: string
+      BusinessName?: Array<{ Value?: string; EffectiveFrom?: string }>
+      Gst?: string
+      GstEffectiveFrom?: string
+      Message?: string
+    }
+
+    if (data.Message && !data.Abn) {
+      return NextResponse.json({ error: data.Message }, { status: 404 })
+    }
+
+    const business = {
+      abn: data.Abn || cleanABN,
+      acn: data.Acn || undefined,
+      name: data.EntityName || "Unknown",
+      tradingNames: (data.BusinessName || []).map((bn) => bn.Value).filter(Boolean),
+      entityType: data.EntityTypeName || "Unknown",
+      entityTypeCode: data.EntityTypeCode || "Unknown",
+      status: data.EntityStatusCode === "ACT" ? "Active" : "Inactive",
+      state: data.AddressState || "Unknown",
+      postcode: data.AddressPostcode || "Unknown",
+      gstRegistered: data.Gst === "Registered",
+      gstRegisteredDate: data.GstEffectiveFrom || undefined,
+    }
+
     return NextResponse.json({ business })
   } catch (error) {
     console.error("[v0] Business details error:", error)
