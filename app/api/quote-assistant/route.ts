@@ -228,6 +228,7 @@ export async function POST(req: Request) {
         description:
           "Check available dates for scheduling a move. Returns a list of available dates for the next 45 days. Use this after calculating a quote to show the customer when they can book.",
         parameters: z.object({
+          request: z.literal(true).describe("Always pass true to request availability"),
           preferredMonth: z
             .string()
             .optional()
