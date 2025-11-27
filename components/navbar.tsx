@@ -2,13 +2,12 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Menu, X, Truck } from "lucide-react"
+import { Menu, X, Truck, Phone } from "lucide-react"
 import Link from "next/link"
 
 const navLinks = [
   { name: "Services", href: "/#services" },
   { name: "Technology", href: "/#technology" },
-  { name: "Testimonials", href: "/#testimonials" },
   { name: "Contact", href: "/#contact" },
 ]
 
@@ -16,7 +15,7 @@ export function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-sm border-b border-border">
+    <header className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border">
       <div className="container mx-auto px-4">
         <nav className="flex items-center justify-between h-16">
           <Link href="/" className="flex items-center gap-2">
@@ -41,9 +40,16 @@ export function Navbar() {
             ))}
           </div>
 
-          <div className="hidden md:block">
+          <div className="hidden md:flex items-center gap-4">
+            <a
+              href="tel:+61388201801"
+              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
+            >
+              <Phone className="w-4 h-4" />
+              <span className="font-mono">(03) 8820 1801</span>
+            </a>
             <Button className="uppercase tracking-wider" asChild>
-              <Link href="/quote">Get Quote</Link>
+              <Link href="/quote">Free Quote</Link>
             </Button>
           </div>
 
@@ -67,8 +73,16 @@ export function Navbar() {
                   {link.name}
                 </Link>
               ))}
+              <a
+                href="tel:+61388201801"
+                className="flex items-center gap-2 text-sm font-medium text-primary"
+                onClick={() => setIsOpen(false)}
+              >
+                <Phone className="w-4 h-4" />
+                (03) 8820 1801
+              </a>
               <Button className="uppercase tracking-wider w-full mt-2" asChild>
-                <Link href="/quote">Get Quote</Link>
+                <Link href="/quote">Get Free Quote</Link>
               </Button>
             </div>
           </div>
