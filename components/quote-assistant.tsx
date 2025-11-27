@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react"
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
 import {
@@ -132,85 +132,141 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       },
     }))
 
-    const { messages, sendMessage, status, error, setMessages } = useChat({
+    const { messages, sendMessage, status, error } = useChat({
       transport: new DefaultChatTransport({ api: "/api/quote-assistant" }),
       onError: (err) => {
         console.log("[v0] Chat error:", err.message)
         setHasError(true)
         setErrorMessage(err.message || "Failed to connect to the quote assistant")
       },
-      onFinish: (message) => {
-        console.log("[v0] Message finished:", message.role)
+      onFinish: () => {
         setHasError(false)
         setErrorMessage(null)
       },
     })
 
-    const isLoading = status === "streaming" || status === "submitted"
+    const isLoading = status === "in_progress" || status === "streaming" || status === "submitted"
 
+    // Process tool results from messages
     useEffect(() => {
       const lastMessage = messages[messages.length - 1]
-      if (lastMessage?.role === "assistant" && lastMessage.toolInvocations) {
-        lastMessage.toolInvocations.forEach((toolCall: any) => {
-          if (toolCall.state === "result") {
-            const result = toolCall.result
+      if (lastMessage?.role === "assistant") {
+        // Check for parts with tool invocations
+        if (lastMessage.parts) {
+          lastMessage.parts.forEach((part: any) => {
+            if (part.type?.startsWith("tool-") && part.state === "output-available") {
+              const toolName = part.type.replace("tool-", "")
+              const result = part.output
 
-            if (toolCall.toolName === "lookupBusiness" && result?.results?.length > 0) {
-              setBusinessLookupResults(result.results)
-            }
+              if (toolName === "lookupBusiness" && result?.results?.length > 0) {
+                setBusinessLookupResults(result.results)
+              }
 
-            if (toolCall.toolName === "calculateQuote" && result?.estimatedTotal) {
-              setCurrentQuote(result)
-              if (result.showAvailability) {
+              if (toolName === "calculateQuote" && result?.estimatedTotal) {
+                setCurrentQuote(result)
+                if (result.showAvailability) {
+                  setShowCalendar(true)
+                }
+              }
+
+              if (toolName === "checkAvailability" && result?.dates) {
+                setAvailableDates(result.dates)
                 setShowCalendar(true)
               }
-            }
 
-            if (toolCall.toolName === "checkAvailability" && result?.dates) {
-              setAvailableDates(result.dates)
-              setShowCalendar(true)
-            }
+              if (toolName === "collectContactInfo" && result?.collected) {
+                setContactInfo({
+                  contactName: result.contactName,
+                  email: result.email,
+                  phone: result.phone,
+                  companyName: result.companyName,
+                })
+              }
 
-            if (toolCall.toolName === "collectContactInfo" && result?.collected) {
-              setContactInfo({
-                contactName: result.contactName,
-                email: result.email,
-                phone: result.phone,
-                companyName: result.companyName,
-              })
-            }
+              if (toolName === "initiatePayment" && result?.showPayment) {
+                setShowPayment(true)
+                setPaymentInfo({
+                  clientSecret: result.clientSecret || "",
+                  amount: result.amount,
+                })
+              }
 
-            if (toolCall.toolName === "initiatePayment" && result?.showPayment) {
-              setShowPayment(true)
-              setPaymentInfo({
-                clientSecret: result.clientSecret || "",
-                amount: result.amount,
-              })
+              if (toolName === "confirmBusiness" && result?.confirmed) {
+                setConfirmedBusiness({
+                  name: result.name,
+                  abn: result.abn,
+                  type: result.entityType || "",
+                  state: result.state || "",
+                  status: "Active",
+                })
+              }
             }
+          })
+        }
 
-            if (toolCall.toolName === "confirmBusiness" && result?.confirmed) {
-              setConfirmedBusiness({
-                name: result.name,
-                abn: result.abn,
-                type: result.type || "",
-                state: result.state || "",
-                status: "Active",
-                address: result.address,
-              })
+        // Also check toolInvocations for backwards compatibility
+        if (lastMessage.toolInvocations) {
+          lastMessage.toolInvocations.forEach((toolCall: any) => {
+            if (toolCall.state === "result") {
+              const result = toolCall.result
+
+              if (toolCall.toolName === "lookupBusiness" && result?.results?.length > 0) {
+                setBusinessLookupResults(result.results)
+              }
+
+              if (toolCall.toolName === "calculateQuote" && result?.estimatedTotal) {
+                setCurrentQuote(result)
+                if (result.showAvailability) {
+                  setShowCalendar(true)
+                }
+              }
+
+              if (toolCall.toolName === "checkAvailability" && result?.dates) {
+                setAvailableDates(result.dates)
+                setShowCalendar(true)
+              }
+
+              if (toolCall.toolName === "collectContactInfo" && result?.collected) {
+                setContactInfo({
+                  contactName: result.contactName,
+                  email: result.email,
+                  phone: result.phone,
+                  companyName: result.companyName,
+                })
+              }
+
+              if (toolCall.toolName === "initiatePayment" && result?.showPayment) {
+                setShowPayment(true)
+                setPaymentInfo({
+                  clientSecret: result.clientSecret || "",
+                  amount: result.amount,
+                })
+              }
+
+              if (toolCall.toolName === "confirmBusiness" && result?.confirmed) {
+                setConfirmedBusiness({
+                  name: result.name,
+                  abn: result.abn,
+                  type: result.entityType || "",
+                  state: result.state || "",
+                  status: "Active",
+                })
+              }
             }
-          }
-        })
+          })
+        }
       }
     }, [messages])
 
     useEffect(() => {
       if ((isOpen || embedded) && !hasStarted && messages.length === 0) {
         setHasStarted(true)
-        setTimeout(() => {
-          sendMessage({
-            text: "Hi, I'd like to get a quote for a commercial move.",
-          })
-        }, 500)
+        // Delay to ensure hook is ready
+        const timer = setTimeout(() => {
+          console.log("[v0] Starting conversation...")
+          sendMessage({ text: "Hi, I'd like to get a quote for a commercial move." })
+        }, 800)
+        return () => clearTimeout(timer)
       }
     }, [isOpen, embedded, hasStarted, messages.length, sendMessage])
 
@@ -231,7 +287,18 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       if (!voiceEnabled || !synthRef.current) return
       const lastMessage = messages[messages.length - 1]
       if (lastMessage?.role === "assistant" && !isLoading) {
-        const textContent = typeof lastMessage.content === "string" ? lastMessage.content : ""
+        // Extract text from parts
+        let textContent = ""
+        if (lastMessage.parts) {
+          lastMessage.parts.forEach((part: any) => {
+            if (part.type === "text") {
+              textContent += part.text
+            }
+          })
+        } else if (typeof lastMessage.content === "string") {
+          textContent = lastMessage.content
+        }
+
         if (textContent && textContent.length < 500) {
           const utterance = new SpeechSynthesisUtterance(textContent)
           utterance.lang = "en-AU"
@@ -321,137 +388,120 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       sendMessage({ text: prompt })
     }
 
-    const fetchClientSecret = useCallback(async () => {
-      if (!currentQuote || !contactInfo) return ""
-
-      try {
-        const clientSecret = await createDepositCheckout({
-          amount: currentQuote.depositRequired,
-          customerEmail: contactInfo.email,
-          customerName: contactInfo.contactName,
-          description: `Deposit for ${currentQuote.moveType}: ${currentQuote.origin} to ${currentQuote.destination}`,
-          moveType: currentQuote.moveTypeKey || "office",
-          origin: currentQuote.origin,
-          destination: currentQuote.destination,
-          scheduledDate: selectedDate || undefined,
-        })
-        return clientSecret
-      } catch (error) {
-        console.error("[v0] Failed to create checkout:", error)
-        return ""
-      }
-    }, [currentQuote, contactInfo, selectedDate])
-
     const handlePaymentComplete = async () => {
       setPaymentComplete(true)
-
-      // Submit lead to database
-      if (currentQuote && contactInfo) {
+      if (currentQuote && contactInfo && selectedDate) {
+        setIsSubmittingLead(true)
         try {
           await submitLead({
-            lead_type: "instant_quote",
             company_name: confirmedBusiness?.name || contactInfo.companyName || "",
             contact_name: contactInfo.contactName,
             email: contactInfo.email,
             phone: contactInfo.phone,
             move_type: currentQuote.moveTypeKey || "office",
-            square_meters: currentQuote.squareMeters,
             origin_suburb: currentQuote.origin,
             destination_suburb: currentQuote.destination,
-            estimated_total: currentQuote.estimatedTotal,
+            estimated_value: currentQuote.estimatedTotal,
+            status: "confirmed",
+            notes: `Deposit paid. Move scheduled for ${selectedDate}. ABN: ${confirmedBusiness?.abn || "N/A"}`,
+            scheduled_date: selectedDate,
             deposit_amount: currentQuote.depositRequired,
-            additional_services: currentQuote.additionalServices || [],
-            scheduled_date: selectedDate || undefined,
-            payment_status: "deposit_paid",
             deposit_paid: true,
           })
           setLeadSubmitted(true)
         } catch (error) {
-          console.error("[v0] Failed to submit lead:", error)
+          console.error("Failed to submit lead:", error)
+        } finally {
+          setIsSubmittingLead(false)
         }
       }
-
       sendMessage({
-        text: "Payment completed",
+        text: "I've completed the payment.",
       })
-    }
-
-    const handleReset = () => {
-      setHasError(false)
-      setErrorMessage(null)
-      setMessages([])
-      setHasStarted(false)
-      setCurrentQuote(null)
-      setBusinessLookupResults(null)
-      setConfirmedBusiness(null)
-      setShowCalendar(false)
-      setShowPayment(false)
     }
 
     const handleRetry = () => {
       setHasError(false)
       setErrorMessage(null)
-      if (messages.length === 0) {
-        sendMessage({ text: "Hi, I'd like to get a quote for a commercial move." })
+      setHasStarted(false)
+    }
+
+    const handleCall = () => {
+      window.location.href = "tel:+61388201801"
+    }
+
+    // Render message content
+    const renderMessageContent = (message: any) => {
+      if (message.parts) {
+        return message.parts
+          .map((part: any, index: number) => {
+            if (part.type === "text") {
+              return <span key={index}>{part.text}</span>
+            }
+            // Tool parts are handled separately
+            return null
+          })
+          .filter(Boolean)
       }
+      if (typeof message.content === "string") {
+        return message.content
+      }
+      return null
     }
 
-    // Message bubble component
-    const MessageBubble = ({ message }: { message: any }) => {
-      const isUser = message.role === "user"
-      const content = typeof message.content === "string" ? message.content : ""
-
-      return (
-        <div className={`flex gap-2 ${isUser ? "justify-end" : "justify-start"}`}>
-          {!isUser && (
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-              <Bot className="w-4 h-4 text-primary" />
-            </div>
-          )}
-          <div
-            className={`max-w-[80%] rounded-2xl px-4 py-2 ${
-              isUser ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
-            }`}
-          >
-            <p className="text-sm whitespace-pre-wrap">{content}</p>
-          </div>
-          {isUser && (
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <User className="w-4 h-4 text-primary-foreground" />
-            </div>
-          )}
+    // Error display component
+    const ErrorDisplay = () => (
+      <div className="flex flex-col items-center justify-center p-6 space-y-4 text-center">
+        <div className="flex items-center justify-center w-16 h-16 rounded-full bg-destructive/10">
+          <AlertTriangle className="w-8 h-8 text-destructive" />
         </div>
-      )
-    }
+        <div>
+          <h3 className="font-semibold text-foreground">Connection Issue</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            {errorMessage || "We couldn't connect to Maya. Please try again."}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={handleRetry} variant="default" size="sm">
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Try Again
+          </Button>
+          <Button onClick={handleCall} variant="outline" size="sm">
+            <Phone className="w-4 h-4 mr-2" />
+            Call Us
+          </Button>
+        </div>
+      </div>
+    )
 
-    // Calendar component
+    // Calendar picker component
     const CalendarPicker = () => {
       const daysInMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate()
       const firstDay = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).getDay()
       const days = []
 
       for (let i = 0; i < firstDay; i++) {
-        days.push(<div key={`empty-${i}`} className="p-2" />)
+        days.push(<div key={`empty-${i}`} className="h-10" />)
       }
 
       for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${calendarMonth.getFullYear()}-${String(calendarMonth.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
-        const dateInfo = availableDates.find((d) => d.date === dateStr)
-        const isAvailable = dateInfo?.available !== false
-        const isLimitedSlots = dateInfo?.slots !== undefined && dateInfo.slots <= 2
-        const isPast = new Date(dateStr) < new Date()
+        const availableDate = availableDates.find((d) => d.date === dateStr)
+        const isAvailable = availableDate?.available
+        const slots = availableDate?.slots || 0
+        const isPast = new Date(dateStr) < new Date(new Date().toDateString())
 
         days.push(
           <button
             key={day}
+            onClick={() => isAvailable && !isPast && handleSelectDate(dateStr)}
             disabled={!isAvailable || isPast}
-            onClick={() => handleSelectDate(dateStr)}
-            className={`p-2 rounded-lg text-sm font-medium transition-colors ${
-              !isAvailable || isPast
-                ? "text-muted-foreground/40 cursor-not-allowed"
-                : isLimitedSlots
-                  ? "bg-amber-100 text-amber-800 hover:bg-amber-200"
-                  : "bg-green-100 text-green-800 hover:bg-green-200"
+            className={`h-10 rounded-lg text-sm font-medium transition-all ${
+              isAvailable && !isPast
+                ? slots <= 1
+                  ? "bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400"
+                  : "bg-primary/10 text-primary hover:bg-primary/20"
+                : "text-muted-foreground/40 cursor-not-allowed"
             } ${selectedDate === dateStr ? "ring-2 ring-primary" : ""}`}
           >
             {day}
@@ -460,101 +510,124 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       }
 
       return (
-        <Card className="mt-3">
+        <Card className="mt-3 border-primary/20">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-4">
               <Button
                 variant="ghost"
-                size="icon"
+                size="sm"
                 onClick={() => setCalendarMonth(new Date(calendarMonth.setMonth(calendarMonth.getMonth() - 1)))}
               >
                 <ChevronLeft className="w-4 h-4" />
               </Button>
               <span className="font-medium">
-                {calendarMonth.toLocaleDateString("en-AU", {
-                  month: "long",
-                  year: "numeric",
-                })}
+                {calendarMonth.toLocaleDateString("en-AU", { month: "long", year: "numeric" })}
               </span>
               <Button
                 variant="ghost"
-                size="icon"
+                size="sm"
                 onClick={() => setCalendarMonth(new Date(calendarMonth.setMonth(calendarMonth.getMonth() + 1)))}
               >
                 <ChevronRight className="w-4 h-4" />
               </Button>
             </div>
-            <div className="grid grid-cols-7 gap-1 text-center mb-2">
-              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
-                <div key={d} className="text-xs font-medium text-muted-foreground p-2">
-                  {d}
-                </div>
+            <div className="grid grid-cols-7 gap-1 mb-2 text-center text-xs text-muted-foreground">
+              {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+                <div key={i}>{d}</div>
               ))}
             </div>
             <div className="grid grid-cols-7 gap-1">{days}</div>
-            <div className="flex gap-4 mt-4 text-xs">
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded bg-green-100" />
-                <span>Available</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded bg-amber-100" />
-                <span>Limited</span>
-              </div>
+            <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded bg-primary/20" /> Available
+              </span>
+              <span className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded bg-amber-200 dark:bg-amber-900/50" /> Limited
+              </span>
             </div>
           </CardContent>
         </Card>
       )
     }
 
-    // Quote display component
+    // Business lookup results
+    const BusinessLookupResults = () => (
+      <div className="space-y-2 mt-3">
+        <p className="text-sm text-muted-foreground">Please confirm your business:</p>
+        {businessLookupResults?.map((business, index) => (
+          <Card
+            key={index}
+            className="cursor-pointer hover:border-primary transition-colors"
+            onClick={() => handleSelectBusiness(business)}
+          >
+            <CardContent className="p-3">
+              <div className="flex items-start gap-3">
+                <Building2 className="w-5 h-5 text-primary mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm">{business.name}</p>
+                  <p className="text-xs text-muted-foreground">ABN: {business.abn}</p>
+                  <div className="flex gap-2 mt-1">
+                    <Badge variant="secondary" className="text-xs">
+                      {business.state}
+                    </Badge>
+                    <Badge variant="outline" className="text-xs">
+                      {business.status}
+                    </Badge>
+                  </div>
+                </div>
+                <CheckCircle className="w-5 h-5 text-muted-foreground" />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    )
+
+    // Quote display
     const QuoteDisplay = () => {
       if (!currentQuote) return null
-
       return (
-        <Card className="mt-3 border-primary/20 bg-primary/5">
+        <Card className="mt-3 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <CheckCircle className="w-5 h-5 text-primary" />
-              <span className="font-semibold">Your Quote</span>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-semibold">Your Quote Estimate</h4>
+              <Badge variant="secondary">{currentQuote.moveType}</Badge>
             </div>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Move Type:</span>
-                <span className="font-medium">{currentQuote.moveType}</span>
+                <span className="text-muted-foreground">From</span>
+                <span>{currentQuote.origin}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">From:</span>
-                <span className="font-medium">{currentQuote.origin}</span>
+                <span className="text-muted-foreground">To</span>
+                <span>{currentQuote.destination}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">To:</span>
-                <span className="font-medium">{currentQuote.destination}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Crew Size:</span>
-                <span className="font-medium">{currentQuote.crewSize} movers</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Truck:</span>
-                <span className="font-medium">{currentQuote.truckSize}</span>
+                <span className="text-muted-foreground">Size</span>
+                <span>{currentQuote.squareMeters} sqm</span>
               </div>
               <hr className="my-2" />
-              {currentQuote.breakdown.map((item, i) => (
-                <div key={i} className="flex justify-between">
-                  <span className="text-muted-foreground">{item.label}:</span>
-                  <span className="font-medium">${item.amount.toLocaleString()}</span>
+              {currentQuote.breakdown.map((item, index) => (
+                <div key={index} className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">{item.label}</span>
+                  <span>${item.amount.toLocaleString()}</span>
                 </div>
               ))}
               <hr className="my-2" />
-              <div className="flex justify-between text-base font-bold">
-                <span>Estimated Total:</span>
+              <div className="flex justify-between font-semibold text-lg">
+                <span>Total Estimate</span>
                 <span className="text-primary">${currentQuote.estimatedTotal.toLocaleString()}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Deposit Required:</span>
-                <span className="font-medium text-primary">${currentQuote.depositRequired.toLocaleString()}</span>
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>Deposit Required (50%)</span>
+                <span>${currentQuote.depositRequired.toLocaleString()}</span>
               </div>
+            </div>
+            <div className="mt-4 p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground">
+              <p>
+                <strong>Includes:</strong> {currentQuote.crewSize} crew members, {currentQuote.truckSize} truck,
+                estimated {currentQuote.estimatedHours} hours
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -562,147 +635,141 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     }
 
     // Payment component
-    const PaymentSection = () => {
-      if (!showPayment || paymentComplete) return null
+    const PaymentComponent = () => {
+      const [clientSecret, setClientSecret] = useState<string | null>(null)
+      const [loadingPayment, setLoadingPayment] = useState(true)
+
+      useEffect(() => {
+        const initPayment = async () => {
+          if (!currentQuote || !contactInfo) return
+          try {
+            const result = await createDepositCheckout({
+              amount: currentQuote.depositRequired,
+              customerEmail: contactInfo.email,
+              customerName: contactInfo.contactName,
+              moveType: currentQuote.moveType,
+              origin: currentQuote.origin,
+              destination: currentQuote.destination,
+              scheduledDate: selectedDate || undefined,
+              companyName: confirmedBusiness?.name,
+              abn: confirmedBusiness?.abn,
+            })
+            if (result.clientSecret) {
+              setClientSecret(result.clientSecret)
+            }
+          } catch (error) {
+            console.error("Failed to create checkout:", error)
+          } finally {
+            setLoadingPayment(false)
+          }
+        }
+        initPayment()
+      }, [])
+
+      if (paymentComplete) {
+        return (
+          <Card className="mt-3 border-green-500/30 bg-green-500/5">
+            <CardContent className="p-4 text-center">
+              <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-2" />
+              <h4 className="font-semibold text-green-700 dark:text-green-400">Payment Successful!</h4>
+              <p className="text-sm text-muted-foreground mt-1">
+                Your booking is confirmed. Check your email for details.
+              </p>
+            </CardContent>
+          </Card>
+        )
+      }
+
+      if (loadingPayment) {
+        return (
+          <Card className="mt-3">
+            <CardContent className="p-6 text-center">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
+              <p className="text-sm text-muted-foreground mt-2">Setting up secure payment...</p>
+            </CardContent>
+          </Card>
+        )
+      }
+
+      if (!clientSecret) {
+        return (
+          <Card className="mt-3 border-destructive/30">
+            <CardContent className="p-4 text-center">
+              <AlertTriangle className="w-8 h-8 text-destructive mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">Unable to set up payment. Please call us at 03 8820 1801.</p>
+            </CardContent>
+          </Card>
+        )
+      }
 
       return (
         <Card className="mt-3">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-3">
               <CreditCard className="w-5 h-5 text-primary" />
-              <span className="font-semibold">Secure Deposit Payment</span>
+              <h4 className="font-semibold">Secure Payment</h4>
             </div>
-            <p className="text-sm text-muted-foreground mb-4">
-              Pay your deposit of ${currentQuote?.depositRequired.toLocaleString()} to confirm your booking.
-            </p>
-            <EmbeddedCheckoutProvider stripe={stripePromise} options={{ fetchClientSecret }}>
+            <EmbeddedCheckoutProvider
+              stripe={stripePromise}
+              options={{ clientSecret, onComplete: handlePaymentComplete }}
+            >
               <EmbeddedCheckout />
             </EmbeddedCheckoutProvider>
-            <Button variant="outline" size="sm" className="w-full mt-3 bg-transparent" onClick={handlePaymentComplete}>
-              I've completed payment
-            </Button>
           </CardContent>
         </Card>
-      )
-    }
-
-    // Business lookup results component
-    const BusinessLookupResults = () => {
-      if (!businessLookupResults || businessLookupResults.length === 0) return null
-
-      return (
-        <div className="space-y-2 mt-3">
-          <p className="text-sm text-muted-foreground">Is this your business? Click to confirm:</p>
-          {businessLookupResults.map((business, i) => (
-            <Card
-              key={i}
-              className="cursor-pointer hover:border-primary/50 transition-colors"
-              onClick={() => handleSelectBusiness(business)}
-            >
-              <CardContent className="p-3">
-                <div className="flex items-start gap-3">
-                  <Building2 className="w-5 h-5 text-primary mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm">{business.name}</p>
-                    <p className="text-xs text-muted-foreground">ABN: {business.abn}</p>
-                    {business.tradingNames && business.tradingNames.length > 0 && (
-                      <p className="text-xs text-muted-foreground">Trading as: {business.tradingNames[0]}</p>
-                    )}
-                    <div className="flex gap-2 mt-1">
-                      <Badge variant="secondary" className="text-xs">
-                        {business.state}
-                      </Badge>
-                      {business.gstRegistered && (
-                        <Badge variant="outline" className="text-xs">
-                          GST Registered
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
       )
     }
 
     // Confirmed business badge
     const ConfirmedBusinessBadge = () => {
       if (!confirmedBusiness) return null
-
       return (
-        <div className="mx-4 my-2 p-2 rounded-lg bg-green-50 border border-green-200 flex items-center gap-2">
-          <CheckCircle className="w-4 h-4 text-green-600" />
-          <span className="text-sm text-green-800">
-            {confirmedBusiness.name} (ABN: {confirmedBusiness.abn})
-          </span>
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 border border-green-500/20 rounded-full text-xs">
+          <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+          <span className="font-medium text-green-700 dark:text-green-400">{confirmedBusiness.name}</span>
+          <span className="text-muted-foreground">ABN: {confirmedBusiness.abn}</span>
         </div>
       )
     }
 
-    const ErrorDisplay = () => {
-      if (!hasError && !error) return null
-
-      return (
-        <div className="p-4 m-4 rounded-lg bg-destructive/10 border border-destructive/20">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="font-medium text-destructive mb-1">Connection Issue</p>
-              <p className="text-sm text-muted-foreground mb-3">
-                {errorMessage ||
-                  "We're having trouble connecting to our quote system. Please try again or call us directly."}
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={handleRetry}>
-                  <RefreshCw className="w-3 h-3 mr-1" />
-                  Try Again
-                </Button>
-                <Button variant="outline" size="sm" asChild>
-                  <a href="tel:+61388201801">
-                    <Phone className="w-3 h-3 mr-1" />
-                    03 8820 1801
-                  </a>
-                </Button>
-              </div>
-            </div>
-          </div>
+    // Suggested prompts
+    const SuggestedPrompts = () => (
+      <div className="space-y-2 mt-4">
+        <p className="text-xs text-muted-foreground">Quick options:</p>
+        <div className="flex flex-wrap gap-2">
+          {["Office move", "Warehouse relocation", "IT equipment", "Get a callback"].map((prompt) => (
+            <Button
+              key={prompt}
+              variant="outline"
+              size="sm"
+              onClick={() => handlePromptClick(prompt)}
+              className="text-xs"
+            >
+              {prompt}
+            </Button>
+          ))}
         </div>
-      )
-    }
-
-    const suggestedPrompts = ["Office relocation", "Warehouse move", "Retail fit-out", "Medical equipment"]
+      </div>
+    )
 
     const chatContent = (
-      <div
-        ref={containerRef}
-        className={`flex flex-col bg-background ${
-          embedded ? "h-[500px] rounded-xl border shadow-lg" : "h-[600px] md:h-[700px]"
-        }`}
-      >
+      <div className={`flex flex-col ${embedded ? "h-[500px]" : "h-full"}`}>
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b bg-primary text-primary-foreground rounded-t-xl">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="w-5 h-5" />
-            <span className="font-semibold">M&M Quote Assistant</span>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+              <Bot className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-semibold">Maya - Quote Assistant</h3>
+              <p className="text-xs opacity-80">M&M Commercial Moving</p>
+            </div>
           </div>
           <div className="flex items-center gap-1">
-            {(hasError || messages.length > 0) && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10"
-                onClick={handleReset}
-                title="Start over"
-              >
-                <RefreshCw className="w-4 h-4" />
-              </Button>
-            )}
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10"
+              className="h-8 w-8 text-primary-foreground hover:bg-white/20"
               onClick={() => setVoiceEnabled(!voiceEnabled)}
             >
               {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
@@ -712,7 +779,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10"
+                  className="h-8 w-8 text-primary-foreground hover:bg-white/20"
                   onClick={() => setIsMinimized(!isMinimized)}
                 >
                   {isMinimized ? <Maximize2 className="w-4 h-4" /> : <Minimize2 className="w-4 h-4" />}
@@ -720,7 +787,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10"
+                  className="h-8 w-8 text-primary-foreground hover:bg-white/20"
                   onClick={() => setIsOpen(false)}
                 >
                   <X className="w-4 h-4" />
@@ -730,159 +797,150 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           </div>
         </div>
 
-        {(hasError || error) && <ErrorDisplay />}
-
-        {/* Confirmed business badge */}
-        {!hasError && <ConfirmedBusinessBadge />}
-
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.length === 0 && !hasStarted && (
-            <div className="text-center py-8">
-              <Bot className="w-12 h-12 mx-auto text-primary/30 mb-4" />
-              <p className="text-muted-foreground mb-4">
-                Hi! I'm your M&M quote assistant. I'll help you get an instant quote for your commercial move.
+        {!isMinimized && (
+          <>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {hasError ? (
+                <ErrorDisplay />
+              ) : (
+                <>
+                  {confirmedBusiness && <ConfirmedBusinessBadge />}
+
+                  {messages.length === 0 && !isLoading && (
+                    <div className="text-center py-8">
+                      <Bot className="w-12 h-12 mx-auto text-primary/50 mb-3" />
+                      <p className="text-muted-foreground">Starting conversation...</p>
+                    </div>
+                  )}
+
+                  {messages.map((message, index) => {
+                    const content = renderMessageContent(message)
+                    if (!content) return null
+
+                    return (
+                      <div key={message.id || index}>
+                        <div className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                          {message.role === "assistant" && (
+                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                              <Bot className="w-4 h-4 text-primary" />
+                            </div>
+                          )}
+                          <div
+                            className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
+                              message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
+                            }`}
+                          >
+                            <p className="text-sm whitespace-pre-wrap">{content}</p>
+                          </div>
+                          {message.role === "user" && (
+                            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                              <User className="w-4 h-4 text-primary-foreground" />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Show interactive elements after assistant messages */}
+                        {message.role === "assistant" && index === messages.length - 1 && (
+                          <>
+                            {businessLookupResults && <BusinessLookupResults />}
+                            {currentQuote && <QuoteDisplay />}
+                            {showCalendar && availableDates.length > 0 && <CalendarPicker />}
+                            {showPayment && <PaymentComponent />}
+                            {messages.length === 1 && <SuggestedPrompts />}
+                          </>
+                        )}
+                      </div>
+                    )
+                  })}
+
+                  {isLoading && (
+                    <div className="flex gap-3">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Bot className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="bg-muted rounded-2xl px-4 py-3">
+                        <div className="flex gap-1">
+                          <div className="w-2 h-2 bg-primary/40 rounded-full animate-bounce" />
+                          <div
+                            className="w-2 h-2 bg-primary/40 rounded-full animate-bounce"
+                            style={{ animationDelay: "0.1s" }}
+                          />
+                          <div
+                            className="w-2 h-2 bg-primary/40 rounded-full animate-bounce"
+                            style={{ animationDelay: "0.2s" }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div ref={messagesEndRef} />
+                </>
+              )}
+            </div>
+
+            {/* Input */}
+            <div className="p-4 border-t">
+              <div className="flex gap-2">
+                <Button
+                  variant={isListening ? "destructive" : "outline"}
+                  size="icon"
+                  className="flex-shrink-0"
+                  onClick={toggleListening}
+                  disabled={isLoading}
+                >
+                  {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </Button>
+                <Input
+                  ref={inputRef}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={isListening ? "Listening..." : "Type your message..."}
+                  className="flex-1"
+                  disabled={isLoading || isListening}
+                />
+                <Button onClick={handleSendMessage} disabled={!inputValue.trim() || isLoading} size="icon">
+                  <Send className="w-4 h-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground text-center mt-2">
+                Or call us:{" "}
+                <a href="tel:+61388201801" className="text-primary font-medium">
+                  03 8820 1801
+                </a>
               </p>
-              <div className="flex flex-wrap justify-center gap-2">
-                {suggestedPrompts.map((prompt) => (
-                  <Button
-                    key={prompt}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePromptClick(`I need a quote for a ${prompt.toLowerCase()}`)}
-                  >
-                    {prompt}
-                  </Button>
-                ))}
-              </div>
             </div>
-          )}
-
-          {messages.map((message, index) => (
-            <div key={message.id || index}>
-              <MessageBubble message={message} />
-              {/* Show business lookup results after assistant message */}
-              {message.role === "assistant" && index === messages.length - 1 && <BusinessLookupResults />}
-            </div>
-          ))}
-
-          {/* Quote display */}
-          {currentQuote && <QuoteDisplay />}
-
-          {/* Calendar picker */}
-          {showCalendar && <CalendarPicker />}
-
-          {/* Payment section */}
-          <PaymentSection />
-
-          {/* Loading indicator */}
-          {isLoading && (
-            <div className="flex gap-2 justify-start">
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                <Bot className="w-4 h-4 text-primary" />
-              </div>
-              <div className="bg-muted rounded-2xl px-4 py-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
-              </div>
-            </div>
-          )}
-
-          {/* Error display */}
-          {error && (
-            <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-              Something went wrong. Please try again.
-            </div>
-          )}
-
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input area */}
-        <div className="p-4 border-t">
-          <div className="flex items-center gap-2">
-            <Button
-              variant={isListening ? "destructive" : "outline"}
-              size="icon"
-              onClick={toggleListening}
-              disabled={isLoading}
-            >
-              {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-            </Button>
-            <Input
-              ref={inputRef}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={isListening ? "Listening..." : "Type your message..."}
-              disabled={isLoading || isListening}
-              className="flex-1"
-            />
-            <Button onClick={handleSendMessage} disabled={!inputValue.trim() || isLoading}>
-              <Send className="w-4 h-4" />
-            </Button>
-          </div>
-          <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
-            <span>{isListening ? "🎤 Listening..." : isSpeaking ? "🔊 Speaking..." : ""}</span>
-            <a href="tel:+61388201801" className="flex items-center gap-1 hover:text-primary">
-              <Phone className="w-3 h-3" />
-              Prefer to call? 03 8820 1801
-            </a>
-          </div>
-        </div>
+          </>
+        )}
       </div>
     )
 
     if (embedded) {
-      return chatContent
+      return (
+        <div ref={containerRef} className="w-full">
+          <Card className="overflow-hidden shadow-xl">{chatContent}</Card>
+        </div>
+      )
     }
 
-    // Floating button and chat window for non-embedded mode
-    return (
-      <>
-        {!isOpen && (
-          <button
-            onClick={() => setIsOpen(true)}
-            className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:scale-105 transition-transform flex items-center justify-center"
-          >
-            <MessageSquare className="w-6 h-6" />
-          </button>
-        )}
+    if (!isOpen) {
+      return (
+        <Button
+          onClick={() => setIsOpen(true)}
+          className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50"
+          size="icon"
+        >
+          <MessageSquare className="w-6 h-6" />
+        </Button>
+      )
+    }
 
-        {isOpen && (
-          <div
-            className={`fixed z-50 ${
-              isMinimized ? "bottom-6 right-6 w-72" : "bottom-6 right-6 w-[400px] md:w-[450px]"
-            } transition-all duration-200`}
-          >
-            <Card className="shadow-2xl overflow-hidden">
-              {isMinimized ? (
-                <div
-                  className="p-4 bg-primary text-primary-foreground cursor-pointer flex items-center justify-between"
-                  onClick={() => setIsMinimized(false)}
-                >
-                  <div className="flex items-center gap-2">
-                    <MessageSquare className="w-5 h-5" />
-                    <span className="font-semibold">M&M Quote Assistant</span>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setIsOpen(false)
-                    }}
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
-              ) : (
-                chatContent
-              )}
-            </Card>
-          </div>
-        )}
-      </>
+    return (
+      <div className="fixed bottom-6 right-6 w-[400px] max-w-[calc(100vw-3rem)] z-50">
+        <Card className="overflow-hidden shadow-2xl">{chatContent}</Card>
+      </div>
     )
   },
 )

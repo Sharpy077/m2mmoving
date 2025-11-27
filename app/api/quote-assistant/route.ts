@@ -419,35 +419,67 @@ const tools = {
 } as const
 
 export async function POST(req: Request) {
-  const body = await req.json()
+  try {
+    const body = await req.json()
+    console.log("[v0] Quote assistant request received")
 
-  const rawMessages = body.messages || []
+    const rawMessages = body.messages || []
+    console.log("[v0] Raw messages count:", rawMessages.length)
 
-  // Handle initial conversation start
-  const effectiveMessages =
-    rawMessages.length === 0 ||
-    (rawMessages.length === 1 &&
-      rawMessages[0].role === "user" &&
-      (rawMessages[0].content === "start" ||
-        rawMessages[0].content === "Start" ||
-        rawMessages[0].content === "" ||
-        rawMessages[0].parts?.[0]?.text?.includes("I'd like to get a quote")))
-      ? [{ role: "user" as const, content: "Hi, I'd like to get a quote for a commercial move." }]
-      : rawMessages
+    // Handle initial conversation start
+    const effectiveMessages =
+      rawMessages.length === 0 ||
+      (rawMessages.length === 1 &&
+        rawMessages[0].role === "user" &&
+        (rawMessages[0].content === "start" ||
+          rawMessages[0].content === "Start" ||
+          rawMessages[0].content === "" ||
+          rawMessages[0].parts?.[0]?.text?.includes("I'd like to get a quote")))
+        ? [{ role: "user" as const, content: "Hi, I'd like to get a quote for a commercial move." }]
+        : rawMessages
 
-  const messages = await validateUIMessages({
-    messages: effectiveMessages,
-    tools,
-  })
+    console.log("[v0] Effective messages count:", effectiveMessages.length)
 
-  const result = streamText({
-    model: "openai/gpt-4o",
-    system: systemPrompt,
-    messages: convertToModelMessages(messages),
-    tools,
-  })
+    let messages
+    try {
+      messages = await validateUIMessages({
+        messages: effectiveMessages,
+        tools,
+      })
+      console.log("[v0] Messages validated successfully")
+    } catch (validationError) {
+      console.error("[v0] Message validation error:", validationError)
+      return new Response(JSON.stringify({ error: "Invalid message format", details: String(validationError) }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
 
-  return result.toUIMessageStreamResponse()
+    try {
+      console.log("[v0] Starting streamText...")
+      const result = streamText({
+        model: "openai/gpt-4o",
+        system: systemPrompt,
+        messages: convertToModelMessages(messages),
+        tools,
+      })
+
+      console.log("[v0] Stream created, returning response")
+      return result.toUIMessageStreamResponse()
+    } catch (streamError) {
+      console.error("[v0] Stream error:", streamError)
+      return new Response(JSON.stringify({ error: "Failed to generate response", details: String(streamError) }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+  } catch (error) {
+    console.error("[v0] Quote assistant error:", error)
+    return new Response(JSON.stringify({ error: "Internal server error", details: String(error) }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
 }
 
 // Helper function to format dates nicely
