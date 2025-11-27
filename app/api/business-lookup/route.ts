@@ -2,13 +2,16 @@ import { NextResponse } from "next/server"
 
 const ABN_LOOKUP_GUID = "62b9db95-297e-49e0-8635-c42ca2518af3"
 
-// Helper to parse JSONP response
 function parseJSONP(text: string): unknown {
-  const match = text.match(/^callback$$([\s\S]*)$$$/)
-  if (!match) {
+  const prefix = "callback("
+  const suffix = ")"
+
+  if (!text.startsWith(prefix) || !text.endsWith(suffix)) {
     throw new Error(`Invalid JSONP response: ${text.slice(0, 100)}`)
   }
-  return JSON.parse(match[1])
+
+  const jsonContent = text.slice(prefix.length, -suffix.length)
+  return JSON.parse(jsonContent)
 }
 
 export async function GET(req: Request) {
