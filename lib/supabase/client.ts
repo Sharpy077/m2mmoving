@@ -1,25 +1,41 @@
 import { createBrowserClient } from "@supabase/ssr"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
-const SUPABASE_CLIENT_KEY = Symbol.for("supabase-client-singleton")
+const SUPABASE_CLIENT_KEY = "__SUPABASE_CLIENT__"
 
-type GlobalWithSupabase = typeof globalThis & {
-  [SUPABASE_CLIENT_KEY]?: SupabaseClient
+declare global {
+  interface Window {
+    [SUPABASE_CLIENT_KEY]?: SupabaseClient
+  }
 }
 
-export function createClient(): SupabaseClient {
-  const globalStore = globalThis as GlobalWithSupabase
+let serverSideClient: SupabaseClient | undefined
 
-  if (globalStore[SUPABASE_CLIENT_KEY]) {
-    return globalStore[SUPABASE_CLIENT_KEY]
+export function createClient(): SupabaseClient {
+  // Check if we're in browser environment
+  if (typeof window !== "undefined") {
+    // Return existing browser client if it exists
+    if (window[SUPABASE_CLIENT_KEY]) {
+      return window[SUPABASE_CLIENT_KEY]
+    }
+
+    // Create new client and store on window
+    const client = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY!,
+    )
+
+    window[SUPABASE_CLIENT_KEY] = client
+    return client
   }
 
-  const client = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY!,
-  )
+  // Server-side fallback (shouldn't normally be called from client.ts)
+  if (!serverSideClient) {
+    serverSideClient = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY!,
+    )
+  }
 
-  globalStore[SUPABASE_CLIENT_KEY] = client
-
-  return client
+  return serverSideClient
 }
