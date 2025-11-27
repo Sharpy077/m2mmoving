@@ -228,14 +228,10 @@ export async function POST(req: Request) {
         description:
           "Check available dates for scheduling a move. Returns a list of available dates for the next 45 days. Use this after calculating a quote to show the customer when they can book.",
         parameters: z.object({
-          request: z.literal(true).describe("Always pass true to request availability"),
-          preferredMonth: z
-            .string()
-            .optional()
-            .describe("Preferred month if mentioned (e.g., 'January', 'next month')"),
-          urgency: z.enum(["asap", "flexible", "specific"]).optional().describe("How urgent is the move"),
+          month: z.string().describe("Month to check availability for, e.g. 'December 2024' or 'next month'"),
+          urgency: z.enum(["asap", "flexible", "specific"]).describe("How urgent is the move"),
         }),
-        execute: async ({ preferredMonth, urgency }) => {
+        execute: async ({ month, urgency }) => {
           try {
             const baseUrl = process.env.VERCEL_URL
               ? `https://${process.env.VERCEL_URL}`
@@ -306,24 +302,12 @@ export async function POST(req: Request) {
           squareMeters: z.number().min(1).describe("Size in square metres"),
           originSuburb: z.string().describe("Origin location/suburb"),
           destinationSuburb: z.string().describe("Destination location/suburb"),
-          estimatedDistanceKm: z.number().optional().describe("Estimated distance in km"),
-          additionalServices: z
-            .array(
-              z.enum([
-                "packing",
-                "unpacking",
-                "storage",
-                "cleaning",
-                "insurance",
-                "afterhours",
-                "weekend",
-                "itsetup",
-                "furniture",
-                "disposal",
-              ]),
-            )
-            .optional(),
-          specialRequirements: z.string().optional().describe("Any special requirements mentioned"),
+          estimatedDistanceKm: z.number().describe("Estimated distance in km, use 10 if unknown"),
+          additionalServicesList: z
+            .string()
+            .describe(
+              "Comma-separated list of additional services: packing, unpacking, storage, cleaning, insurance, afterhours, weekend, itsetup, furniture, disposal",
+            ),
         }),
         execute: async ({
           moveType,
@@ -331,8 +315,7 @@ export async function POST(req: Request) {
           originSuburb,
           destinationSuburb,
           estimatedDistanceKm,
-          additionalServices: services,
-          specialRequirements,
+          additionalServicesList,
         }) => {
           const type = moveTypes[moveType]
           const effectiveSqm = Math.max(squareMeters, type.minSqm)
@@ -360,14 +343,23 @@ export async function POST(req: Request) {
 
           const serviceDetails: { name: string; price: number }[] = []
           let servicesCost = 0
-          if (services) {
-            services.forEach((serviceId) => {
-              const service = additionalServices[serviceId]
+
+          // Parse additional services from comma-separated string
+          const services = additionalServicesList
+            ? additionalServicesList
+                .split(",")
+                .map((s) => s.trim().toLowerCase())
+                .filter(Boolean)
+            : []
+
+          services.forEach((serviceId) => {
+            const service = additionalServices[serviceId as keyof typeof additionalServices]
+            if (service) {
               total += service.price
               servicesCost += service.price
               serviceDetails.push({ name: service.name, price: service.price })
-            })
-          }
+            }
+          })
 
           const estimate = Math.round(total)
           const depositAmount = Math.round(estimate * 0.5)
@@ -379,7 +371,6 @@ export async function POST(req: Request) {
             origin: originSuburb,
             destination: destinationSuburb,
             distance: estimatedDistanceKm,
-            specialRequirements,
             additionalServices: serviceDetails.map((s) => s.name),
             estimatedTotal: estimate,
             depositRequired: depositAmount,
@@ -405,11 +396,10 @@ export async function POST(req: Request) {
           contactName: z.string().describe("Customer's full name"),
           email: z.string().describe("Customer's email address"),
           phone: z.string().describe("Customer's phone number"),
-          companyName: z.string().optional().describe("Company name if not already captured"),
-          abn: z.string().optional().describe("ABN if not already captured"),
-          scheduledDate: z.string().optional().describe("The confirmed moving date"),
+          companyName: z.string().describe("Company name"),
+          scheduledDate: z.string().describe("The confirmed moving date in YYYY-MM-DD format"),
         }),
-        execute: async ({ contactName, email, phone, companyName, abn, scheduledDate }) => {
+        execute: async ({ contactName, email, phone, companyName, scheduledDate }) => {
           return {
             success: true,
             collected: true,
@@ -417,9 +407,8 @@ export async function POST(req: Request) {
             email,
             phone,
             companyName,
-            abn,
             scheduledDate,
-            message: `Perfect! I have all your details. To secure your booking${scheduledDate ? ` for ${formatDate(scheduledDate)}` : ""}, we require a 50% deposit.`,
+            message: `Perfect! I have all your details. To secure your booking for ${formatDate(scheduledDate)}, we require a 50% deposit.`,
           }
         },
       }),
@@ -451,14 +440,14 @@ export async function POST(req: Request) {
         parameters: z.object({
           name: z.string().describe("Customer name"),
           phone: z.string().describe("Phone number to call back"),
-          preferredTime: z.string().optional().describe("Preferred callback time"),
-          reason: z.string().optional().describe("Brief reason for callback"),
+          preferredTime: z.string().describe("Preferred callback time, e.g. 'morning', 'afternoon', 'ASAP'"),
+          reason: z.string().describe("Brief reason for callback"),
         }),
         execute: async ({ name, phone, preferredTime, reason }) => {
           return {
             success: true,
             callbackRequested: true,
-            message: `No worries! I've requested a callback for you. One of our team members will call ${name} at ${phone}${preferredTime ? ` ${preferredTime}` : " shortly"}.`,
+            message: `No worries! I've requested a callback for you. One of our team members will call ${name} at ${phone} ${preferredTime}.`,
           }
         },
       }),
@@ -492,6 +481,7 @@ function generateFallbackDates() {
     if (dayOfWeek !== 0 && dayOfWeek !== 6) {
       dates.push({
         date: date.toISOString().split("T")[0],
+        available: true,
         slots: Math.floor(Math.random() * 3) + 1,
       })
     }
