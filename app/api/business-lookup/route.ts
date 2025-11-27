@@ -27,9 +27,12 @@ export async function GET(req: Request) {
     const response = await fetch(searchUrl)
     const text = await response.text()
 
-    // Parse JSONP response (wrapped in callback())
-    const jsonStr = text.replace(/^callback$$/, "").replace(/$$$/, "")
-    const data = JSON.parse(jsonStr)
+    const jsonMatch = text.match(/^callback$$([\s\S]*)$$$/)
+    if (!jsonMatch) {
+      console.error("[v0] Invalid JSONP response:", text.substring(0, 100))
+      return NextResponse.json({ error: "Invalid response from ABN lookup" }, { status: 500 })
+    }
+    const data = JSON.parse(jsonMatch[1])
 
     if (type === "abn") {
       // Single ABN result
@@ -85,8 +88,12 @@ export async function POST(req: Request) {
     const response = await fetch(searchUrl)
     const text = await response.text()
 
-    const jsonStr = text.replace(/^callback$$/, "").replace(/$$$/, "")
-    const data = JSON.parse(jsonStr)
+    const jsonMatch = text.match(/^callback$$([\s\S]*)$$$/)
+    if (!jsonMatch) {
+      console.error("[v0] Invalid JSONP response:", text.substring(0, 100))
+      return NextResponse.json({ error: "Invalid response from ABN lookup" }, { status: 500 })
+    }
+    const data = JSON.parse(jsonMatch[1])
 
     if (data.Abn) {
       return NextResponse.json({
