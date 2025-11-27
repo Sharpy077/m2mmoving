@@ -1,8 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { ArrowRight } from "lucide-react"
-import Link from "next/link"
+import { ArrowRight, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 // First relocation: ~3 months ago, Second: ~2 weeks ago
@@ -38,6 +37,10 @@ export function StatsSection() {
     return () => clearInterval(interval)
   }, [])
 
+  const scrollToAssistant = () => {
+    document.getElementById("quote-assistant")?.scrollIntoView({ behavior: "smooth", block: "center" })
+  }
+
   const stats = [
     { value: relocations.toString(), label: "Relocations Complete", highlight: false },
     { value: "$0", label: "Damage Claims", highlight: true },
@@ -54,11 +57,10 @@ export function StatsSection() {
             <p className="text-muted-foreground">Get a free, no-obligation quote in under 60 seconds</p>
           </div>
           <div className="flex gap-3">
-            <Button className="uppercase tracking-wider group" asChild>
-              <Link href="/quote">
-                Get Free Quote
-                <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </Link>
+            <Button className="uppercase tracking-wider group" onClick={scrollToAssistant}>
+              <Sparkles className="w-4 h-4 mr-2" />
+              Get Free Quote
+              <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </Button>
             <Button variant="outline" className="uppercase tracking-wider bg-transparent" asChild>
               <a href="tel:+61388201801">Call Now</a>

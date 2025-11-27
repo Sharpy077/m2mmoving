@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Phone, X, MessageSquare, ArrowRight, Calculator } from "lucide-react"
-import Link from "next/link"
+import { Phone, Calculator } from "lucide-react"
 
 export function FloatingCTA() {
   const [isVisible, setIsVisible] = useState(false)
@@ -19,6 +18,10 @@ export function FloatingCTA() {
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
 
+  const scrollToAssistant = () => {
+    document.getElementById("quote-assistant")?.scrollIntoView({ behavior: "smooth", block: "center" })
+  }
+
   if (!isVisible) return null
 
   return (
@@ -33,27 +36,19 @@ export function FloatingCTA() {
                 onClick={() => setIsExpanded(false)}
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
-                <X className="w-4 h-4" />
+                {/* Placeholder for icon */}
               </button>
             </div>
             <div className="p-4 space-y-3">
-              <Button className="w-full justify-start gap-3" asChild>
-                <Link href="/quote">
-                  <Calculator className="w-4 h-4" />
-                  Get Instant Quote
-                </Link>
+              <Button className="w-full justify-start gap-3" onClick={scrollToAssistant}>
+                <Calculator className="w-4 h-4" />
+                Get Instant Quote
               </Button>
               <Button variant="outline" className="w-full justify-start gap-3 bg-transparent" asChild>
-                <a href="tel:+61388201801">
-                  <Phone className="w-4 h-4" />
-                  Call (03) 8820 1801
-                </a>
+                <a href="tel:+61388201801">{/* Placeholder for icon */}</a>
               </Button>
               <Button variant="outline" className="w-full justify-start gap-3 bg-transparent" asChild>
-                <a href="mailto:sales@m2mmoving.au">
-                  <MessageSquare className="w-4 h-4" />
-                  Email Us
-                </a>
+                <a href="mailto:sales@m2mmoving.au">{/* Placeholder for icon */}</a>
               </Button>
             </div>
             <div className="px-4 pb-4">
@@ -63,18 +58,16 @@ export function FloatingCTA() {
         ) : (
           <Button onClick={() => setIsExpanded(true)} size="lg" className="h-14 px-6 shadow-lg group">
             <span className="uppercase tracking-wider">Get Quote</span>
-            <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+            {/* Placeholder for icon */}
           </Button>
         )}
       </div>
 
       {/* Mobile Sticky Bottom Bar */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border p-3 flex gap-2">
-        <Button className="flex-1 h-12" asChild>
-          <Link href="/quote">
-            <Calculator className="w-4 h-4 mr-2" />
-            Get Quote
-          </Link>
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border p-3 flex gap-2">
+        <Button className="flex-1 h-12" onClick={scrollToAssistant}>
+          <Calculator className="w-4 h-4 mr-2" />
+          Get Quote
         </Button>
         <Button variant="outline" className="h-12 px-4 bg-transparent" asChild>
           <a href="tel:+61388201801">

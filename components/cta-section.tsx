@@ -5,8 +5,7 @@ import type React from "react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ArrowRight, Phone, Mail, MapPin, Clock, CheckCircle2, Loader2 } from "lucide-react"
-import Link from "next/link"
+import { ArrowRight, Phone, Mail, Clock, CheckCircle2, Loader2, Sparkles } from "lucide-react"
 import { submitLead } from "@/app/actions/leads"
 
 export function CTASection() {
@@ -18,6 +17,10 @@ export function CTASection() {
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+
+  const scrollToAssistant = () => {
+    document.getElementById("quote-assistant")?.scrollIntoView({ behavior: "smooth", block: "center" })
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -55,16 +58,15 @@ export function CTASection() {
               <span className="text-primary">RELOCATE?</span>
             </h2>
             <p className="text-muted-foreground mb-8 max-w-lg">
-              Get a custom quote for your commercial move. Our team will analyze your requirements and deliver a
-              precision-engineered relocation plan within 24 hours.
+              Get a custom quote for your commercial move. Our AI assistant can help you get an instant estimate, or
+              speak with our team directly.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 mb-8">
-              <Button size="lg" className="uppercase tracking-wider group" asChild>
-                <Link href="/quote">
-                  Build Custom Quote
-                  <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </Link>
+              <Button size="lg" className="uppercase tracking-wider group" onClick={scrollToAssistant}>
+                <Sparkles className="w-4 h-4 mr-2" />
+                AI Quote Assistant
+                <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </Button>
               <Button size="lg" variant="outline" className="uppercase tracking-wider bg-transparent" asChild>
                 <a href="tel:+61388201801">
@@ -116,7 +118,7 @@ export function CTASection() {
 
           <div className="border border-primary/30 bg-background p-6">
             <div className="flex items-center gap-2 mb-4">
-              <MapPin className="w-5 h-5 text-primary" />
+              <Phone className="w-5 h-5 text-primary" />
               <span className="text-xs uppercase tracking-widest text-primary font-mono">Request Callback</span>
             </div>
 
@@ -130,9 +132,9 @@ export function CTASection() {
               </div>
             ) : (
               <>
-                <h3 className="text-xl font-bold text-foreground mb-2">We'll Call You Back</h3>
+                <h3 className="text-xl font-bold text-foreground mb-2">Prefer a Human?</h3>
                 <p className="text-sm text-muted-foreground mb-6">
-                  Leave your details and we'll contact you within the hour.
+                  Leave your details and our team will contact you within the hour.
                 </p>
 
                 <form onSubmit={handleSubmit} className="space-y-4">

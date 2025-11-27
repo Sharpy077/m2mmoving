@@ -8,7 +8,6 @@ import { CTASection } from "@/components/cta-section"
 import { Footer } from "@/components/footer"
 import { Navbar } from "@/components/navbar"
 import { FloatingCTA } from "@/components/floating-cta"
-import { QuoteAssistant } from "@/components/quote-assistant"
 
 export default function HomePage() {
   return (
@@ -23,7 +22,6 @@ export default function HomePage() {
       <CTASection />
       <Footer />
       <FloatingCTA />
-      <QuoteAssistant />
     </main>
   )
 }
