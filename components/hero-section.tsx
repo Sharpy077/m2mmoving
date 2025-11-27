@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, Shield, Zap, Target, Phone, Clock } from "lucide-react"
+import { ArrowRight, Shield, Zap, Target, Phone } from "lucide-react"
 import { QuoteAssistant, type QuoteAssistantHandle } from "@/components/quote-assistant"
 
 export function HeroSection() {
@@ -12,7 +12,6 @@ export function HeroSection() {
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
-        // Show floating when embedded is NOT visible
         setShowFloatingAssistant(!entry.isIntersecting)
       },
       { threshold: 0.1 },
@@ -59,13 +58,6 @@ export function HeroSection() {
           <div className="grid lg:grid-cols-2 gap-12 items-start">
             {/* Left Column - Main Content */}
             <div>
-              <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 border border-primary/30 mb-6">
-                <Clock className="w-4 h-4 text-primary animate-pulse" />
-                <span className="text-xs uppercase tracking-widest text-primary font-mono">
-                  Limited Availability This Week
-                </span>
-              </div>
-
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-6 text-balance">
                 <span className="text-foreground">Get Your Office</span>
                 <br />

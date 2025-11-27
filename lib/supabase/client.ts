@@ -9,33 +9,21 @@ declare global {
   }
 }
 
-let serverSideClient: SupabaseClient | undefined
+let browserClient: SupabaseClient | null = null
 
 export function createClient(): SupabaseClient {
-  // Check if we're in browser environment
-  if (typeof window !== "undefined") {
-    // Return existing browser client if it exists
-    if (window[SUPABASE_CLIENT_KEY]) {
-      return window[SUPABASE_CLIENT_KEY]
-    }
-
-    // Create new client and store on window
-    const client = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY!,
-    )
-
-    window[SUPABASE_CLIENT_KEY] = client
-    return client
+  if (browserClient) {
+    return browserClient
   }
 
-  // Server-side fallback (shouldn't normally be called from client.ts)
-  if (!serverSideClient) {
-    serverSideClient = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY!,
-    )
-  }
+  browserClient = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY!,
+    {
+      // Suppress multiple instance warning - we ensure singleton at module level
+      isSingleton: true,
+    },
+  )
 
-  return serverSideClient
+  return browserClient
 }
