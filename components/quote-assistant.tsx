@@ -23,6 +23,8 @@ import {
   Volume2,
   VolumeX,
   Sparkles,
+  Building2,
+  Search,
 } from "lucide-react"
 
 interface QuoteEstimate {
@@ -41,6 +43,16 @@ interface QuoteEstimate {
   }
 }
 
+interface BusinessResult {
+  abn: string
+  name: string
+  tradingName?: string
+  entityType?: string
+  state: string
+  postcode?: string
+  status: string
+}
+
 export function QuoteAssistant() {
   const [isOpen, setIsOpen] = useState(false)
   const [inputValue, setInputValue] = useState("")
@@ -50,6 +62,8 @@ export function QuoteAssistant() {
   const [currentQuote, setCurrentQuote] = useState<QuoteEstimate | null>(null)
   const [isSubmittingLead, setIsSubmittingLead] = useState(false)
   const [leadSubmitted, setLeadSubmitted] = useState(false)
+  const [businessLookupResults, setBusinessLookupResults] = useState<BusinessResult[] | null>(null)
+  const [confirmedBusiness, setConfirmedBusiness] = useState<BusinessResult | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const recognitionRef = useRef<any>(null)
   const synthRef = useRef<SpeechSynthesis | null>(null)
@@ -148,6 +162,18 @@ export function QuoteAssistant() {
             handleLeadSubmission(result.leadData)
           }
         }
+        if (part.type === "tool-lookupBusiness" && part.state === "output-available") {
+          const result = part.output as { success: boolean; results: BusinessResult[]; message?: string }
+          if (result.success && result.results.length > 0) {
+            setBusinessLookupResults(result.results)
+          }
+        }
+        if (part.type === "tool-getBusinessDetails" && part.state === "output-available") {
+          const result = part.output as { success: boolean; business: any }
+          if (result.success) {
+            setConfirmedBusiness(result.business)
+          }
+        }
       })
     }
   }, [messages])
@@ -171,6 +197,7 @@ export function QuoteAssistant() {
         additional_services: leadData.additionalServices,
         target_move_date: leadData.targetDate,
         preferred_contact_time: leadData.preferredContactTime,
+        abn: leadData.abn,
       })
 
       if (result.success) {
@@ -181,6 +208,15 @@ export function QuoteAssistant() {
     } finally {
       setIsSubmittingLead(false)
     }
+  }
+
+  const handleSelectBusiness = (business: BusinessResult) => {
+    setConfirmedBusiness(business)
+    setBusinessLookupResults(null)
+    // Send confirmation to the AI
+    sendMessage({
+      text: `Yes, that's correct - ${business.name} (ABN: ${business.abn})`,
+    })
   }
 
   const speakText = (text: string) => {
@@ -246,6 +282,8 @@ export function QuoteAssistant() {
     setMessages([])
     setCurrentQuote(null)
     setLeadSubmitted(false)
+    setBusinessLookupResults(null)
+    setConfirmedBusiness(null)
   }
 
   const suggestedPrompts = [
@@ -351,6 +389,70 @@ export function QuoteAssistant() {
                 {messages.map((message) => (
                   <MessageBubble key={message.id} message={message} />
                 ))}
+
+                {businessLookupResults && businessLookupResults.length > 0 && (
+                  <Card className="bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800">
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Search className="h-5 w-5 text-blue-600" />
+                        <span className="font-semibold text-blue-800 dark:text-blue-200">
+                          {businessLookupResults.length === 1 ? "Is this your business?" : "Select your business"}
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        {businessLookupResults.map((business) => (
+                          <button
+                            key={business.abn}
+                            onClick={() => handleSelectBusiness(business)}
+                            className="w-full text-left p-3 rounded-lg bg-white dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors border border-blue-200 dark:border-blue-700"
+                          >
+                            <div className="flex items-start gap-3">
+                              <Building2 className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-sm truncate">{business.name}</p>
+                                {business.tradingName && (
+                                  <p className="text-xs text-muted-foreground">Trading as: {business.tradingName}</p>
+                                )}
+                                <div className="flex items-center gap-2 mt-1">
+                                  <Badge variant="secondary" className="text-xs">
+                                    ABN: {business.abn}
+                                  </Badge>
+                                  {business.state && (
+                                    <Badge variant="outline" className="text-xs">
+                                      {business.state}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                              <CheckCircle2 className="h-5 w-5 text-blue-400 flex-shrink-0" />
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-3">
+                        Tap to confirm, or type your ABN if not listed
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {confirmedBusiness && (
+                  <Card className="bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-800">
+                    <CardContent className="p-3">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm text-green-800 dark:text-green-200 truncate">
+                            {confirmedBusiness.name}
+                          </p>
+                          <p className="text-xs text-green-700 dark:text-green-300">
+                            ABN: {confirmedBusiness.abn} • {confirmedBusiness.state}
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
 
                 {/* Quote Summary Card */}
                 {currentQuote && (
@@ -513,6 +615,17 @@ function MessageBubble({
                 <div key={index} className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Calculating your quote...
+                </div>
+              )
+            }
+          }
+
+          if (part.type === "tool-lookupBusiness") {
+            if (part.state === "input-available") {
+              return (
+                <div key={index} className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Looking up business details...
                 </div>
               )
             }

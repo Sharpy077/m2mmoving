@@ -47,6 +47,15 @@ IMPORTANT GUIDELINES:
 - Always validate that you have enough info before generating a quote
 - If the request is complex or unusual, recommend scheduling a call with the team
 
+BUSINESS LOOKUP FEATURE:
+When the customer mentions a company name, business name, or ABN:
+1. Use the lookupBusiness tool to search for their business details
+2. Present the results and ask them to confirm which one is correct (if multiple matches)
+3. If confirmed, use those details (ABN, registered address state, trading name) to auto-fill information
+4. This saves them time and ensures accuracy for invoicing
+
+If they provide an 11-digit ABN directly, look it up immediately to verify and get full details.
+
 MOVE TYPES WE OFFER:
 1. Office Relocation - For moving office spaces (base: $2,500 + $45/sqm, min 20sqm)
 2. Data Center Migration - For server rooms and IT infrastructure (base: $5,000 + $85/sqm, min 50sqm)
@@ -61,12 +70,13 @@ ADDITIONAL SERVICES (can be added to any move):
 - IT Setup Assistance: $600
 
 QUALIFYING QUESTIONS FLOW:
-1. What type of move do they need? (office, datacenter, IT equipment)
-2. What's the approximate size in square metres?
-3. Where are they moving from and to? (suburbs/areas)
-4. When do they need to move? (timeline)
-5. Do they need any additional services?
-6. Contact details to send the quote
+1. What's their company name or ABN? (Use lookupBusiness to verify)
+2. What type of move do they need? (office, datacenter, IT equipment)
+3. What's the approximate size in square metres?
+4. Where are they moving from and to? (suburbs/areas)
+5. When do they need to move? (timeline)
+6. Do they need any additional services?
+7. Contact details to send the quote (name, email, phone)
 
 Once you have all the information, use the calculateQuote tool to generate an estimate, then use the captureLeadDetails tool to collect their contact info.
 
@@ -80,6 +90,98 @@ export async function POST(req: Request) {
     system: systemPrompt,
     messages: convertToModelMessages(messages),
     tools: {
+      lookupBusiness: tool({
+        description:
+          "Look up an Australian business by name or ABN to get their registered details. Use this when the customer mentions their company name or provides an ABN.",
+        inputSchema: z.object({
+          query: z.string().describe("Business name or ABN to search for"),
+          type: z
+            .enum(["name", "abn"])
+            .describe("Type of search - 'name' for business name search, 'abn' for direct ABN lookup"),
+        }),
+        execute: async ({ query, type }) => {
+          try {
+            // Call our internal API which handles ABR lookup
+            const baseUrl = process.env.VERCEL_URL
+              ? `https://${process.env.VERCEL_URL}`
+              : process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || "http://localhost:3000"
+
+            const response = await fetch(`${baseUrl}/api/business-lookup?q=${encodeURIComponent(query)}&type=${type}`)
+
+            if (!response.ok) {
+              return { success: false, error: "Failed to lookup business", results: [] }
+            }
+
+            const data = await response.json()
+
+            if (data.results && data.results.length > 0) {
+              return {
+                success: true,
+                results: data.results.map((r: any) => ({
+                  abn: r.abn,
+                  name: r.name,
+                  tradingName: r.tradingName || null,
+                  entityType: r.entityType || null,
+                  state: r.state,
+                  postcode: r.postcode,
+                  status: r.status || "Active",
+                })),
+                message:
+                  data.results.length === 1
+                    ? `Found: ${data.results[0].name} (ABN: ${data.results[0].abn})`
+                    : `Found ${data.results.length} matching businesses`,
+              }
+            }
+
+            return {
+              success: false,
+              results: [],
+              message: "No businesses found matching that search. Please try a different name or provide the ABN.",
+            }
+          } catch (error) {
+            return { success: false, error: "Lookup service unavailable", results: [] }
+          }
+        },
+      }),
+
+      getBusinessDetails: tool({
+        description: "Get full details for a business after the customer confirms the ABN",
+        inputSchema: z.object({
+          abn: z.string().describe("The confirmed ABN"),
+        }),
+        execute: async ({ abn }) => {
+          try {
+            const baseUrl = process.env.VERCEL_URL
+              ? `https://${process.env.VERCEL_URL}`
+              : process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || "http://localhost:3000"
+
+            const response = await fetch(`${baseUrl}/api/business-lookup`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ abn }),
+            })
+
+            if (!response.ok) {
+              return { success: false, error: "Failed to get business details" }
+            }
+
+            const data = await response.json()
+
+            if (data.business) {
+              return {
+                success: true,
+                business: data.business,
+                message: `Verified: ${data.business.name}`,
+              }
+            }
+
+            return { success: false, error: "Business not found" }
+          } catch (error) {
+            return { success: false, error: "Service unavailable" }
+          }
+        },
+      }),
+
       calculateQuote: tool({
         description: "Calculate a quote estimate based on the collected information",
         inputSchema: z.object({
@@ -146,6 +248,7 @@ export async function POST(req: Request) {
           }
         },
       }),
+
       captureLeadDetails: tool({
         description: "Capture customer contact details to save the quote and follow up",
         inputSchema: z.object({
@@ -153,6 +256,8 @@ export async function POST(req: Request) {
           email: z.string().email().describe("Customer email"),
           phone: z.string().optional().describe("Phone number"),
           companyName: z.string().optional().describe("Company name"),
+          abn: z.string().optional().describe("Australian Business Number"),
+          businessState: z.string().optional().describe("Business registered state"),
           preferredContactTime: z.string().optional().describe("Best time to contact"),
           quoteDetails: z.object({
             moveType: z.string(),
@@ -165,7 +270,16 @@ export async function POST(req: Request) {
             specialRequirements: z.string().optional(),
           }),
         }),
-        execute: async ({ contactName, email, phone, companyName, preferredContactTime, quoteDetails }) => {
+        execute: async ({
+          contactName,
+          email,
+          phone,
+          companyName,
+          abn,
+          businessState,
+          preferredContactTime,
+          quoteDetails,
+        }) => {
           // This will be processed client-side to submit the lead
           return {
             success: true,
@@ -175,12 +289,15 @@ export async function POST(req: Request) {
               email,
               phone,
               companyName,
+              abn,
+              businessState,
               preferredContactTime,
               ...quoteDetails,
             },
           }
         },
       }),
+
       requestCallback: tool({
         description:
           "Request a callback from the M&M team for complex enquiries or when customer prefers to speak with someone",
