@@ -107,7 +107,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       },
     }))
 
-    const { messages, append, status, setMessages } = useChat({
+    const { messages, sendMessage, status, setMessages } = useChat({
       api: "/api/quote-assistant",
       onToolCall: async ({ toolCall }) => {
         if (toolCall.toolName === "lookupBusiness") {
@@ -134,34 +134,30 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         }
         if (toolCall.toolName === "confirmBookingDate") {
           const result = toolCall.args as any
-          if (result?.confirmed) {
-            setSelectedDate(result.date)
+          if (result?.confirmedDate) {
+            setSelectedDate(result.confirmedDate)
           }
         }
-        if (toolCall.toolName === "captureLeadDetails") {
-          const result = toolCall.args as any
-          if (result?.leadData) {
+        if (toolCall.toolName === "collectContactInfo") {
+          const contactData = toolCall.args as any
+          if (contactData && currentQuote) {
             setIsSubmittingLead(true)
             try {
-              const leadData = {
-                lead_type: "ai_quote",
-                contact_name: result.leadData.contactName,
-                email: result.leadData.email,
-                phone: result.leadData.phone || "",
-                company_name: result.leadData.companyName || "",
-                move_type: result.leadData.moveType?.toLowerCase().replace(/\s+/g, "-") || "office",
-                origin_suburb: result.leadData.origin || "",
-                destination_suburb: result.leadData.destination || "",
-                square_meters: result.leadData.squareMeters || 0,
-                estimated_total: result.leadData.estimatedTotal || 0,
-                additional_services: result.leadData.additionalServices || [],
-                special_requirements: result.leadData.specialRequirements ? [result.leadData.specialRequirements] : [],
-                target_move_date: result.leadData.scheduledDate || result.leadData.targetDate || null,
-                scheduled_date: result.leadData.scheduledDate || null,
-                preferred_contact_time: result.leadData.preferredContactTime || null,
-                project_description: `AI Quote - ABN: ${result.leadData.abn || "N/A"}, State: ${result.leadData.businessState || "N/A"}`,
-              }
-              await submitLead(leadData)
+              await submitLead({
+                company_name: confirmedBusiness?.name || contactData.companyName || "",
+                contact_name: contactData.contactName || "",
+                email: contactData.email || "",
+                phone: contactData.phone || "",
+                move_type: currentQuote.moveType,
+                square_meters: currentQuote.squareMeters,
+                origin_address: currentQuote.origin,
+                destination_address: currentQuote.destination,
+                estimated_total: currentQuote.estimatedTotal,
+                deposit_amount: currentQuote.depositRequired,
+                additional_services: currentQuote.additionalServices || [],
+                preferred_date: selectedDate || undefined,
+                abn: confirmedBusiness?.abn,
+              })
               setLeadSubmitted(true)
             } catch (error) {
               console.error("Failed to submit lead:", error)
@@ -244,14 +240,13 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       }
     }
 
-    const sendMessage = async ({ text }: { text: string }) => {
-      if (!text.trim()) return
+    const handleSendMessage = () => {
+      if (!inputValue.trim()) return
+      const text = inputValue
       setInputValue("")
       setBusinessLookupResults(null)
-      await append({ role: "user", content: text })
+      sendMessage({ text })
     }
-
-    const handleSendMessage = () => sendMessage({ text: inputValue })
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
       if (e.key === "Enter" && !e.shiftKey) {
@@ -263,9 +258,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const handleSelectBusiness = (business: BusinessResult) => {
       setConfirmedBusiness(business)
       setBusinessLookupResults(null)
-      append({
-        role: "user",
-        content: `Yes, that's correct - ${business.name} (ABN: ${business.abn})`,
+      sendMessage({
+        text: `Yes, that's correct - ${business.name} (ABN: ${business.abn})`,
       })
     }
 
@@ -278,9 +272,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         month: "long",
         year: "numeric",
       })
-      append({
-        role: "user",
-        content: `I'd like to book for ${formattedDate}`,
+      sendMessage({
+        text: `I'd like to book for ${formattedDate}`,
       })
     }
 
