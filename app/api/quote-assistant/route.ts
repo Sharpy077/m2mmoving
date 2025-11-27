@@ -1,4 +1,4 @@
-import { streamText, tool } from "ai"
+import { streamText } from "ai"
 import { z } from "zod"
 
 export const maxDuration = 60
@@ -147,22 +147,24 @@ export async function POST(req: Request) {
     system: systemPrompt,
     messages: effectiveMessages,
     tools: {
-      lookupBusiness: tool({
+      lookupBusiness: {
         description:
           "Look up an Australian business by name or ABN to get their registered details. Use this when the customer mentions their company name or provides an ABN.",
         parameters: z.object({
           query: z.string().describe("Business name or ABN to search for"),
-          type: z
-            .enum(["name", "abn"])
+          searchType: z
+            .string()
             .describe("Type of search - 'name' for business name search, 'abn' for direct ABN lookup"),
         }),
-        execute: async ({ query, type }) => {
+        execute: async ({ query, searchType }) => {
           try {
             const baseUrl = process.env.VERCEL_URL
               ? `https://${process.env.VERCEL_URL}`
               : process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || "http://localhost:3000"
 
-            const response = await fetch(`${baseUrl}/api/business-lookup?q=${encodeURIComponent(query)}&type=${type}`)
+            const response = await fetch(
+              `${baseUrl}/api/business-lookup?q=${encodeURIComponent(query)}&type=${searchType}`,
+            )
 
             if (!response.ok) {
               return { success: false, error: "Failed to lookup business", results: [] }
@@ -199,39 +201,37 @@ export async function POST(req: Request) {
             return { success: false, error: "Lookup service unavailable", results: [] }
           }
         },
-      }),
+      },
 
-      confirmBusiness: tool({
+      confirmBusiness: {
         description: "Confirm the business details after customer validates the lookup result",
         parameters: z.object({
           name: z.string().describe("Confirmed business name"),
           abn: z.string().describe("Confirmed ABN"),
-          type: z.string().optional().describe("Business entity type"),
-          state: z.string().optional().describe("Business state"),
-          address: z.string().optional().describe("Business address if available"),
+          entityType: z.string().describe("Business entity type"),
+          state: z.string().describe("Business state"),
         }),
-        execute: async ({ name, abn, type, state, address }) => {
+        execute: async ({ name, abn, entityType, state }) => {
           return {
             success: true,
             confirmed: true,
             name,
             abn,
-            type,
+            entityType,
             state,
-            address,
             message: `Great! I've confirmed your business as ${name} (ABN: ${abn}). Now, what type of move are you planning?`,
           }
         },
-      }),
+      },
 
-      checkAvailability: tool({
+      checkAvailability: {
         description:
           "Check available dates for scheduling a move. Returns a list of available dates for the next 45 days. Use this after calculating a quote to show the customer when they can book.",
         parameters: z.object({
-          month: z.string().describe("Month to check availability for, e.g. 'December 2024' or 'next month'"),
-          urgency: z.enum(["asap", "flexible", "specific"]).describe("How urgent is the move"),
+          monthName: z.string().describe("Month to check availability for, e.g. 'December 2024' or 'next month'"),
+          moveUrgency: z.string().describe("How urgent is the move - 'asap', 'flexible', or 'specific'"),
         }),
-        execute: async ({ month, urgency }) => {
+        execute: async ({ monthName, moveUrgency }) => {
           try {
             const baseUrl = process.env.VERCEL_URL
               ? `https://${process.env.VERCEL_URL}`
@@ -265,7 +265,7 @@ export async function POST(req: Request) {
               showCalendar: true,
               dates: availableDates || generateFallbackDates(),
               message:
-                urgency === "asap"
+                moveUrgency === "asap"
                   ? "We have availability soon! Please select your preferred date from the calendar."
                   : "Here are our available dates for the coming weeks. Please select your preferred moving date.",
             }
@@ -278,12 +278,12 @@ export async function POST(req: Request) {
             }
           }
         },
-      }),
+      },
 
-      confirmBookingDate: tool({
+      confirmBookingDate: {
         description: "Confirm a specific date the customer has selected for their move",
         parameters: z.object({
-          selectedDate: z.string().describe("The date selected by the customer (YYYY-MM-DD format)"),
+          selectedDate: z.string().describe("The date selected by the customer in YYYY-MM-DD format"),
         }),
         execute: async ({ selectedDate }) => {
           return {
@@ -292,22 +292,18 @@ export async function POST(req: Request) {
             message: `Excellent! ${formatDate(selectedDate)} has been reserved for your move. Now I just need a few contact details to finalise your booking.`,
           }
         },
-      }),
+      },
 
-      calculateQuote: tool({
+      calculateQuote: {
         description:
           "Calculate a quote estimate based on the collected information. Use this once you have move type, size, and locations.",
         parameters: z.object({
-          moveType: z.enum(["office", "warehouse", "datacenter", "it-equipment", "retail"]).describe("Type of move"),
-          squareMeters: z.number().min(1).describe("Size in square metres"),
-          originSuburb: z.string().describe("Origin location/suburb"),
-          destinationSuburb: z.string().describe("Destination location/suburb"),
+          moveType: z.string().describe("Type of move: office, warehouse, datacenter, it-equipment, or retail"),
+          squareMeters: z.number().describe("Size in square metres"),
+          originSuburb: z.string().describe("Origin location or suburb"),
+          destinationSuburb: z.string().describe("Destination location or suburb"),
           estimatedDistanceKm: z.number().describe("Estimated distance in km, use 10 if unknown"),
-          additionalServicesList: z
-            .string()
-            .describe(
-              "Comma-separated list of additional services: packing, unpacking, storage, cleaning, insurance, afterhours, weekend, itsetup, furniture, disposal",
-            ),
+          additionalServicesList: z.string().describe("Comma-separated list of additional services needed"),
         }),
         execute: async ({
           moveType,
@@ -317,7 +313,7 @@ export async function POST(req: Request) {
           estimatedDistanceKm,
           additionalServicesList,
         }) => {
-          const type = moveTypes[moveType]
+          const type = moveTypes[moveType as keyof typeof moveTypes] || moveTypes.office
           const effectiveSqm = Math.max(squareMeters, type.minSqm)
           let total = type.baseRate + type.perSqm * effectiveSqm
 
@@ -387,9 +383,9 @@ export async function POST(req: Request) {
             ],
           }
         },
-      }),
+      },
 
-      collectContactInfo: tool({
+      collectContactInfo: {
         description:
           "Collect and confirm customer contact details. Use this after all move details are confirmed to prepare for payment.",
         parameters: z.object({
@@ -411,9 +407,9 @@ export async function POST(req: Request) {
             message: `Perfect! I have all your details. To secure your booking for ${formatDate(scheduledDate)}, we require a 50% deposit.`,
           }
         },
-      }),
+      },
 
-      initiatePayment: tool({
+      initiatePayment: {
         description: "Show the Stripe payment form for the deposit. Use this after contact details are collected.",
         parameters: z.object({
           amount: z.number().describe("Deposit amount in dollars"),
@@ -432,15 +428,15 @@ export async function POST(req: Request) {
             message: `Please complete the $${amount.toLocaleString()} deposit payment below to confirm your booking. You'll receive a confirmation email and invoice once the payment is processed.`,
           }
         },
-      }),
+      },
 
-      requestCallback: tool({
+      requestCallback: {
         description:
           "Request a callback from the M&M team for complex enquiries or when customer prefers to speak with someone.",
         parameters: z.object({
           name: z.string().describe("Customer name"),
           phone: z.string().describe("Phone number to call back"),
-          preferredTime: z.string().describe("Preferred callback time, e.g. 'morning', 'afternoon', 'ASAP'"),
+          preferredTime: z.string().describe("Preferred callback time, e.g. morning, afternoon, or ASAP"),
           reason: z.string().describe("Brief reason for callback"),
         }),
         execute: async ({ name, phone, preferredTime, reason }) => {
@@ -450,7 +446,7 @@ export async function POST(req: Request) {
             message: `No worries! I've requested a callback for you. One of our team members will call ${name} at ${phone} ${preferredTime}.`,
           }
         },
-      }),
+      },
     },
   })
 
