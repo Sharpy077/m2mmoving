@@ -65,3 +65,59 @@ export async function markDepositPaid(leadId: string) {
     return { success: false, error: error instanceof Error ? error.message : "Failed to update payment status" }
   }
 }
+
+export async function createDepositCheckout({
+  amount,
+  customerEmail,
+  customerName,
+  description,
+  moveType,
+  origin,
+  destination,
+  scheduledDate,
+}: {
+  amount: number
+  customerEmail: string
+  customerName: string
+  description: string
+  moveType?: string
+  origin?: string
+  destination?: string
+  scheduledDate?: string
+}) {
+  try {
+    const session = await stripe.checkout.sessions.create({
+      ui_mode: "embedded",
+      redirect_on_completion: "never",
+      customer_email: customerEmail,
+      line_items: [
+        {
+          price_data: {
+            currency: "aud",
+            product_data: {
+              name: "M&M Commercial Moving - 50% Deposit",
+              description: description || `Booking deposit for commercial move`,
+            },
+            unit_amount: Math.round(amount * 100), // Convert to cents
+          },
+          quantity: 1,
+        },
+      ],
+      mode: "payment",
+      metadata: {
+        customer_name: customerName,
+        customer_email: customerEmail,
+        move_type: moveType || "",
+        origin: origin || "",
+        destination: destination || "",
+        scheduled_date: scheduledDate || "",
+        deposit_amount: amount.toString(),
+      },
+    })
+
+    return session.client_secret || ""
+  } catch (error) {
+    console.error("[v0] Error creating deposit checkout:", error)
+    throw new Error(error instanceof Error ? error.message : "Failed to create checkout session")
+  }
+}

@@ -1,4 +1,4 @@
-import { convertToModelMessages, streamText, tool, type UIMessage } from "ai"
+import { streamText, tool, type UIMessage } from "ai"
 import { z } from "zod"
 
 export const maxDuration = 60
@@ -12,12 +12,19 @@ const moveTypes = {
     minSqm: 20,
     description: "Complete office moves including workstations, furniture, and equipment.",
   },
+  warehouse: {
+    name: "Warehouse Relocation",
+    baseRate: 3500,
+    perSqm: 55,
+    minSqm: 50,
+    description: "Industrial and warehouse moves with heavy equipment handling.",
+  },
   datacenter: {
-    name: "Data Center Migration",
+    name: "Data Centre Migration",
     baseRate: 5000,
     perSqm: 85,
     minSqm: 50,
-    description: "Specialized data centre relocations with anti-static handling.",
+    description: "Specialised data centre relocations with anti-static handling.",
   },
   "it-equipment": {
     name: "IT Equipment Transport",
@@ -26,81 +33,122 @@ const moveTypes = {
     minSqm: 10,
     description: "Safe transport of computers, servers, and networking equipment.",
   },
+  retail: {
+    name: "Retail Store Relocation",
+    baseRate: 2000,
+    perSqm: 40,
+    minSqm: 15,
+    description: "Retail fit-out moves including displays, POS systems, and stock.",
+  },
 }
 
 const additionalServices = {
-  packing: { name: "Professional Packing", price: 450 },
-  storage: { name: "Temporary Storage", price: 300 },
-  cleaning: { name: "Post-Move Cleaning", price: 350 },
-  insurance: { name: "Premium Insurance", price: 200 },
-  afterhours: { name: "After Hours Service", price: 500 },
-  itsetup: { name: "IT Setup Assistance", price: 600 },
+  packing: { name: "Professional Packing", price: 450, description: "Full packing service with materials" },
+  unpacking: { name: "Unpacking Service", price: 350, description: "Unpack and set up at destination" },
+  storage: { name: "Temporary Storage (per week)", price: 300, description: "Secure storage facilities" },
+  cleaning: { name: "Post-Move Cleaning", price: 350, description: "Deep clean of old premises" },
+  insurance: { name: "Premium Insurance", price: 200, description: "Extended coverage for high-value items" },
+  afterhours: { name: "After Hours Service", price: 500, description: "Moves outside business hours" },
+  weekend: { name: "Weekend Service", price: 400, description: "Saturday or Sunday moves" },
+  itsetup: { name: "IT Setup Assistance", price: 600, description: "Reconnect and test IT equipment" },
+  furniture: { name: "Furniture Assembly", price: 400, description: "Disassemble and reassemble furniture" },
+  disposal: { name: "Rubbish Removal", price: 250, description: "Remove unwanted items and dispose" },
 }
 
-const systemPrompt = `You are a friendly, professional quote assistant for M&M Commercial Moving, a commercial moving company in Melbourne, Australia. Your goal is to help potential customers get a quick quote and book their move with minimal friction.
+const systemPrompt = `You are Maya, a friendly and professional quote assistant for M&M Commercial Moving, a trusted commercial moving company in Melbourne, Australia. Your goal is to help potential customers get an accurate quote and book their move quickly and easily.
 
-IMPORTANT GUIDELINES:
-- Be warm, helpful, and conversational - not robotic
-- Ask ONE question at a time to avoid overwhelming users
-- Use Australian English spelling (e.g., "centre" not "center", "organisation" not "organization")
-- If someone seems unsure, provide helpful context
-- Always validate that you have enough info before generating a quote
-- Proactively check availability and suggest dates
-- If the request is complex or unusual, recommend scheduling a call with the team
+PERSONALITY & TONE:
+- Warm, helpful, and conversational - not robotic
+- Use Australian English spelling (e.g., "centre" not "center", "organisation" not "organization")  
+- Keep responses concise but friendly
+- Show empathy for the stress of moving
+- Be proactive in offering helpful suggestions
 
-BUSINESS LOOKUP FEATURE:
-When the customer mentions a company name, business name, or ABN:
-1. Use the lookupBusiness tool to search for their business details
-2. Present the results and ask them to confirm which one is correct (if multiple matches)
-3. If confirmed, use those details (ABN, registered address state, trading name) to auto-fill information
-4. This saves them time and ensures accuracy for invoicing
+CRITICAL RULES:
+1. Ask ONE question at a time - never overwhelm users with multiple questions
+2. ALWAYS wait for the user's response before asking the next question
+3. After each user response, acknowledge what they said before asking the next question
+4. Use tools proactively when you have enough information
+5. If something seems complex, offer to arrange a callback with the team
 
-If they provide an 11-digit ABN directly, look it up immediately to verify and get full details.
+START OF CONVERSATION:
+When the conversation starts with just "start" or similar, introduce yourself warmly and ask for their company name or ABN to begin.
 
-MOVE TYPES WE OFFER:
-1. Office Relocation - For moving office spaces (base: $2,500 + $45/sqm, min 20sqm)
-2. Data Center Migration - For server rooms and IT infrastructure (base: $5,000 + $85/sqm, min 50sqm)
-3. IT Equipment Transport - For computers, servers, equipment (base: $1,500 + $35/sqm, min 10sqm)
+QUALIFYING QUESTIONS FLOW (ask in this order, ONE AT A TIME):
+1. Company name or ABN (use lookupBusiness to verify and auto-fill details)
+2. Type of move needed (office, warehouse, data centre, IT equipment, retail)
+3. Approximate size in square metres (help estimate if unsure)
+4. Current location (suburb/area)
+5. New location (suburb/area)  
+6. Preferred moving timeframe (use checkAvailability after quote to show dates)
+7. Any additional services needed?
+8. Contact details (name, email, phone) to finalise
 
-ADDITIONAL SERVICES (can be added to any move):
+MOVE TYPES & PRICING:
+- Office Relocation: Base $2,500 + $45/sqm (min 20sqm)
+- Warehouse Relocation: Base $3,500 + $55/sqm (min 50sqm)
+- Data Centre Migration: Base $5,000 + $85/sqm (min 50sqm)
+- IT Equipment Transport: Base $1,500 + $35/sqm (min 10sqm)
+- Retail Store Relocation: Base $2,000 + $40/sqm (min 15sqm)
+
+ADDITIONAL SERVICES:
 - Professional Packing: $450
+- Unpacking Service: $350
 - Temporary Storage: $300/week
 - Post-Move Cleaning: $350
 - Premium Insurance: $200
 - After Hours Service: $500
+- Weekend Service: $400
 - IT Setup Assistance: $600
+- Furniture Assembly: $400
+- Rubbish Removal: $250
 
-BOOKING & AVAILABILITY FLOW:
-1. After generating a quote, use checkAvailability to show available dates
-2. Present the calendar to the user so they can select their preferred date
-3. When they select a date, confirm it's still available
-4. Collect contact details with the selected date included
+BOOKING FLOW:
+1. Once you have move type, size, and locations - use calculateQuote to generate estimate
+2. After quote is shown - use checkAvailability to show available dates
+3. When date is selected - confirm the booking
+4. Collect contact details with the scheduled date
+5. Use initiatePayment to set up the 50% deposit payment
 
-QUALIFYING QUESTIONS FLOW:
-1. What's their company name or ABN? (Use lookupBusiness to verify)
-2. What type of move do they need? (office, datacenter, IT equipment)
-3. What's the approximate size in square metres?
-4. Where are they moving from and to? (suburbs/areas)
-5. When do they need to move? (Use checkAvailability to show options)
-6. Do they need any additional services?
-7. Contact details to finalise the booking (name, email, phone)
+BUSINESS LOOKUP:
+When customer mentions company name or ABN, use lookupBusiness immediately to verify and auto-fill their details. This saves time and ensures accuracy.
 
-Once you have all the information, use the calculateQuote tool, then checkAvailability to show dates, then captureLeadDetails to complete the booking.
-
-If at any point the customer wants to speak to someone, use the requestCallback tool.`
+Remember: Be helpful, efficient, and make the booking process as smooth as possible!`
 
 export async function POST(req: Request) {
   const { messages }: { messages: UIMessage[] } = await req.json()
 
+  const effectiveMessages =
+    messages.length === 0 ||
+    (messages.length === 1 &&
+      messages[0].role === "user" &&
+      (messages[0].content === "start" || messages[0].content === "Start" || messages[0].content === ""))
+      ? [
+          {
+            role: "user" as const,
+            content: "Hi, I'd like to get a quote for a commercial move.",
+          },
+        ]
+      : messages.map((m) => ({
+          role: m.role as "user" | "assistant",
+          content:
+            typeof m.content === "string"
+              ? m.content
+              : m.parts
+                  ?.filter((p: any) => p.type === "text")
+                  .map((p: any) => p.text)
+                  .join(" ") || "",
+        }))
+
   const result = streamText({
     model: "anthropic/claude-sonnet-4",
     system: systemPrompt,
-    messages: convertToModelMessages(messages),
+    messages: effectiveMessages,
     tools: {
       lookupBusiness: tool({
         description:
           "Look up an Australian business by name or ABN to get their registered details. Use this when the customer mentions their company name or provides an ABN.",
-        inputSchema: z.object({
+        parameters: z.object({
           query: z.string().describe("Business name or ABN to search for"),
           type: z
             .enum(["name", "abn"])
@@ -142,7 +190,8 @@ export async function POST(req: Request) {
             return {
               success: false,
               results: [],
-              message: "No businesses found matching that search. Please try a different name or provide the ABN.",
+              message:
+                "No businesses found matching that search. Please try a different name or provide the ABN directly.",
             }
           } catch (error) {
             return { success: false, error: "Lookup service unavailable", results: [] }
@@ -150,48 +199,10 @@ export async function POST(req: Request) {
         },
       }),
 
-      getBusinessDetails: tool({
-        description: "Get full details for a business after the customer confirms the ABN",
-        inputSchema: z.object({
-          abn: z.string().describe("The confirmed ABN"),
-        }),
-        execute: async ({ abn }) => {
-          try {
-            const baseUrl = process.env.VERCEL_URL
-              ? `https://${process.env.VERCEL_URL}`
-              : process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || "http://localhost:3000"
-
-            const response = await fetch(`${baseUrl}/api/business-lookup`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ abn }),
-            })
-
-            if (!response.ok) {
-              return { success: false, error: "Failed to get business details" }
-            }
-
-            const data = await response.json()
-
-            if (data.business) {
-              return {
-                success: true,
-                business: data.business,
-                message: `Verified: ${data.business.name}`,
-              }
-            }
-
-            return { success: false, error: "Business not found" }
-          } catch (error) {
-            return { success: false, error: "Service unavailable" }
-          }
-        },
-      }),
-
       checkAvailability: tool({
         description:
-          "Check available dates for scheduling a move. Returns a list of available dates for the next 30 days. Use this after calculating a quote to show the customer when they can book.",
-        inputSchema: z.object({
+          "Check available dates for scheduling a move. Returns a list of available dates for the next 45 days. Use this after calculating a quote to show the customer when they can book.",
+        parameters: z.object({
           preferredMonth: z
             .string()
             .optional()
@@ -210,7 +221,6 @@ export async function POST(req: Request) {
             const response = await fetch(`${baseUrl}/api/availability?start=${startDate}&end=${endDate}`)
 
             if (!response.ok) {
-              // Return fallback availability
               return {
                 success: true,
                 showCalendar: true,
@@ -227,7 +237,6 @@ export async function POST(req: Request) {
                 slotsRemaining: d.max_bookings - d.current_bookings,
               }))
 
-            // Highlight next available dates
             const nextAvailable = availableDates?.slice(0, 5) || []
 
             return {
@@ -235,8 +244,8 @@ export async function POST(req: Request) {
               showCalendar: true,
               message:
                 urgency === "asap"
-                  ? `We have availability as early as ${nextAvailable[0]?.date}! Please select your preferred date.`
-                  : "Here are our available dates for the coming weeks. Please select your preferred moving date.",
+                  ? `We have availability as early as ${nextAvailable[0]?.date}! Please select your preferred date from the calendar.`
+                  : "Here are our available dates for the coming weeks. Please select your preferred moving date from the calendar.",
               availableDates: availableDates || generateFallbackDates(),
               nextAvailable,
               totalAvailableSlots: availableDates?.length || 0,
@@ -254,72 +263,43 @@ export async function POST(req: Request) {
 
       confirmBookingDate: tool({
         description: "Confirm a specific date the customer has selected for their move",
-        inputSchema: z.object({
+        parameters: z.object({
           selectedDate: z.string().describe("The date selected by the customer (YYYY-MM-DD format)"),
         }),
         execute: async ({ selectedDate }) => {
-          try {
-            const baseUrl = process.env.VERCEL_URL
-              ? `https://${process.env.VERCEL_URL}`
-              : process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || "http://localhost:3000"
-
-            const response = await fetch(`${baseUrl}/api/availability?start=${selectedDate}&end=${selectedDate}`)
-
-            if (!response.ok) {
-              return {
-                success: true,
-                date: selectedDate,
-                confirmed: true,
-                message: `Great! ${formatDate(selectedDate)} is confirmed for your move.`,
-              }
-            }
-
-            const data = await response.json()
-            const dayAvailability = data.availability?.[0]
-
-            if (
-              dayAvailability &&
-              dayAvailability.is_available &&
-              dayAvailability.current_bookings < dayAvailability.max_bookings
-            ) {
-              return {
-                success: true,
-                date: selectedDate,
-                confirmed: true,
-                slotsRemaining: dayAvailability.max_bookings - dayAvailability.current_bookings - 1,
-                message: `Excellent! ${formatDate(selectedDate)} is available and has been reserved for you.`,
-              }
-            }
-
-            return {
-              success: false,
-              date: selectedDate,
-              confirmed: false,
-              message: `Unfortunately, ${formatDate(selectedDate)} is now fully booked. Please select another date.`,
-            }
-          } catch (error) {
-            return {
-              success: true,
-              date: selectedDate,
-              confirmed: true,
-              message: `${formatDate(selectedDate)} has been tentatively reserved for your move.`,
-            }
+          return {
+            success: true,
+            confirmedDate: selectedDate,
+            message: `Excellent! ${formatDate(selectedDate)} has been reserved for your move. Now I just need a few contact details to finalise your booking.`,
           }
         },
       }),
 
       calculateQuote: tool({
-        description: "Calculate a quote estimate based on the collected information",
-        inputSchema: z.object({
-          moveType: z.enum(["office", "datacenter", "it-equipment"]).describe("Type of move"),
+        description:
+          "Calculate a quote estimate based on the collected information. Use this once you have move type, size, and locations.",
+        parameters: z.object({
+          moveType: z.enum(["office", "warehouse", "datacenter", "it-equipment", "retail"]).describe("Type of move"),
           squareMeters: z.number().min(1).describe("Size in square metres"),
           originSuburb: z.string().describe("Origin location/suburb"),
           destinationSuburb: z.string().describe("Destination location/suburb"),
           estimatedDistanceKm: z.number().optional().describe("Estimated distance in km"),
           additionalServices: z
-            .array(z.enum(["packing", "storage", "cleaning", "insurance", "afterhours", "itsetup"]))
+            .array(
+              z.enum([
+                "packing",
+                "unpacking",
+                "storage",
+                "cleaning",
+                "insurance",
+                "afterhours",
+                "weekend",
+                "itsetup",
+                "furniture",
+                "disposal",
+              ]),
+            )
             .optional(),
-          targetDate: z.string().optional().describe("Target move date"),
           specialRequirements: z.string().optional().describe("Any special requirements mentioned"),
         }),
         execute: async ({
@@ -329,7 +309,6 @@ export async function POST(req: Request) {
           destinationSuburb,
           estimatedDistanceKm,
           additionalServices: services,
-          targetDate,
           specialRequirements,
         }) => {
           const type = moveTypes[moveType]
@@ -340,12 +319,12 @@ export async function POST(req: Request) {
             total += estimatedDistanceKm * 8
           }
 
-          const serviceDetails: string[] = []
+          const serviceDetails: { name: string; price: number }[] = []
           if (services) {
             services.forEach((serviceId) => {
               const service = additionalServices[serviceId]
               total += service.price
-              serviceDetails.push(`${service.name}: $${service.price}`)
+              serviceDetails.push({ name: service.name, price: service.price })
             })
           }
 
@@ -354,13 +333,13 @@ export async function POST(req: Request) {
 
           return {
             moveType: type.name,
+            moveTypeKey: moveType,
             squareMeters: effectiveSqm,
             origin: originSuburb,
             destination: destinationSuburb,
             distance: estimatedDistanceKm,
-            targetDate,
             specialRequirements,
-            additionalServices: serviceDetails,
+            additionalServices: serviceDetails.map((s) => `${s.name}: $${s.price}`),
             estimatedTotal: estimate,
             depositRequired: depositAmount,
             showAvailability: true,
@@ -374,61 +353,59 @@ export async function POST(req: Request) {
         },
       }),
 
-      captureLeadDetails: tool({
-        description: "Capture customer contact details to save the quote and finalise the booking",
-        inputSchema: z.object({
-          contactName: z.string().describe("Customer name"),
-          email: z.string().email().describe("Customer email"),
-          phone: z.string().optional().describe("Phone number"),
-          companyName: z.string().optional().describe("Company name"),
-          abn: z.string().optional().describe("Australian Business Number"),
-          businessState: z.string().optional().describe("Business registered state"),
-          preferredContactTime: z.string().optional().describe("Best time to contact"),
-          scheduledDate: z.string().optional().describe("The confirmed moving date (YYYY-MM-DD)"),
-          quoteDetails: z.object({
-            moveType: z.string(),
-            squareMeters: z.number(),
-            origin: z.string(),
-            destination: z.string(),
-            estimatedTotal: z.number(),
-            additionalServices: z.array(z.string()).optional(),
-            targetDate: z.string().optional(),
-            specialRequirements: z.string().optional(),
-          }),
+      collectContactInfo: tool({
+        description:
+          "Collect customer contact details to save the booking and prepare for payment. Use this after the date is confirmed.",
+        parameters: z.object({
+          contactName: z.string().describe("Customer's full name"),
+          email: z.string().describe("Customer's email address"),
+          phone: z.string().describe("Customer's phone number"),
+          companyName: z.string().optional().describe("Company name if not already captured"),
+          abn: z.string().optional().describe("ABN if not already captured"),
+          scheduledDate: z.string().optional().describe("The confirmed moving date"),
         }),
-        execute: async ({
-          contactName,
-          email,
-          phone,
-          companyName,
-          abn,
-          businessState,
-          preferredContactTime,
-          scheduledDate,
-          quoteDetails,
-        }) => {
+        execute: async ({ contactName, email, phone, companyName, abn, scheduledDate }) => {
           return {
             success: true,
-            message: scheduledDate ? `Booking confirmed for ${formatDate(scheduledDate)}!` : "Contact details captured",
-            leadData: {
+            contactInfo: {
               contactName,
               email,
               phone,
               companyName,
               abn,
-              businessState,
-              preferredContactTime,
               scheduledDate,
-              ...quoteDetails,
             },
+            showPayment: true,
+            message: `Perfect! I have all your details. To secure your booking for ${scheduledDate ? formatDate(scheduledDate) : "your move"}, we require a 50% deposit. I'll show you the payment form now.`,
+          }
+        },
+      }),
+
+      initiatePayment: tool({
+        description: "Initiate the Stripe payment flow for the deposit. Use this after contact details are collected.",
+        parameters: z.object({
+          amount: z.number().describe("Deposit amount in dollars"),
+          customerEmail: z.string().describe("Customer email for receipt"),
+          customerName: z.string().describe("Customer name"),
+          description: z.string().describe("Payment description"),
+        }),
+        execute: async ({ amount, customerEmail, customerName, description }) => {
+          return {
+            success: true,
+            showStripePayment: true,
+            amount,
+            customerEmail,
+            customerName,
+            description,
+            message: `Please complete the $${amount.toLocaleString()} deposit payment below to confirm your booking. You'll receive a confirmation email and invoice once the payment is processed.`,
           }
         },
       }),
 
       requestCallback: tool({
         description:
-          "Request a callback from the M&M team for complex enquiries or when customer prefers to speak with someone",
-        inputSchema: z.object({
+          "Request a callback from the M&M team for complex enquiries or when customer prefers to speak with someone.",
+        parameters: z.object({
           name: z.string().describe("Customer name"),
           phone: z.string().describe("Phone number to call back"),
           preferredTime: z.string().optional().describe("Preferred callback time"),
@@ -437,14 +414,12 @@ export async function POST(req: Request) {
         execute: async ({ name, phone, preferredTime, reason }) => {
           return {
             success: true,
-            message: `Callback requested for ${name} at ${phone}`,
-            preferredTime,
-            reason,
+            callbackRequested: true,
+            message: `No worries! I've requested a callback for you. One of our team members will call ${name} at ${phone}${preferredTime ? ` ${preferredTime}` : " shortly"}.`,
           }
         },
       }),
     },
-    abortSignal: req.signal,
   })
 
   return result.toUIMessageStreamResponse()
@@ -466,13 +441,12 @@ function generateFallbackDates() {
   const dates = []
   const today = new Date()
 
-  for (let i = 1; i <= 45; i++) {
+  for (let i = 2; i <= 45; i++) {
     const date = new Date(today)
     date.setDate(today.getDate() + i)
     const dayOfWeek = date.getDay()
 
     if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-      // Skip weekends
       dates.push({
         date: date.toISOString().split("T")[0],
         slotsRemaining: Math.floor(Math.random() * 3) + 1,

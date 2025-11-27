@@ -12,6 +12,10 @@ export interface Lead {
   distance_km: number | null
   square_meters: number | null
   estimated_total: number | null
+  deposit_amount: number | null
+  deposit_paid: boolean | null
+  payment_status: string | null
+  scheduled_date: string | null
   additional_services: string[] | null
   industry_type: string | null
   employee_count: string | null
@@ -27,7 +31,7 @@ export interface Lead {
 }
 
 export interface LeadInsert {
-  lead_type: "instant_quote" | "custom_quote"
+  lead_type?: "instant_quote" | "custom_quote"
   email: string
   contact_name?: string
   company_name?: string
@@ -38,6 +42,10 @@ export interface LeadInsert {
   distance_km?: number
   square_meters?: number
   estimated_total?: number
+  deposit_amount?: number
+  deposit_paid?: boolean
+  payment_status?: string
+  scheduled_date?: string
   additional_services?: string[]
   industry_type?: string
   employee_count?: string
