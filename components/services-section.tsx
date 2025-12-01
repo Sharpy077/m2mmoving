@@ -52,7 +52,7 @@ export function ServicesSection() {
               <CardHeader>
                 <div className="flex items-start justify-between mb-4">
                   <div className="w-12 h-12 bg-primary/10 border border-primary/30 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                    {service.icon && <service.icon className="w-6 h-6 text-primary" />}
+                    {service.icon && <service.icon className="w-6 h-6 text-primary" aria-hidden="true" />}
                   </div>
                   <span className="text-xs font-mono text-muted-foreground">[{service.code}]</span>
                 </div>

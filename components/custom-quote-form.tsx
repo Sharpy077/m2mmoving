@@ -10,8 +10,10 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Send, Building2, User, Mail, Phone, Calendar, FileText, CheckCircle2, Loader2 } from "lucide-react"
+import { Send, Building2, User, Mail, Phone, Calendar, FileText, CheckCircle2, Loader2, AlertCircle } from "lucide-react"
 import { submitLead } from "@/app/actions/leads"
+import { validateEmail, validatePhone } from "@/lib/validation"
+import { cn } from "@/lib/utils"
 
 const businessTypes = [
   "Corporate Office",
@@ -42,6 +44,11 @@ export function CustomQuoteForm() {
   const [submittedLead, setSubmittedLead] = useState<any>(null)
   const [selectedRequirements, setSelectedRequirements] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  
+  // Validation state
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const [errors, setErrors] = useState<Record<string, string | null>>({})
 
   const [formData, setFormData] = useState({
     fullName: "",
@@ -64,11 +71,47 @@ export function CustomQuoteForm() {
 
   const updateFormData = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
+    // Validate on change if field has been touched
+    if (touched[field]) {
+      validateField(field, value)
+    }
+  }
+
+  const validateField = (field: string, value: string) => {
+    let error: string | null = null
+    
+    switch (field) {
+      case 'email':
+        error = validateEmail(value)
+        break
+      case 'phone':
+        error = validatePhone(value, true) // Required in custom form
+        break
+    }
+    
+    setErrors(prev => ({ ...prev, [field]: error }))
+    return error === null
+  }
+
+  const handleBlur = (field: string) => {
+    setTouched(prev => ({ ...prev, [field]: true }))
+    validateField(field, formData[field as keyof typeof formData] || '')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // Validate all required fields
+    setTouched({ email: true, phone: true, fullName: true, companyName: true })
+    const emailValid = validateField('email', formData.email)
+    const phoneValid = validateField('phone', formData.phone)
+    
+    if (!emailValid || !phoneValid) {
+      return
+    }
+    
     setIsSubmitting(true)
+    setSubmitError(null)
 
     const result = await submitLead({
       lead_type: "custom_quote",
@@ -92,6 +135,8 @@ export function CustomQuoteForm() {
     if (result.success) {
       setSubmitted(true)
       setSubmittedLead(result.lead)
+    } else {
+      setSubmitError(result.error || "Failed to submit quote. Please try again.")
     }
   }
 
@@ -187,10 +232,17 @@ export function CustomQuoteForm() {
                 required
                 type="email"
                 placeholder="john@company.com.au"
-                className="bg-background border-border"
+                className={cn(
+                  "bg-background border-border",
+                  errors.email && "border-destructive"
+                )}
                 value={formData.email}
                 onChange={(e) => updateFormData("email", e.target.value)}
+                onBlur={() => handleBlur("email")}
               />
+              {errors.email && (
+                <p className="text-xs text-destructive mt-1">{errors.email}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label className="text-sm font-mono text-muted-foreground flex items-center gap-2">
@@ -200,10 +252,17 @@ export function CustomQuoteForm() {
                 required
                 type="tel"
                 placeholder="04XX XXX XXX"
-                className="bg-background border-border"
+                className={cn(
+                  "bg-background border-border",
+                  errors.phone && "border-destructive"
+                )}
                 value={formData.phone}
                 onChange={(e) => updateFormData("phone", e.target.value)}
+                onBlur={() => handleBlur("phone")}
               />
+              {errors.phone && (
+                <p className="text-xs text-destructive mt-1">{errors.phone}</p>
+              )}
             </div>
           </div>
         </CardContent>
@@ -370,6 +429,29 @@ export function CustomQuoteForm() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Error Display */}
+      {submitError && (
+        <Card className="border-destructive bg-destructive/10">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h4 className="font-semibold text-destructive mb-1">Submission Error</h4>
+                <p className="text-sm text-muted-foreground">{submitError}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => setSubmitError(null)}
+                >
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Submit */}
       <Card className="border-secondary bg-card">
