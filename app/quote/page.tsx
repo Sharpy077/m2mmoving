@@ -1,3 +1,5 @@
+"use client"
+
 import { Suspense } from "react"
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
@@ -7,7 +9,7 @@ import { Button } from "@/components/ui/button"
 
 function QuotePageContent() {
   return (
-    <main className="min-h-screen bg-background">
+    <main className="min-h-screen bg-background pb-20 md:pb-0">
       <Navbar />
       <div className="pt-24 pb-16">
         <div className="container mx-auto px-4">

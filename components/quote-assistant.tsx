@@ -39,6 +39,7 @@ import { submitLead } from "@/app/actions/leads"
 import { createDepositCheckout } from "@/app/actions/stripe"
 import { useFormPersistence } from "@/hooks/use-form-persistence"
 import { PaymentConfirmation } from "@/components/payment-confirmation"
+import { getStripeErrorMessage } from "@/lib/stripe-errors"
 
 const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null
@@ -252,6 +253,11 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       "business" | "service" | "details" | "quote" | "date" | "contact" | "payment" | "complete"
     >("business")
     const [showInitialPrompts, setShowInitialPrompts] = useState(true)
+    
+    // Loading states
+    const [isLookingUpBusiness, setIsLookingUpBusiness] = useState(false)
+    const [isCheckingAvailability, setIsCheckingAvailability] = useState(false)
+    const [isCalculatingQuote, setIsCalculatingQuote] = useState(false)
 
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLInputElement>(null)
@@ -327,9 +333,12 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
               const toolName = part.type.replace("tool-", "")
               const result = part.output
 
-              if (toolName === "lookupBusiness" && result?.results?.length > 0) {
-                setBusinessLookupResults(result.results)
-                setCurrentStep("business")
+              if (toolName === "lookupBusiness") {
+                setIsLookingUpBusiness(false)
+                if (result?.results?.length > 0) {
+                  setBusinessLookupResults(result.results)
+                  setCurrentStep("business")
+                }
               }
 
               if (toolName === "confirmBusiness" && result?.confirmed) {
@@ -352,18 +361,24 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
                 setCurrentStep("service")
               }
 
-              if (toolName === "calculateQuote" && result?.estimatedTotal) {
-                setCurrentQuote(result)
-                setCurrentStep("quote")
-                if (result.showAvailability) {
-                  setShowCalendar(true)
+              if (toolName === "calculateQuote") {
+                setIsCalculatingQuote(false)
+                if (result?.estimatedTotal) {
+                  setCurrentQuote(result)
+                  setCurrentStep("quote")
+                  if (result.showAvailability) {
+                    setShowCalendar(true)
+                  }
                 }
               }
 
-              if (toolName === "checkAvailability" && result?.dates) {
-                setAvailableDates(result.dates)
-                setShowCalendar(true)
-                setCurrentStep("date")
+              if (toolName === "checkAvailability") {
+                setIsCheckingAvailability(false)
+                if (result?.dates) {
+                  setAvailableDates(result.dates)
+                  setShowCalendar(true)
+                  setCurrentStep("date")
+                }
               }
 
               if (toolName === "confirmBookingDate" && result?.confirmedDate) {
@@ -399,8 +414,11 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             if (toolCall.state === "result") {
               const result = toolCall.result
 
-              if (toolCall.toolName === "lookupBusiness" && result?.results?.length > 0) {
-                setBusinessLookupResults(result.results)
+              if (toolCall.toolName === "lookupBusiness") {
+                setIsLookingUpBusiness(false)
+                if (result?.results?.length > 0) {
+                  setBusinessLookupResults(result.results)
+                }
               }
 
               if (toolCall.toolName === "confirmBusiness" && result?.confirmed) {
@@ -419,15 +437,21 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
                 setShowServicePicker(true)
               }
 
-              if (toolCall.toolName === "calculateQuote" && result?.estimatedTotal) {
-                setCurrentQuote(result)
-                setCurrentStep("quote")
+              if (toolCall.toolName === "calculateQuote") {
+                setIsCalculatingQuote(false)
+                if (result?.estimatedTotal) {
+                  setCurrentQuote(result)
+                  setCurrentStep("quote")
+                }
               }
 
-              if (toolCall.toolName === "checkAvailability" && result?.dates) {
-                setAvailableDates(result.dates)
-                setShowCalendar(true)
-                setCurrentStep("date")
+              if (toolCall.toolName === "checkAvailability") {
+                setIsCheckingAvailability(false)
+                if (result?.dates) {
+                  setAvailableDates(result.dates)
+                  setShowCalendar(true)
+                  setCurrentStep("date")
+                }
               }
 
               if (toolCall.toolName === "collectContactInfo" && result?.collected) {
@@ -469,15 +493,54 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       }
     }, [isOpen, embedded, hasStarted, messages.length, sendMessage])
 
+    const [userHasScrolledUp, setUserHasScrolledUp] = useState(false)
+    const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
+
     useEffect(() => {
-      // Use scrollTop on the container instead of scrollIntoView to avoid page scroll
+      // Check for reduced motion preference
+      if (typeof window !== 'undefined') {
+        const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+        setPrefersReducedMotion(mediaQuery.matches)
+        
+        const handleChange = (e: MediaQueryListEvent) => {
+          setPrefersReducedMotion(e.matches)
+        }
+        
+        mediaQuery.addEventListener('change', handleChange)
+        return () => mediaQuery.removeEventListener('change', handleChange)
+      }
+    }, [])
+
+    useEffect(() => {
+      // Track if user has manually scrolled up
       if (messagesEndRef.current) {
         const container = messagesEndRef.current.parentElement
         if (container) {
-          container.scrollTop = container.scrollHeight
+          const handleScroll = () => {
+            const { scrollTop, scrollHeight, clientHeight } = container
+            const isNearBottom = scrollHeight - scrollTop - clientHeight < 100
+            setUserHasScrolledUp(!isNearBottom)
+          }
+          
+          container.addEventListener('scroll', handleScroll)
+          return () => container.removeEventListener('scroll', handleScroll)
         }
       }
-    }, [messages, businessLookupResults, currentQuote, showCalendar, showPayment, showServicePicker])
+    }, [])
+
+    useEffect(() => {
+      // Only auto-scroll if user hasn't scrolled up and motion is not reduced
+      if (messagesEndRef.current && !prefersReducedMotion && !userHasScrolledUp) {
+        const container = messagesEndRef.current.parentElement
+        if (container) {
+          // Use smooth scroll if motion is allowed, instant if reduced
+          container.scrollTo({
+            top: container.scrollHeight,
+            behavior: prefersReducedMotion ? 'auto' : 'smooth'
+          })
+        }
+      }
+    }, [messages, businessLookupResults, currentQuote, showCalendar, showPayment, showServicePicker, prefersReducedMotion, userHasScrolledUp])
 
     useEffect(() => {
       if (typeof window !== "undefined") {
@@ -553,6 +616,19 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       setInputValue("")
       setBusinessLookupResults(null)
       setShowServicePicker(false)
+      
+      // Detect if message might trigger business lookup or quote calculation
+      const lowerText = text.toLowerCase()
+      if (lowerText.includes('abn') || lowerText.includes('business') || lowerText.includes('company')) {
+        setIsLookingUpBusiness(true)
+      }
+      if (lowerText.includes('quote') || lowerText.includes('price') || lowerText.includes('cost')) {
+        setIsCalculatingQuote(true)
+      }
+      if (lowerText.includes('available') || lowerText.includes('date') || lowerText.includes('when')) {
+        setIsCheckingAvailability(true)
+      }
+      
       sendMessage({ text })
     }
 
@@ -705,6 +781,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         )
       }
 
+      const isCurrentMonth = calendarMonth.getMonth() === new Date().getMonth() && 
+                            calendarMonth.getFullYear() === new Date().getFullYear()
+
       return (
         <div className="bg-card border border-border rounded-lg p-3 my-3">
           <div className="flex items-center justify-between mb-3">
@@ -712,16 +791,31 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
               variant="ghost"
               size="sm"
               onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1))}
+              aria-label="Previous month"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="font-medium text-sm">
-              {calendarMonth.toLocaleDateString("en-AU", { month: "long", year: "numeric" })}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-sm">
+                {calendarMonth.toLocaleDateString("en-AU", { month: "long", year: "numeric" })}
+              </span>
+              {!isCurrentMonth && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setCalendarMonth(new Date())}
+                  className="h-6 px-2 text-xs"
+                  title="Go to current month"
+                >
+                  Today
+                </Button>
+              )}
+            </div>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1))}
+              aria-label="Next month"
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
@@ -884,39 +978,41 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       const [loading, setLoading] = useState(true)
       const [creationError, setCreationError] = useState<string | null>(null)
 
-      useEffect(() => {
-        const getCheckoutSession = async () => {
-          if (!stripePromise) {
-            setCreationError("Online payments are not configured yet.")
-            setLoading(false)
-            return
-          }
-
-          try {
-            setCreationError(null)
-            const result = await createDepositCheckout({
-              amount,
-              customerEmail: customerEmail || "",
-              customerName: customerName || "",
-              description,
-              moveType: currentQuote?.moveType || undefined,
-              origin: currentQuote?.origin || undefined,
-              destination: currentQuote?.destination || undefined,
-              scheduledDate: selectedDate || undefined,
-            })
-
-            if (result.success && result.clientSecret) {
-              setClientSecret(result.clientSecret)
-            } else {
-              setCreationError(result.error || "Unable to start payment session.")
-            }
-          } catch (error) {
-            console.error("Failed to create checkout:", error)
-            setCreationError("Unable to start payment session.")
-          } finally {
-            setLoading(false)
-          }
+      const getCheckoutSession = async () => {
+        if (!stripePromise) {
+          setCreationError("Online payments are not configured yet.")
+          setLoading(false)
+          return
         }
+
+        try {
+          setCreationError(null)
+          setLoading(true)
+          const result = await createDepositCheckout({
+            amount,
+            customerEmail: customerEmail || "",
+            customerName: customerName || "",
+            description,
+            moveType: currentQuote?.moveType || undefined,
+            origin: currentQuote?.origin || undefined,
+            destination: currentQuote?.destination || undefined,
+            scheduledDate: selectedDate || undefined,
+          })
+
+          if (result.success && result.clientSecret) {
+            setClientSecret(result.clientSecret)
+          } else {
+            setCreationError(result.error || "Unable to start payment session.")
+          }
+        } catch (error) {
+          console.error("Failed to create checkout:", error)
+          setCreationError("Unable to start payment session.")
+        } finally {
+          setLoading(false)
+        }
+      }
+
+      useEffect(() => {
         getCheckoutSession()
       }, [
         amount,
@@ -938,13 +1034,34 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       }
 
       if (creationError || !clientSecret || !stripePromise) {
+        const userFriendlyError = creationError 
+          ? getStripeErrorMessage(creationError)
+          : "Unable to load payment form."
+          
         return (
           <div className="text-center py-4 space-y-2">
-            <p className="text-sm text-muted-foreground">{creationError ?? "Unable to load payment form."}</p>
-            <Button variant="outline" size="sm" onClick={handleCall}>
-              <Phone className="h-4 w-4 mr-2" />
-              Call to complete booking
-            </Button>
+            <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground mb-4">{userFriendlyError}</p>
+            <div className="flex flex-col gap-2">
+              <Button variant="outline" size="sm" onClick={handleCall}>
+                <Phone className="h-4 w-4 mr-2" />
+                Call to complete booking
+              </Button>
+              {creationError && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => {
+                    setCreationError(null)
+                    setLoading(true)
+                    getCheckoutSession()
+                  }}
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Try Again
+                </Button>
+              )}
+            </div>
           </div>
         )
       }
@@ -1125,7 +1242,41 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
 
                   <PaymentSection />
 
-                  {isLoading && (
+                  {/* Loading states */}
+                  {isLookingUpBusiness && (
+                    <div className="flex justify-start">
+                      <div className="bg-muted rounded-lg px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                          <span className="text-sm text-muted-foreground">Looking up business...</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {isCalculatingQuote && (
+                    <div className="flex justify-start">
+                      <div className="bg-muted rounded-lg px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                          <span className="text-sm text-muted-foreground">Calculating quote...</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {isCheckingAvailability && (
+                    <div className="flex justify-start">
+                      <div className="bg-muted rounded-lg px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                          <span className="text-sm text-muted-foreground">Checking availability...</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {isLoading && !isLookingUpBusiness && !isCalculatingQuote && !isCheckingAvailability && (
                     <div className="flex justify-start">
                       <div className="bg-muted rounded-lg px-3 py-2">
                         <div className="flex items-center gap-2">
@@ -1151,9 +1302,10 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
                     className={`h-9 w-9 flex-shrink-0 ${isListening ? "bg-red-500/20 text-red-500" : ""}`}
                     onClick={toggleListening}
                     disabled={isLoading}
-                    title="Voice input"
+                    aria-label={isListening ? "Stop voice input" : "Start voice input"}
+                    title={isListening ? "Stop voice input" : "Start voice input"}
                   >
-                    {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                    {isListening ? <MicOff className="h-4 w-4" aria-hidden="true" /> : <Mic className="h-4 w-4" aria-hidden="true" />}
                   </Button>
                   <Input
                     ref={inputRef}

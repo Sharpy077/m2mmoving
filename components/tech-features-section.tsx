@@ -90,7 +90,7 @@ export function TechFeaturesSection() {
             >
               {feature.comingSoon && (
                 <div className="absolute top-3 right-3 px-2 py-1 bg-accent/20 border border-accent/50 text-accent text-xs font-mono uppercase tracking-wider">
-                  Coming Soon
+                  In Development
                 </div>
               )}
               <div className="flex-shrink-0">
@@ -138,7 +138,7 @@ export function TechFeaturesSection() {
               <span className="text-secondary">$</span> tracking_uptime
             </p>
             <p className="text-foreground">
-              → <span className="text-accent">Coming Soon</span>
+              → <span className="text-accent">In Development</span>
             </p>
           </div>
         </div>

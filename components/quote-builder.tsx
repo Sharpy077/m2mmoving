@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, useEffect } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -30,6 +31,9 @@ import { EmbeddedCheckout, EmbeddedCheckoutProvider } from "@stripe/react-stripe
 import { validateEmail, validatePhone, validateDistance } from "@/lib/validation"
 import { cn } from "@/lib/utils"
 import { PaymentConfirmation } from "@/components/payment-confirmation"
+import { useBeforeUnload } from "@/hooks/use-beforeunload"
+import { useFormPersistence } from "@/hooks/use-form-persistence"
+import { FileText, X } from "lucide-react"
 
 const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null
@@ -124,7 +128,12 @@ const additionalServices = [
 ]
 
 export function QuoteBuilder() {
-  const [step, setStep] = useState(1)
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const [step, setStep] = useState(() => {
+    const stepParam = searchParams.get('step')
+    return stepParam ? parseInt(stepParam) : 1
+  })
   const [selectedType, setSelectedType] = useState<string | null>(null)
   const [expandedType, setExpandedType] = useState<string | null>(null)
   const [squareMeters, setSquareMeters] = useState([100])
@@ -326,6 +335,42 @@ export function QuoteBuilder() {
     return Promise.resolve(paymentClientSecret!)
   }, [paymentClientSecret])
 
+  // Update URL when step changes
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (step > 1) {
+      params.set('step', step.toString())
+    } else {
+      params.delete('step')
+    }
+    const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname
+    window.history.replaceState({ step }, '', newUrl)
+  }, [step, searchParams])
+
+  // Handle browser back/forward buttons
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      if (e.state && e.state.step) {
+        setStep(e.state.step)
+      } else {
+        const params = new URLSearchParams(window.location.search)
+        const stepParam = params.get('step')
+        if (stepParam) {
+          setStep(parseInt(stepParam))
+        } else {
+          setStep(1)
+        }
+      }
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  const handleStepChange = (newStep: number) => {
+    setStep(newStep)
+  }
+
   const handleTypeClick = (typeId: string) => {
     if (expandedType === typeId) {
       setSelectedType(typeId)
@@ -344,6 +389,73 @@ export function QuoteBuilder() {
 
   const selectedMoveType = moveTypes.find((t) => t.id === selectedType)
   const isBelowMinimum = selectedMoveType && squareMeters[0] < selectedMoveType.minSqm
+
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = step > 1 && !submitted && !paymentComplete && (
+    email || phone || companyName || contactName || originSuburb || destSuburb || distance
+  )
+
+  // Warn before leaving with unsaved changes
+  useBeforeUnload(hasUnsavedChanges)
+
+  // Form persistence
+  const formState = {
+    step,
+    selectedType,
+    squareMeters,
+    selectedServices,
+    originSuburb,
+    destSuburb,
+    distance,
+    email,
+    phone,
+    companyName,
+    contactName
+  }
+
+  const { loadSavedData, clearSavedData } = useFormPersistence(
+    formState,
+    'quote-builder-draft',
+    step < 3 && !submitted && !paymentComplete
+  )
+
+  const [showDraftBanner, setShowDraftBanner] = useState(false)
+
+  // Load draft on mount
+  useEffect(() => {
+    if (!submitted && !paymentComplete) {
+      const saved = loadSavedData()
+      if (saved && (saved.step > 1 || saved.email || saved.phone)) {
+        setShowDraftBanner(true)
+      }
+    }
+  }, [])
+
+  const restoreDraft = () => {
+    const saved = loadSavedData()
+    if (saved) {
+      setStep(saved.step || 1)
+      setSelectedType(saved.selectedType || null)
+      setSquareMeters(saved.squareMeters || [100])
+      setSelectedServices(saved.selectedServices || [])
+      setOriginSuburb(saved.originSuburb || "")
+      setDestSuburb(saved.destSuburb || "")
+      setDistance(saved.distance || "")
+      setEmail(saved.email || "")
+      setPhone(saved.phone || "")
+      setCompanyName(saved.companyName || "")
+      setContactName(saved.contactName || "")
+      setShowDraftBanner(false)
+    }
+  }
+
+  // Clear draft on successful submission
+  useEffect(() => {
+    if (submitted || paymentComplete) {
+      clearSavedData()
+      setShowDraftBanner(false)
+    }
+  }, [submitted, paymentComplete])
 
   if (paymentComplete && submittedLead && estimate) {
     return (
@@ -426,6 +538,18 @@ export function QuoteBuilder() {
             <p className="text-muted-foreground">
               STATUS: <span className="text-foreground">PENDING_REVIEW</span>
             </p>
+            {selectedMoveType && (
+              <p className="text-muted-foreground">
+                SERVICE: <span className="text-foreground">{selectedMoveType.name}</span>
+              </p>
+            )}
+            {(originSuburb || destSuburb) && (
+              <p className="text-muted-foreground">
+                ROUTE: <span className="text-foreground">
+                  {originSuburb || 'TBD'} → {destSuburb || 'TBD'}
+                </span>
+              </p>
+            )}
           </div>
 
           <div className="border border-primary/30 bg-black/30 p-6 text-left space-y-4">
@@ -481,6 +605,31 @@ export function QuoteBuilder() {
 
   return (
     <div className="border border-primary/30 bg-black/50">
+      {/* Draft Banner */}
+      {showDraftBanner && (
+        <div className="bg-primary/10 border-b border-primary/30 p-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-primary" />
+            <span className="text-sm">You have a saved draft. Would you like to continue?</span>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={restoreDraft}>
+              Restore
+            </Button>
+            <Button 
+              size="sm" 
+              variant="ghost" 
+              onClick={() => {
+                clearSavedData()
+                setShowDraftBanner(false)
+              }}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Progress Bar */}
       <div className="border-b border-primary/30 p-4">
         <div className="flex items-center justify-between mb-2">
@@ -587,7 +736,7 @@ export function QuoteBuilder() {
             </div>
 
             <Button
-              onClick={() => setStep(2)}
+              onClick={() => handleStepChange(2)}
               disabled={!selectedType}
               className="w-full bg-primary hover:bg-primary/80 text-primary-foreground"
             >
@@ -710,12 +859,12 @@ export function QuoteBuilder() {
             )}
 
             <div className="flex gap-3">
-              <Button variant="outline" onClick={() => setStep(1)} className="flex-1 border-primary/50">
+              <Button variant="outline" onClick={() => handleStepChange(1)} className="flex-1 border-primary/50">
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Back
               </Button>
               <Button
-                onClick={() => setStep(3)}
+                onClick={() => handleStepChange(3)}
                 className="flex-1 bg-primary hover:bg-primary/80 text-primary-foreground"
                 disabled={isBelowMinimum}
               >
@@ -838,7 +987,7 @@ export function QuoteBuilder() {
             )}
 
             <div className="flex gap-3">
-              <Button variant="outline" onClick={() => setStep(2)} className="flex-1 border-primary/50">
+              <Button variant="outline" onClick={() => handleStepChange(2)} className="flex-1 border-primary/50">
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Back
               </Button>

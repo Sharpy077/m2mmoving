@@ -177,3 +177,27 @@
     white-space: normal;
   }
 }
+
+@layer base {
+  /* Focus indicators for keyboard navigation */
+  *:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [role="button"]:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+
+  /* Remove default outline for mouse users */
+  *:focus:not(:focus-visible) {
+    outline: none;
+  }
+}
