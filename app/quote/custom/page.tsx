@@ -1,6 +1,7 @@
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import { CustomQuoteForm } from "@/components/custom-quote-form"
+import { Breadcrumbs } from "@/components/breadcrumbs"
 
 export default function CustomQuotePage() {
   return (
@@ -9,6 +10,13 @@ export default function CustomQuotePage() {
       <div className="pt-24 pb-16">
         <div className="container mx-auto px-4">
           <div className="max-w-3xl mx-auto">
+            <Breadcrumbs
+              items={[
+                { label: "Get Quote", href: "/quote" },
+                { label: "Custom Quote" }
+              ]}
+              className="mb-6"
+            />
             <div className="mb-8">
               <div className="flex items-center gap-2 text-secondary font-mono text-sm mb-2">
                 <span className="w-2 h-2 bg-secondary animate-pulse" />

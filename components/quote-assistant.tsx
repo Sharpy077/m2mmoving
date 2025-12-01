@@ -159,10 +159,8 @@ const ServicePicker = ({
 const InitialPrompts = ({ onSelect }: { onSelect: (prompt: string) => void }) => {
   const prompts = [
     { text: "I need to move my office", icon: Building2 },
-    { text: "Moving a warehouse", icon: Warehouse },
     { text: "Data centre relocation", icon: Server },
     { text: "Just need IT equipment moved", icon: Monitor },
-    { text: "Relocating my retail store", icon: Store },
     { text: "I'd like to speak to someone", icon: Phone },
   ]
 
@@ -175,8 +173,9 @@ const InitialPrompts = ({ onSelect }: { onSelect: (prompt: string) => void }) =>
             key={i}
             onClick={() => onSelect(prompt.text)}
             className="flex items-center gap-2 p-3 rounded-lg border border-border bg-card hover:bg-accent hover:border-primary/50 transition-all text-left text-sm"
+            aria-label={prompt.text}
           >
-            <prompt.icon className="h-4 w-4 text-primary flex-shrink-0" />
+            <prompt.icon className="h-4 w-4 text-primary flex-shrink-0" aria-hidden="true" />
             <span className="truncate">{prompt.text}</span>
           </button>
         ))}
