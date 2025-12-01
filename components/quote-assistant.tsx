@@ -431,7 +431,13 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     }, [isOpen, embedded, hasStarted, messages.length, sendMessage])
 
     useEffect(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+      // Use scrollTop on the container instead of scrollIntoView to avoid page scroll
+      if (messagesEndRef.current) {
+        const container = messagesEndRef.current.parentElement
+        if (container) {
+          container.scrollTop = container.scrollHeight
+        }
+      }
     }, [messages, businessLookupResults, currentQuote, showCalendar, showPayment, showServicePicker])
 
     useEffect(() => {
