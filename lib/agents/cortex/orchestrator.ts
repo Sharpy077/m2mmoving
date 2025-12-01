@@ -23,37 +23,42 @@ interface HealthStatus {
 
 // Stub agent for development
 class StubAgent extends BaseAgent {
-  private _identity: AgentIdentity
+  private readonly stubIdentity: AgentIdentity
 
   constructor(codename: AgentCodename, name: string, description: string) {
-    super({
-      codename,
-      enabled: true,
-      model: "gpt-4o",
-      temperature: 0.7,
-      maxTokens: 2000,
-      systemPrompt: `You are ${name}, an AI assistant for M&M Commercial Moving.`,
-      tools: [],
-      triggers: [],
-      escalationRules: [],
-      rateLimits: { requestsPerMinute: 30, tokensPerDay: 500000 },
-    })
-    
-    this._identity = {
+    const identity: AgentIdentity = {
       codename,
       name,
       description,
       version: "1.0.0",
       capabilities: ["general-assistance"],
     }
+
+    super(
+      {
+        codename,
+        enabled: true,
+        model: "gpt-4o",
+        temperature: 0.7,
+        maxTokens: 2000,
+        systemPrompt: `You are ${name}, an AI assistant for M&M Commercial Moving.`,
+        tools: [],
+        triggers: [],
+        escalationRules: [],
+        rateLimits: { requestsPerMinute: 30, tokensPerDay: 500000 },
+      },
+      () => identity
+    )
+
+    this.stubIdentity = identity
   }
 
   protected getIdentity(): AgentIdentity {
-    return this._identity
+    return this.stubIdentity
   }
 
   async process(input: AgentInput): Promise<AgentOutput> {
-    const response = `Hello! I'm ${this._identity.name}, your AI assistant for M&M Commercial Moving. How can I help you today with your commercial relocation needs?`
+    const response = `Hello! I'm ${this.stubIdentity.name}, your AI assistant for M&M Commercial Moving. How can I help you today with your commercial relocation needs?`
     
     return this.buildDefaultResponse(response)
   }
