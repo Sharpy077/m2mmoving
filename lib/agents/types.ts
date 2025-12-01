@@ -375,4 +375,3 @@ export interface Job {
   notes?: string
   metadata?: Record<string, unknown>
 }
-

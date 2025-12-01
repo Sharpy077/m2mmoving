@@ -16,4 +16,3 @@ export function formatCurrency(value?: number | null) {
   if (!value && value !== 0) return "TBD"
   return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(value)
 }
-

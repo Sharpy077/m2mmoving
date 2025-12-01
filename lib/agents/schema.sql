@@ -456,4 +456,3 @@ LEFT JOIN intent_signals is ON is.prospect_id = p.id
 WHERE p.status NOT IN ('converted', 'lost')
 GROUP BY p.id
 ORDER BY p.score DESC, p.updated_at DESC;
-

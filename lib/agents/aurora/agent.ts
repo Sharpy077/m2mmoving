@@ -1169,4 +1169,3 @@ export function getAurora(): AuroraAgent {
 export function resetAurora(): void {
   auroraInstance = null
 }
-

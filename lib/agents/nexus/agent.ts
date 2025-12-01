@@ -723,4 +723,3 @@ export function getNexus(): NexusAgent {
 export function resetNexus(): void {
   nexusInstance = null
 }
-

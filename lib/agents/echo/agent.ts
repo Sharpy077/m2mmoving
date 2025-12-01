@@ -457,4 +457,3 @@ export function getEcho(): EchoAgent {
 export function resetEcho(): void {
   echoInstance = null
 }
-

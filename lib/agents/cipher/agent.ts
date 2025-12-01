@@ -571,4 +571,3 @@ export function getCipher(): CipherAgent {
 export function resetCipher(): void {
   cipherInstance = null
 }
-

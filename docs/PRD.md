@@ -195,7 +195,7 @@ For complex projects requiring manual assessment. Collects:
 
 #### Leads Table
 
-```typescript
+\`\`\`typescript
 interface Lead {
   id: string
   lead_type: "instant_quote" | "custom_quote"
@@ -227,11 +227,11 @@ interface Lead {
   created_at: string
   updated_at: string
 }
-```
+\`\`\`
 
 #### Voicemails Table
 
-```typescript
+\`\`\`typescript
 interface Voicemail {
   id: string
   caller_number: string
@@ -243,7 +243,7 @@ interface Voicemail {
   notes: string | null
   created_at: string
 }
-```
+\`\`\`
 
 ### 4.3 API Routes
 
@@ -339,7 +339,7 @@ M&M Commercial Moving operates with an AI-first salesforce—a network of specia
 
 ### 7.1 AI Salesforce Overview
 
-```
+\`\`\`
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         AI SALESFORCE COMMAND CENTER                        │
 ├─────────────────────────────────────────────────────────────────────────────┤
@@ -367,7 +367,7 @@ M&M Commercial Moving operates with an AI-first salesforce—a network of specia
 │  │     Coordinates all agents • Maintains context • Resolves conflicts   │ │
 │  └───────────────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────────────┘
-```
+\`\`\`
 
 ---
 
@@ -389,7 +389,7 @@ M&M Commercial Moving operates with an AI-first salesforce—a network of specia
 | **Visual Content** | Image generation for posts, infographics | DALL-E, Midjourney |
 
 **Autonomous Workflows:**
-```
+\`\`\`
 AURORA_MKT.workflows = {
   daily: [
     "Generate 3 social media posts for each platform",
@@ -413,7 +413,7 @@ AURORA_MKT.workflows = {
     "Low engagement → A/B test new approaches"
   ]
 }
-```
+\`\`\`
 
 **Sample Tools:**
 | Tool | Purpose |
@@ -442,7 +442,7 @@ AURORA_MKT.workflows = {
 | **Meeting Scheduling** | Autonomous calendar booking | Cal.com, Calendly |
 
 **Intent Signals Monitored:**
-```typescript
+\`\`\`typescript
 interface IntentSignal {
   type: 
     | "commercial_lease_listing"    // New office listed for lease
@@ -458,7 +458,7 @@ interface IntentSignal {
   company: CompanyProfile
   timing: "immediate" | "near_term" | "future"
 }
-```
+\`\`\`
 
 **Outreach Templates:**
 - Cold email sequences (5-touch)
@@ -495,7 +495,7 @@ interface IntentSignal {
 | **Upselling** | Recommend additional services | ML recommendations |
 
 **Sales Playbook Automation:**
-```typescript
+\`\`\`typescript
 interface SalesPlaybook {
   stage: "discovery" | "qualification" | "proposal" | "negotiation" | "closing"
   
@@ -534,7 +534,7 @@ interface SalesPlaybook {
     onboarding_handoff: "NEXUS_OPS"
   }
 }
-```
+\`\`\`
 
 **Enhanced Tools:**
 | Tool | Purpose |
@@ -565,7 +565,7 @@ interface SalesPlaybook {
 | **CSAT Collection** | Post-interaction surveys | Survey tools |
 
 **Support Tiers:**
-```
+\`\`\`
 Tier 0: Self-Service
 ├── FAQ chatbot
 ├── Booking portal
@@ -585,7 +585,7 @@ Tier 2: Human Escalation
 ├── Legal/compliance issues
 ├── VIP customers
 └── Agent requested escalation
-```
+\`\`\`
 
 **Sample Tools:**
 | Tool | Purpose |
@@ -617,7 +617,7 @@ Tier 2: Human Escalation
 | **NPS Follow-Up** | Convert detractors, amplify promoters |
 
 **Retention Triggers:**
-```typescript
+\`\`\`typescript
 const retentionTriggers = {
   "move_completed": {
     "+7_days": "Send satisfaction survey",
@@ -635,7 +635,7 @@ const retentionTriggers = {
     "365_days": "Win-back offer"
   }
 }
-```
+\`\`\`
 
 ---
 
@@ -680,7 +680,7 @@ const retentionTriggers = {
 | **Strategic Recommendations** | AI-generated insights and actions |
 
 **Sample Insights Generated:**
-```
+\`\`\`
 [ORACLE] Weekly Insight Report - December 2025
 
 📈 OPPORTUNITIES
@@ -697,7 +697,7 @@ const retentionTriggers = {
 1. Shift 20% of Google Ads budget to LinkedIn (higher ROAS)
 2. Implement 48hr follow-up SLA for quotes >$10K
 3. Launch retargeting campaign for abandoned quotes
-```
+\`\`\`
 
 ---
 
@@ -717,7 +717,7 @@ const retentionTriggers = {
 | **Contingency Planning** | Weather delays, traffic adjustments |
 
 **Scheduling Algorithm:**
-```typescript
+\`\`\`typescript
 interface SchedulingFactors {
   job_duration: number           // Estimated hours
   travel_time: number            // Between jobs
@@ -728,7 +728,7 @@ interface SchedulingFactors {
   location_clustering: boolean   // Group nearby jobs
   weather_forecast: WeatherData  // Rain/heat warnings
 }
-```
+\`\`\`
 
 ---
 
@@ -794,7 +794,7 @@ interface SchedulingFactors {
 | **Bundle Optimization** | Optimal service package pricing |
 
 **Pricing Variables:**
-```typescript
+\`\`\`typescript
 interface PricingEngine {
   base_rate: number
   
@@ -815,7 +815,7 @@ interface PricingEngine {
     competitor_match: boolean  // Match competitor prices?
   }
 }
-```
+\`\`\`
 
 ---
 
@@ -851,7 +851,7 @@ interface PricingEngine {
 **Purpose:** Coordinate all AI agents, maintain shared context, resolve conflicts, and ensure cohesive operation  
 **Status:** 🔴 Planned
 
-```typescript
+\`\`\`typescript
 interface CortexOrchestrator {
   // Shared memory and context
   memory: {
@@ -883,10 +883,10 @@ interface CortexOrchestrator {
     model_updates: ModelVersioning
   }
 }
-```
+\`\`\`
 
 **Agent Communication Protocol:**
-```
+\`\`\`
 [HUNTER] → [CORTEX] "New qualified lead: ABC Corp, score 85"
 [CORTEX] → [MAYA] "Engage lead: ABC Corp, context attached"
 [MAYA] → [CORTEX] "Quote sent: $12,500, awaiting response"
@@ -895,7 +895,7 @@ interface CortexOrchestrator {
 [CORTEX] → [NEXUS] "Schedule job: ABC Corp, Dec 15, requirements attached"
 [CORTEX] → [SENTINEL] "Customer onboarded: ABC Corp, enable support"
 [CORTEX] → [PHOENIX] "Add to retention queue: ABC Corp, move date Dec 15"
-```
+\`\`\`
 
 ---
 
@@ -945,7 +945,7 @@ interface CortexOrchestrator {
 
 The AI Salesforce is designed with strategic human oversight points:
 
-```
+\`\`\`
 ┌─────────────────────────────────────────────────────────────────┐
 │                    HUMAN OVERSIGHT DASHBOARD                    │
 ├─────────────────────────────────────────────────────────────────┤
@@ -967,7 +967,7 @@ The AI Salesforce is designed with strategic human oversight points:
 │  ├── Qualification criteria        └── Emergency stop           │
 │  └── Campaign approvals                                         │
 └─────────────────────────────────────────────────────────────────┘
-```
+\`\`\`
 
 ---
 
@@ -1005,7 +1005,7 @@ The AI Salesforce is designed with strategic human oversight points:
 
 ### 9.1 Conversion Funnel
 
-```
+\`\`\`
 Homepage Visits
     ↓
 Quote Started (AI or Manual)
@@ -1015,7 +1015,7 @@ Quote Completed
 Deposit Paid
     ↓
 Move Completed
-```
+\`\`\`
 
 ### 9.2 Key Performance Indicators (KPIs)
 
@@ -1042,7 +1042,7 @@ Move Completed
 
 ### 10.1 Environment Variables Required
 
-```bash
+\`\`\`bash
 # Stripe
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_...
 STRIPE_SECRET_KEY=sk_...
@@ -1068,11 +1068,11 @@ OPENAI_API_KEY=sk-...
 
 # Vercel
 VERCEL_URL=m2mmoving.au
-```
+\`\`\`
 
 ### 10.2 File Structure
 
-```
+\`\`\`
 m2mmoving/
 ├── app/
 │   ├── actions/           # Server actions
@@ -1112,7 +1112,7 @@ m2mmoving/
 ├── styles/                # Additional styles
 └── docs/                  # Documentation
     └── PRD.md            # This document
-```
+\`\`\`
 
 ### 10.3 Contact Information
 
@@ -1141,4 +1141,3 @@ m2mmoving/
 **Last Updated:** December 1, 2025  
 **Prepared by:** Product Review  
 **Status:** Approved - AI Salesforce Architecture Added
-

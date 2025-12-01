@@ -457,4 +457,3 @@ COMMENT ON TABLE agent_escalations IS 'Escalation tickets from AI to human agent
 COMMENT ON TABLE agent_metrics IS 'Aggregated performance metrics per agent per period';
 COMMENT ON TABLE agent_audit_log IS 'Security and compliance audit trail';
 COMMENT ON TABLE agent_qa_audits IS 'Quality assurance audit records for conversations';
-

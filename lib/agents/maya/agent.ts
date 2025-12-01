@@ -956,4 +956,3 @@ export function getMaya(): MayaAgent {
 export function resetMaya(): void {
   mayaInstance = null
 }
-

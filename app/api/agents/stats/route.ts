@@ -102,4 +102,3 @@ function generateSimulatedMetrics(codename: string) {
     lastActive: new Date(Date.now() - Math.random() * 3600000).toISOString(),
   }
 }
-
