@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 import { updateLeadStatus, updateLeadNotes } from "@/app/actions/leads"
 import type { Lead } from "@/lib/types"
+import { computeLeadStats, filterLeads } from "@/lib/leads/dashboard-utils"
 
 const statusColors: Record<string, string> = {
   new: "bg-blue-500/20 text-blue-400 border-blue-500/50",
@@ -55,28 +56,17 @@ export function AdminDashboard({ initialLeads }: AdminDashboardProps) {
   const [editNotes, setEditNotes] = useState("")
   const [isSaving, setIsSaving] = useState(false)
 
-  const filteredLeads = leads.filter((lead) => {
-    const matchesSearch =
-      lead.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      lead.company_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      lead.contact_name?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredLeads = useMemo(
+    () =>
+      filterLeads(leads, {
+        searchTerm,
+        status: statusFilter,
+        type: typeFilter,
+      }),
+    [leads, searchTerm, statusFilter, typeFilter],
+  )
 
-    const matchesStatus = statusFilter === "all" || lead.status === statusFilter
-    const matchesType = typeFilter === "all" || lead.lead_type === typeFilter
-
-    return matchesSearch && matchesStatus && matchesType
-  })
-
-  const stats = {
-    total: leads.length,
-    new: leads.filter((l) => l.status === "new").length,
-    totalValue: leads.reduce((sum, l) => sum + (l.estimated_total || 0), 0),
-    thisWeek: leads.filter((l) => {
-      const weekAgo = new Date()
-      weekAgo.setDate(weekAgo.getDate() - 7)
-      return new Date(l.created_at) > weekAgo
-    }).length,
-  }
+  const stats = useMemo(() => computeLeadStats(leads), [leads])
 
   const handleStatusChange = async (leadId: string, newStatus: string) => {
     setIsSaving(true)

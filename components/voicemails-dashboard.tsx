@@ -1,27 +1,22 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Phone, Clock, MessageSquare, CheckCircle, Archive, Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-
-interface Voicemail {
-  id: string
-  caller_number: string
-  recording_url: string
-  recording_sid: string
-  duration: number
-  transcription: string | null
-  status: "new" | "listened" | "followed_up" | "archived"
-  notes: string | null
-  created_at: string
-}
+import {
+  filterVoicemailsByStatus,
+  formatDuration,
+  formatMelbourneDate,
+  type VoicemailFilter,
+  type VoicemailRecord,
+} from "@/lib/voicemails/utils"
 
 export function VoicemailsDashboard() {
-  const [voicemails, setVoicemails] = useState<Voicemail[]>([])
+  const [voicemails, setVoicemails] = useState<VoicemailRecord[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedVoicemail, setSelectedVoicemail] = useState<Voicemail | null>(null)
-  const [filter, setFilter] = useState<string>("all")
+  const [selectedVoicemail, setSelectedVoicemail] = useState<VoicemailRecord | null>(null)
+  const [filter, setFilter] = useState<VoicemailFilter>("all")
 
   useEffect(() => {
     fetchVoicemails()
@@ -52,27 +47,19 @@ export function VoicemailsDashboard() {
     }
   }
 
-  const filteredVoicemails = filter === "all" ? voicemails : voicemails.filter((v) => v.status === filter)
+  const filteredVoicemails = useMemo(
+    () => filterVoicemailsByStatus(voicemails, filter),
+    [voicemails, filter],
+  )
 
-  const statusCounts = {
-    new: voicemails.filter((v) => v.status === "new").length,
-    listened: voicemails.filter((v) => v.status === "listened").length,
-    followed_up: voicemails.filter((v) => v.status === "followed_up").length,
-  }
-
-  function formatDuration(seconds: number): string {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, "0")}`
-  }
-
-  function formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleString("en-AU", {
-      dateStyle: "medium",
-      timeStyle: "short",
-      timeZone: "Australia/Melbourne",
-    })
-  }
+  const statusCounts = useMemo(
+    () => ({
+      new: voicemails.filter((v) => v.status === "new").length,
+      listened: voicemails.filter((v) => v.status === "listened").length,
+      followed_up: voicemails.filter((v) => v.status === "followed_up").length,
+    }),
+    [voicemails],
+  )
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -166,7 +153,7 @@ export function VoicemailsDashboard() {
                     <div className="flex items-center gap-4 text-sm text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Clock className="w-4 h-4" />
-                        {formatDate(voicemail.created_at)}
+                        {formatMelbourneDate(voicemail.created_at)}
                       </span>
                       <span className="flex items-center gap-1">
                         <Play className="w-4 h-4" />
@@ -222,7 +209,7 @@ export function VoicemailsDashboard() {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground font-mono mb-1">RECEIVED</p>
-                  <p className="font-mono text-foreground">{formatDate(selectedVoicemail.created_at)}</p>
+                  <p className="font-mono text-foreground">{formatMelbourneDate(selectedVoicemail.created_at)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground font-mono mb-1">STATUS</p>

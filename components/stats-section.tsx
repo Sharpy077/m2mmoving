@@ -1,26 +1,9 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ArrowRight, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
-
-// First relocation: ~3 months ago, Second: ~2 weeks ago
-// We simulate gradual growth based on business trajectory
-function calculateRelocations(): number {
-  const startDate = new Date("2025-08-26") // ~3 months ago - first relocation
-  const secondRelocationDate = new Date("2025-11-12") // ~2 weeks ago
-  const now = new Date()
-
-  // Base count is 2 (the completed ones)
-  let count = 2
-
-  // If we're before the second relocation date, only count 1
-  if (now < secondRelocationDate) {
-    count = 1
-  }
-
-  return count
-}
+import { buildMarketingStats, calculateRelocations } from "@/lib/landing/stats"
 
 export function StatsSection() {
   const [relocations, setRelocations] = useState(2)
@@ -41,12 +24,7 @@ export function StatsSection() {
     document.getElementById("quote-assistant")?.scrollIntoView({ behavior: "smooth", block: "center" })
   }
 
-  const stats = [
-    { value: relocations.toString(), label: "Relocations Complete", highlight: false },
-    { value: "$0", label: "Damage Claims", highlight: true },
-    { value: "48hrs", label: "Avg. Project Time", highlight: false },
-    { value: "100%", label: "Client Satisfaction", highlight: true },
-  ]
+  const stats = useMemo(() => buildMarketingStats(relocations), [relocations])
 
   return (
     <section className="py-12 bg-card border-y border-border">
