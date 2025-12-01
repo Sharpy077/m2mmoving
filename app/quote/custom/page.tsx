@@ -4,7 +4,7 @@ import { CustomQuoteForm } from "@/components/custom-quote-form"
 
 export default function CustomQuotePage() {
   return (
-    <main className="min-h-screen bg-background">
+    <main className="min-h-screen bg-background pb-20 md:pb-0">
       <Navbar />
       <div className="pt-24 pb-16">
         <div className="container mx-auto px-4">

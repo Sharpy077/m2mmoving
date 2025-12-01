@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Menu, X, Truck, Phone } from "lucide-react"
 import Link from "next/link"
+import { cn } from "@/lib/utils"
 
 const navLinks = [
   { name: "Services", href: "/#services" },
@@ -13,6 +14,20 @@ const navLinks = [
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
+
+  const handleNavClick = (href: string) => {
+    setIsOpen(false)
+    
+    if (href.startsWith('#')) {
+      // Small delay to allow menu to close before scrolling
+      setTimeout(() => {
+        const element = document.querySelector(href)
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      }, 100)
+    }
+  }
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border">
@@ -60,15 +75,25 @@ export function Navbar() {
         </nav>
 
         {/* Mobile Navigation */}
-        {isOpen && (
-          <div className="md:hidden py-4 border-t border-border">
+        <div className={cn(
+          "md:hidden overflow-hidden transition-all duration-300 ease-in-out",
+          isOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+        )}>
+          <div className="py-4 border-t border-border">
             <div className="flex flex-col gap-4">
               {navLinks.map((link) => (
                 <Link
                   key={link.name}
                   href={link.href}
                   className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors uppercase tracking-wider"
-                  onClick={() => setIsOpen(false)}
+                  onClick={(e) => {
+                    if (link.href.startsWith('#')) {
+                      e.preventDefault()
+                      handleNavClick(link.href)
+                    } else {
+                      setIsOpen(false)
+                    }
+                  }}
                 >
                   {link.name}
                 </Link>
@@ -82,11 +107,11 @@ export function Navbar() {
                 03 8820 1801
               </a>
               <Button className="uppercase tracking-wider w-full mt-2" asChild>
-                <Link href="/quote">Get Free Quote</Link>
+                <Link href="/quote" onClick={() => setIsOpen(false)}>Get Free Quote</Link>
               </Button>
             </div>
           </div>
-        )}
+        </div>
       </div>
     </header>
   )

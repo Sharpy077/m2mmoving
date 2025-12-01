@@ -14,6 +14,7 @@ import { Send, Building2, User, Mail, Phone, Calendar, FileText, CheckCircle2, L
 import { submitLead } from "@/app/actions/leads"
 import { validateEmail, validatePhone } from "@/lib/validation"
 import { cn } from "@/lib/utils"
+import { useBeforeUnload } from "@/hooks/use-beforeunload"
 
 const businessTypes = [
   "Corporate Office",
@@ -68,6 +69,16 @@ export function CustomQuoteForm() {
   const toggleRequirement = (id: string) => {
     setSelectedRequirements((prev) => (prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]))
   }
+
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = !submitted && (
+    formData.fullName || formData.email || formData.phone || formData.companyName ||
+    formData.currentLocation || formData.newLocation || formData.projectDescription ||
+    selectedRequirements.length > 0
+  )
+
+  // Warn before leaving with unsaved changes
+  useBeforeUnload(hasUnsavedChanges)
 
   const updateFormData = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))

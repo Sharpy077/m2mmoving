@@ -11,7 +11,7 @@ import { FloatingCTA } from "@/components/floating-cta"
 
 export default function HomePage() {
   return (
-    <main id="main-content" className="min-h-screen bg-background">
+    <main id="main-content" className="min-h-screen bg-background pb-20 md:pb-0">
       <Navbar />
       <HeroSection />
       <TrustBar />
