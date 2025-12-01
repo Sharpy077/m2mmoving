@@ -27,6 +27,9 @@ import { submitLead } from "@/app/actions/leads"
 import { createDepositCheckoutSession, markDepositPaid } from "@/app/actions/stripe"
 import { loadStripe } from "@stripe/stripe-js"
 import { EmbeddedCheckout, EmbeddedCheckoutProvider } from "@stripe/react-stripe-js"
+import { validateEmail, validatePhone, validateDistance } from "@/lib/validation"
+import { cn } from "@/lib/utils"
+import { PaymentConfirmation } from "@/components/payment-confirmation"
 
 const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null
@@ -137,6 +140,10 @@ export function QuoteBuilder() {
   const [submitted, setSubmitted] = useState(false)
   const [submittedLead, setSubmittedLead] = useState<any>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  
+  // Validation state
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const [errors, setErrors] = useState<Record<string, string | null>>({})
 
   const [showPayment, setShowPayment] = useState(false)
   const [paymentClientSecret, setPaymentClientSecret] = useState<string | null>(null)
@@ -164,7 +171,73 @@ export function QuoteBuilder() {
 
   const depositAmount = estimate ? Math.round(estimate * 0.5) : 0
 
+  // Validation functions
+  const validateField = (field: string, value: string) => {
+    let error: string | null = null
+    
+    switch (field) {
+      case 'email':
+        error = validateEmail(value)
+        break
+      case 'phone':
+        error = validatePhone(value, false)
+        break
+      case 'distance':
+        error = validateDistance(value)
+        break
+    }
+    
+    setErrors(prev => ({ ...prev, [field]: error }))
+    return error === null
+  }
+
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setEmail(value)
+    if (touched.email) {
+      validateField('email', value)
+    }
+  }
+
+  const handleEmailBlur = () => {
+    setTouched(prev => ({ ...prev, email: true }))
+    validateField('email', email)
+  }
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setPhone(value)
+    if (touched.phone) {
+      validateField('phone', value)
+    }
+  }
+
+  const handlePhoneBlur = () => {
+    setTouched(prev => ({ ...prev, phone: true }))
+    validateField('phone', phone)
+  }
+
+  const handleDistanceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setDistance(value)
+    if (touched.distance) {
+      validateField('distance', value)
+    }
+  }
+
+  const handleDistanceBlur = () => {
+    setTouched(prev => ({ ...prev, distance: true }))
+    validateField('distance', distance)
+  }
+
   const handleSubmit = async () => {
+    // Validate all required fields before submission
+    setTouched({ email: true })
+    const emailValid = validateField('email', email)
+    
+    if (!emailValid) {
+      return
+    }
     if (!email || !selectedType || !estimate) {
       console.log("[v0] Submit validation failed:", { email, selectedType, estimate })
       return
@@ -272,34 +345,16 @@ export function QuoteBuilder() {
   const selectedMoveType = moveTypes.find((t) => t.id === selectedType)
   const isBelowMinimum = selectedMoveType && squareMeters[0] < selectedMoveType.minSqm
 
-  if (paymentComplete) {
+  if (paymentComplete && submittedLead && estimate) {
     return (
       <div className="border border-primary/30 bg-black/50 p-8">
-        <div className="text-center space-y-6">
-          <div className="w-20 h-20 mx-auto border-2 border-secondary flex items-center justify-center">
-            <CheckCircle2 className="w-10 h-10 text-secondary" />
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground font-mono mb-2">PAYMENT_CONFIRMED</p>
-            <h3 className="text-2xl font-bold text-secondary">Booking Confirmed!</h3>
-          </div>
-          <div className="border border-secondary/30 bg-secondary/5 p-4 text-left font-mono text-sm">
-            <p className="text-muted-foreground">
-              REFERENCE: <span className="text-foreground">{submittedLead?.id?.slice(0, 8).toUpperCase()}</span>
-            </p>
-            <p className="text-muted-foreground">
-              DEPOSIT_PAID: <span className="text-secondary">${depositAmount.toLocaleString()} AUD</span>
-            </p>
-            <p className="text-muted-foreground">
-              REMAINING: <span className="text-foreground">${depositAmount.toLocaleString()} AUD</span>
-            </p>
-            <p className="text-muted-foreground">
-              STATUS: <span className="text-secondary">CONFIRMED</span>
-            </p>
-          </div>
-          <p className="text-muted-foreground">
-            Our team will contact you within 24 hours to finalize your move details.
-          </p>
+        <PaymentConfirmation
+          referenceId={submittedLead.id.slice(0, 8).toUpperCase()}
+          depositAmount={depositAmount}
+          estimatedTotal={estimate}
+          moveType={selectedMoveType?.name}
+        />
+        <div className="mt-6 text-center">
           <Link href="/">
             <Button className="bg-primary hover:bg-primary/80 text-primary-foreground">Return to Homepage</Button>
           </Link>
@@ -585,9 +640,16 @@ export function QuoteBuilder() {
                   type="number"
                   placeholder="e.g. 15"
                   value={distance}
-                  onChange={(e) => setDistance(e.target.value)}
-                  className="bg-black/50 border-muted-foreground/30"
+                  onChange={handleDistanceChange}
+                  onBlur={handleDistanceBlur}
+                  className={cn(
+                    "bg-black/50 border-muted-foreground/30",
+                    errors.distance && "border-destructive"
+                  )}
                 />
+                {errors.distance && (
+                  <p className="text-xs text-destructive mt-1">{errors.distance}</p>
+                )}
               </div>
             </div>
 
@@ -708,11 +770,18 @@ export function QuoteBuilder() {
                       type="email"
                       placeholder="you@company.com"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="pl-10 bg-black/50 border-muted-foreground/30"
+                      onChange={handleEmailChange}
+                      onBlur={handleEmailBlur}
+                      className={cn(
+                        "pl-10 bg-black/50 border-muted-foreground/30",
+                        errors.email && "border-destructive"
+                      )}
                       required
                     />
                   </div>
+                  {errors.email && (
+                    <p className="text-xs text-destructive mt-1">{errors.email}</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs">Phone</Label>
@@ -722,10 +791,17 @@ export function QuoteBuilder() {
                       type="tel"
                       placeholder="04XX XXX XXX"
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      className="pl-10 bg-black/50 border-muted-foreground/30"
+                      onChange={handlePhoneChange}
+                      onBlur={handlePhoneBlur}
+                      className={cn(
+                        "pl-10 bg-black/50 border-muted-foreground/30",
+                        errors.phone && "border-destructive"
+                      )}
                     />
                   </div>
+                  {errors.phone && (
+                    <p className="text-xs text-destructive mt-1">{errors.phone}</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs">Contact Name</Label>

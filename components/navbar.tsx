@@ -20,7 +20,7 @@ export function Navbar() {
         <nav className="flex items-center justify-between h-16">
           <Link href="/" className="flex items-center gap-2">
             <div className="w-10 h-10 bg-primary flex items-center justify-center">
-              <Truck className="w-6 h-6 text-primary-foreground" />
+              <Truck className="w-6 h-6 text-primary-foreground" aria-hidden="true" />
             </div>
             <span className="text-xl font-bold tracking-tight text-foreground">
               M&M<span className="text-primary">_MOVING</span>
@@ -45,7 +45,7 @@ export function Navbar() {
               href="tel:+61388201801"
               className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
             >
-              <Phone className="w-4 h-4" />
+              <Phone className="w-4 h-4" aria-hidden="true" />
               <span className="font-mono">03 8820 1801</span>
             </a>
             <Button className="uppercase tracking-wider" asChild>
@@ -55,7 +55,7 @@ export function Navbar() {
 
           {/* Mobile Menu Toggle */}
           <button className="md:hidden text-foreground" onClick={() => setIsOpen(!isOpen)} aria-label="Toggle menu">
-            {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            {isOpen ? <X className="w-6 h-6" aria-hidden="true" /> : <Menu className="w-6 h-6" aria-hidden="true" />}
           </button>
         </nav>
 
@@ -78,7 +78,7 @@ export function Navbar() {
                 className="flex items-center gap-2 text-sm font-medium text-primary"
                 onClick={() => setIsOpen(false)}
               >
-                <Phone className="w-4 h-4" />
+                <Phone className="w-4 h-4" aria-hidden="true" />
                 03 8820 1801
               </a>
               <Button className="uppercase tracking-wider w-full mt-2" asChild>
