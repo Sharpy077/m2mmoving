@@ -3,14 +3,15 @@
  * Foundation for all AI agents in the salesforce
  */
 
-import type { 
-  AgentIdentity, 
-  AgentInput, 
-  AgentOutput, 
-  AgentAction, 
-  AgentConfig, 
+import type {
+  AgentIdentity,
+  AgentInput,
+  AgentOutput,
+  AgentAction,
+  AgentConfig,
   ToolDefinition,
-  AgentMessage 
+  AgentMessage,
+  PriorityLevel,
 } from "./types"
 
 export type { AgentInput, AgentOutput, AgentAction }
@@ -33,7 +34,7 @@ export abstract class BaseAgent {
     successRate: 95,
   }
 
-  constructor(config: Partial<AgentConfig>) {
+  constructor(config: Partial<AgentConfig>, identityFactory?: () => AgentIdentity) {
     this.config = {
       codename: config.codename || "UNKNOWN",
       enabled: config.enabled ?? true,
@@ -47,7 +48,7 @@ export abstract class BaseAgent {
       rateLimits: config.rateLimits || { requestsPerMinute: 30, tokensPerDay: 500000 },
     }
     
-    this.identity = this.getIdentity()
+    this.identity = identityFactory ? identityFactory() : this.getIdentity()
     this.registerTools()
   }
 
@@ -105,20 +106,20 @@ export abstract class BaseAgent {
     return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
   }
 
-  protected shouldEscalate(context: Record<string, unknown>): { 
+  protected shouldEscalate(context: Record<string, unknown>): {
     should: boolean
     reason?: string
-    priority?: "low" | "medium" | "high" | "urgent"
+    priority?: PriorityLevel
   } {
     // Check escalation rules
     for (const rule of this.config.escalationRules) {
       // Simple sentiment-based check
       if (context.sentiment === "negative" && rule.reason === "negative_sentiment") {
-        return { should: true, reason: rule.reason, priority: rule.priority as "low" | "medium" | "high" | "urgent" }
+        return { should: true, reason: rule.reason, priority: rule.priority }
       }
       // High value deal check
       if (typeof context.dealValue === "number" && context.dealValue > 20000 && rule.reason === "high_value_deal") {
-        return { should: true, reason: rule.reason, priority: rule.priority as "low" | "medium" | "high" | "urgent" }
+        return { should: true, reason: rule.reason, priority: rule.priority }
       }
     }
     return { should: false }
@@ -128,8 +129,8 @@ export abstract class BaseAgent {
     reason: string,
     details: string,
     context: Record<string, unknown>,
-    priority: "low" | "medium" | "high" | "urgent"
-  ): Promise<{ reason: string; priority: "low" | "medium" | "high" | "urgent" }> {
+    priority: PriorityLevel
+  ): Promise<{ reason: string; priority: PriorityLevel }> {
     this.log("info", "escalateToHuman", `Escalating: ${reason} - ${details}`)
     return { reason, priority }
   }
