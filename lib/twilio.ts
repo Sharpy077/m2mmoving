@@ -19,11 +19,9 @@ export const FORWARD_NUMBERS = [
   process.env.TWILIO_FORWARD_NUMBER_2 || "",
 ].filter(Boolean)
 
-export function isBusinessHours(): boolean {
-  const now = new Date()
-
+export function isBusinessHours(currentDate: Date = new Date()): boolean {
   // Convert to Melbourne time
-  const melbourneTime = new Date(now.toLocaleString("en-US", { timeZone: BUSINESS_HOURS.timezone }))
+  const melbourneTime = new Date(currentDate.toLocaleString("en-US", { timeZone: BUSINESS_HOURS.timezone }))
 
   const hour = melbourneTime.getHours()
   const day = melbourneTime.getDay() // 0 = Sunday, 1 = Monday, etc.
