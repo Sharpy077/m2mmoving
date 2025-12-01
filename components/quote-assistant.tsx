@@ -38,7 +38,8 @@ import { loadStripe } from "@stripe/stripe-js"
 import { submitLead } from "@/app/actions/leads"
 import { createDepositCheckout } from "@/app/actions/stripe"
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
+const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null
 
 interface ServiceOption {
   id: string
@@ -808,33 +809,52 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     }) => {
       const [clientSecret, setClientSecret] = useState<string | null>(null)
       const [loading, setLoading] = useState(true)
+      const [creationError, setCreationError] = useState<string | null>(null)
 
       useEffect(() => {
         const getCheckoutSession = async () => {
+          if (!stripePromise) {
+            setCreationError("Online payments are not configured yet.")
+            setLoading(false)
+            return
+          }
+
           try {
+            setCreationError(null)
             const result = await createDepositCheckout({
               amount,
               customerEmail: customerEmail || "",
               customerName: customerName || "",
               description,
-              moveDetails: {
-                type: currentQuote?.moveType || "",
-                origin: currentQuote?.origin || "",
-                destination: currentQuote?.destination || "",
-                date: selectedDate || "",
-              },
+              moveType: currentQuote?.moveType || undefined,
+              origin: currentQuote?.origin || undefined,
+              destination: currentQuote?.destination || undefined,
+              scheduledDate: selectedDate || undefined,
             })
-            if (result.clientSecret) {
+
+            if (result.success && result.clientSecret) {
               setClientSecret(result.clientSecret)
+            } else {
+              setCreationError(result.error || "Unable to start payment session.")
             }
           } catch (error) {
             console.error("Failed to create checkout:", error)
+            setCreationError("Unable to start payment session.")
           } finally {
             setLoading(false)
           }
         }
         getCheckoutSession()
-      }, [amount, customerEmail, customerName, description])
+      }, [
+        amount,
+        customerEmail,
+        customerName,
+        description,
+        currentQuote?.moveType,
+        currentQuote?.origin,
+        currentQuote?.destination,
+        selectedDate,
+      ])
 
       if (loading) {
         return (
@@ -844,10 +864,10 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         )
       }
 
-      if (!clientSecret) {
+      if (creationError || !clientSecret || !stripePromise) {
         return (
-          <div className="text-center py-4">
-            <p className="text-sm text-muted-foreground mb-2">Unable to load payment form.</p>
+          <div className="text-center py-4 space-y-2">
+            <p className="text-sm text-muted-foreground">{creationError ?? "Unable to load payment form."}</p>
             <Button variant="outline" size="sm" onClick={handleCall}>
               <Phone className="h-4 w-4 mr-2" />
               Call to complete booking

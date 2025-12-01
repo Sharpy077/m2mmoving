@@ -28,7 +28,8 @@ import { createDepositCheckoutSession, markDepositPaid } from "@/app/actions/str
 import { loadStripe } from "@stripe/stripe-js"
 import { EmbeddedCheckout, EmbeddedCheckoutProvider } from "@stripe/react-stripe-js"
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
+const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null
 
 const moveTypes = [
   {
@@ -207,6 +208,10 @@ export function QuoteBuilder() {
 
   const handlePayDeposit = async () => {
     if (!submittedLead || !estimate) return
+    if (!STRIPE_PUBLISHABLE_KEY) {
+      setSubmitError("Online payments are not configured yet. Please contact our team to pay the deposit.")
+      return
+    }
 
     setIsSubmitting(true)
     setSubmitError(null)
@@ -313,17 +318,23 @@ export function QuoteBuilder() {
             Deposit Amount: <span className="text-secondary font-bold">${depositAmount.toLocaleString()} AUD</span>
           </p>
         </div>
-        <div className="bg-white rounded-sm overflow-hidden">
-          <EmbeddedCheckoutProvider
-            stripe={stripePromise}
-            options={{
-              fetchClientSecret,
-              onComplete: handlePaymentComplete,
-            }}
-          >
-            <EmbeddedCheckout />
-          </EmbeddedCheckoutProvider>
-        </div>
+        {stripePromise ? (
+          <div className="bg-white rounded-sm overflow-hidden">
+            <EmbeddedCheckoutProvider
+              stripe={stripePromise}
+              options={{
+                fetchClientSecret,
+                onComplete: handlePaymentComplete,
+              }}
+            >
+              <EmbeddedCheckout />
+            </EmbeddedCheckoutProvider>
+          </div>
+        ) : (
+          <div className="bg-muted/20 border border-muted-foreground/30 p-4 text-center text-sm text-muted-foreground rounded-sm">
+            Online payments are not configured yet. Please contact our team to complete the booking.
+          </div>
+        )}
         <Button
           variant="outline"
           className="mt-4 w-full bg-transparent"
@@ -589,13 +600,13 @@ export function QuoteBuilder() {
               <Slider
                 value={squareMeters}
                 onValueChange={setSquareMeters}
-                min={20}
+                min={selectedMoveType?.minSqm ?? 10}
                 max={2000}
                 step={10}
                 className="py-4"
               />
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>20 sqm</span>
+                <span>{selectedMoveType?.minSqm ?? 10} sqm</span>
                 <span>2000 sqm</span>
               </div>
             </div>
