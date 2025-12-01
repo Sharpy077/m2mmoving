@@ -1051,6 +1051,7 @@ STRIPE_SECRET_KEY=sk_...
 RESEND_API_KEY=re_...
 EMAIL_FROM_ADDRESS="M&M Commercial Moving <notifications@m2mmoving.au>"
 LEAD_NOTIFICATION_EMAILS=sales@m2mmoving.au
+MONITORING_ALERT_EMAILS=admin@m2mmoving.au
 
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
