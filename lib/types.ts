@@ -16,6 +16,7 @@ export interface Lead {
   deposit_paid: boolean | null
   payment_status: string | null
   scheduled_date: string | null
+  notes: string | null
   additional_services: string[] | null
   industry_type: string | null
   employee_count: string | null
@@ -46,6 +47,7 @@ export interface LeadInsert {
   deposit_paid?: boolean
   payment_status?: string
   scheduled_date?: string
+  notes?: string
   additional_services?: string[]
   industry_type?: string
   employee_count?: string

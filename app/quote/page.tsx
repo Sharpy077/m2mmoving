@@ -2,7 +2,7 @@ import { Suspense } from "react"
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import { QuoteBuilder } from "@/components/quote-builder"
-import { Shield, Clock, CheckCircle2, Phone } from "lucide-react"
+import { Shield, Clock, CheckCircle2, Phone, MapPin } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 function QuotePageContent() {
@@ -22,7 +22,8 @@ function QuotePageContent() {
                   Get Your <span className="text-primary">Free Quote</span>
                 </h1>
                 <p className="text-muted-foreground text-lg mb-6">
-                  Build your custom quote in under 60 seconds. No obligation, instant pricing estimate.
+                  Build your custom quote in under 60 seconds. No obligation, instant pricing estimate, and a
+                  precision-engineered relocation plan from our commercial specialists.
                 </p>
 
                 <div className="flex flex-wrap gap-4">
@@ -41,10 +42,8 @@ function QuotePageContent() {
                 </div>
               </div>
 
-              <div className="border border-border bg-card p-4">
-                <p className="text-xs uppercase tracking-widest text-muted-foreground font-mono mb-3">
-                  Prefer to talk?
-                </p>
+              <div className="border border-border bg-card p-4 space-y-3">
+                <p className="text-xs uppercase tracking-widest text-muted-foreground font-mono mb-3">Prefer to talk?</p>
                 <Button variant="outline" className="w-full bg-transparent mb-3" asChild>
                   <a href="tel:+61388201801" className="flex items-center justify-center gap-2">
                     <Phone className="w-4 h-4" />
@@ -52,6 +51,10 @@ function QuotePageContent() {
                   </a>
                 </Button>
                 <p className="text-xs text-muted-foreground text-center">Mon-Fri 8am-6pm AEST</p>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground justify-center">
+                  <MapPin className="w-4 h-4" />
+                  Melbourne HQ
+                </div>
               </div>
             </div>
 
