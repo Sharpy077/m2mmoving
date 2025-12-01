@@ -8,6 +8,7 @@ import Link from "next/link"
 const navLinks = [
   { name: "Services", href: "/#services" },
   { name: "Technology", href: "/#technology" },
+  { name: "Testimonials", href: "/#testimonials" },
   { name: "Contact", href: "/#contact" },
 ]
 
@@ -27,7 +28,6 @@ export function Navbar() {
             </span>
           </Link>
 
-          {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-8">
             {navLinks.map((link) => (
               <Link
@@ -53,13 +53,11 @@ export function Navbar() {
             </Button>
           </div>
 
-          {/* Mobile Menu Toggle */}
           <button className="md:hidden text-foreground" onClick={() => setIsOpen(!isOpen)} aria-label="Toggle menu">
             {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
         </nav>
 
-        {/* Mobile Navigation */}
         {isOpen && (
           <div className="md:hidden py-4 border-t border-border">
             <div className="flex flex-col gap-4">
@@ -82,7 +80,7 @@ export function Navbar() {
                 03 8820 1801
               </a>
               <Button className="uppercase tracking-wider w-full mt-2" asChild>
-                <Link href="/quote">Get Free Quote</Link>
+                <Link href="/quote">Get Quote</Link>
               </Button>
             </div>
           </div>
