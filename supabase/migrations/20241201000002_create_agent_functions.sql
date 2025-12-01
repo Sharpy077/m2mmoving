@@ -517,4 +517,3 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 COMMENT ON FUNCTION search_knowledge IS 'Searches knowledge base by text (fallback for vector search)';
-

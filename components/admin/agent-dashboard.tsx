@@ -709,4 +709,3 @@ function generateActivity(): ActivityItem[] {
     timestamp: new Date(Date.now() - i * 180000),
   }))
 }
-

@@ -1002,4 +1002,3 @@ export function getSentinel(): SentinelAgent {
 export function resetSentinel(): void {
   sentinelInstance = null
 }
-

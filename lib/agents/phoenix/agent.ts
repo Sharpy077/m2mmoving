@@ -528,4 +528,3 @@ export function getPhoenix(): PhoenixAgent {
 export function resetPhoenix(): void {
   phoenixInstance = null
 }
-

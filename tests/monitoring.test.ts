@@ -86,4 +86,3 @@ describe("monitoring utilities", () => {
     expect(sendMock).not.toHaveBeenCalled()
   })
 })
-

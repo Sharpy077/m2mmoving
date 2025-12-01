@@ -135,4 +135,3 @@ function escapeHtml(value: string) {
 export function __resetMonitoringTestingState() {
   resendClient = null
 }
-

@@ -1115,4 +1115,3 @@ export function getOracle(): OracleAgent {
 export function resetOracle(): void {
   oracleInstance = null
 }
-

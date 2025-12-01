@@ -723,4 +723,3 @@ export function getGuardian(): GuardianAgent {
 export function resetGuardian(): void {
   guardianInstance = null
 }
-

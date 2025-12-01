@@ -1082,4 +1082,3 @@ export function getHunter(): HunterAgent {
 export function resetHunter(): void {
   hunterInstance = null
 }
-

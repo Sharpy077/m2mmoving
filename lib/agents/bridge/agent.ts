@@ -646,4 +646,3 @@ export function getBridge(): BridgeAgent {
 export function resetBridge(): void {
   bridgeInstance = null
 }
-

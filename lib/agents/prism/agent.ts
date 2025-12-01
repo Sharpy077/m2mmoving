@@ -611,4 +611,3 @@ export function getPrism(): PrismAgent {
 export function resetPrism(): void {
   prismInstance = null
 }
-

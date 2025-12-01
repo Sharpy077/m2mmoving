@@ -46,4 +46,3 @@ function DashboardSkeleton() {
     </div>
   )
 }
-

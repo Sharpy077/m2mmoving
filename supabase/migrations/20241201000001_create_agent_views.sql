@@ -233,4 +233,3 @@ COMMENT ON FUNCTION refresh_agent_leaderboard IS 'Refreshes the agent leaderboar
 -- =============================================================================
 
 -- SELECT cron.schedule('refresh-leaderboard', '*/15 * * * *', 'SELECT refresh_agent_leaderboard()');
-
