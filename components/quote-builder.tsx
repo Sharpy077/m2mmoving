@@ -22,6 +22,7 @@ import {
   CreditCard,
   AlertCircle,
   Cpu,
+  HelpCircle,
 } from "lucide-react"
 import Link from "next/link"
 import { submitLead } from "@/app/actions/leads"
@@ -34,6 +35,7 @@ import { PaymentConfirmation } from "@/components/payment-confirmation"
 import { useBeforeUnload } from "@/hooks/use-beforeunload"
 import { useFormPersistence } from "@/hooks/use-form-persistence"
 import { FileText, X } from "lucide-react"
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 
 const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null
@@ -127,14 +129,18 @@ const additionalServices = [
   { id: "itsetup", name: "IT Setup Assistance", price: 600, description: "Help reconnecting IT equipment" },
 ]
 
-export function QuoteBuilder() {
+interface QuoteBuilderProps {
+  initialService?: string
+}
+
+export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const [step, setStep] = useState(() => {
     const stepParam = searchParams.get('step')
     return stepParam ? parseInt(stepParam) : 1
   })
-  const [selectedType, setSelectedType] = useState<string | null>(null)
+  const [selectedType, setSelectedType] = useState<string | null>(initialService || null)
   const [expandedType, setExpandedType] = useState<string | null>(null)
   const [squareMeters, setSquareMeters] = useState([100])
   const [selectedServices, setSelectedServices] = useState<string[]>([])
@@ -421,15 +427,20 @@ export function QuoteBuilder() {
 
   const [showDraftBanner, setShowDraftBanner] = useState(false)
 
-  // Load draft on mount
+  // Load draft on mount or pre-select service
   useEffect(() => {
+    if (initialService && !selectedType) {
+      setSelectedType(initialService)
+      setExpandedType(initialService)
+    }
+    
     if (!submitted && !paymentComplete) {
       const saved = loadSavedData()
       if (saved && (saved.step > 1 || saved.email || saved.phone)) {
         setShowDraftBanner(true)
       }
     }
-  }, [])
+  }, [initialService])
 
   const restoreDraft = () => {
     const saved = loadSavedData()
@@ -633,7 +644,21 @@ export function QuoteBuilder() {
       {/* Progress Bar */}
       <div className="border-b border-primary/30 p-4">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-mono text-muted-foreground">QUOTE_PROGRESS</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono text-muted-foreground">QUOTE_PROGRESS</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="max-w-xs">
+                  {step === 1 && "Step 1: Select your move type and service details"}
+                  {step === 2 && "Step 2: Enter location and space information"}
+                  {step === 3 && "Step 3: Review your quote and provide contact information"}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
           <span className="text-xs font-mono text-primary">{step}/3</span>
         </div>
         <div className="h-1 bg-muted">
@@ -763,10 +788,11 @@ export function QuoteBuilder() {
                   <div className="relative">
                     <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
-                      placeholder="e.g. Melbourne CBD"
+                      placeholder="Melbourne CBD"
                       value={originSuburb}
                       onChange={(e) => setOriginSuburb(e.target.value)}
                       className="pl-10 bg-black/50 border-muted-foreground/30"
+                      title="Enter the suburb or area where your move starts"
                     />
                   </div>
                 </div>
@@ -775,10 +801,11 @@ export function QuoteBuilder() {
                   <div className="relative">
                     <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
-                      placeholder="e.g. Richmond"
+                      placeholder="Richmond"
                       value={destSuburb}
                       onChange={(e) => setDestSuburb(e.target.value)}
                       className="pl-10 bg-black/50 border-muted-foreground/30"
+                      title="Enter the suburb or area where your move ends"
                     />
                   </div>
                 </div>
@@ -787,18 +814,22 @@ export function QuoteBuilder() {
                 <Label className="text-xs">Estimated Distance (km)</Label>
                 <Input
                   type="number"
-                  placeholder="e.g. 15"
+                  placeholder="15"
                   value={distance}
                   onChange={handleDistanceChange}
                   onBlur={handleDistanceBlur}
+                  min="0"
+                  max="1000"
                   className={cn(
                     "bg-black/50 border-muted-foreground/30",
                     errors.distance && "border-destructive"
                   )}
+                  title="Estimated distance in kilometers (0-1000 km)"
                 />
                 {errors.distance && (
                   <p className="text-xs text-destructive mt-1">{errors.distance}</p>
                 )}
+                <p className="text-xs text-muted-foreground">Optional - helps us provide a more accurate quote</p>
               </div>
             </div>
 
@@ -806,7 +837,24 @@ export function QuoteBuilder() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-mono text-muted-foreground">SPACE_SIZE</p>
-                <p className="text-sm font-bold text-primary">{squareMeters[0]} sqm</p>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    value={squareMeters[0]}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value) || 0
+                      const clamped = Math.max(
+                        selectedMoveType?.minSqm ?? 10,
+                        Math.min(2000, value)
+                      )
+                      setSquareMeters([clamped])
+                    }}
+                    min={selectedMoveType?.minSqm ?? 10}
+                    max={2000}
+                    className="w-24 h-8 text-center text-sm font-bold"
+                  />
+                  <span className="text-sm text-muted-foreground">sqm</span>
+                </div>
               </div>
               <Slider
                 value={squareMeters}
@@ -829,23 +877,24 @@ export function QuoteBuilder() {
                 {additionalServices.map((service) => (
                   <label
                     key={service.id}
-                    className={`flex items-center justify-between p-3 border cursor-pointer transition-all ${
+                    className={`flex items-center justify-between p-3 border cursor-pointer transition-all rounded-lg ${
                       selectedServices.includes(service.id)
-                        ? "border-secondary bg-secondary/10"
-                        : "border-muted-foreground/30 hover:border-secondary/50"
+                        ? "border-secondary bg-secondary/10 hover:bg-secondary/15"
+                        : "border-muted-foreground/30 hover:border-secondary/50 hover:bg-muted/20"
                     }`}
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-1">
                       <Checkbox
                         checked={selectedServices.includes(service.id)}
                         onCheckedChange={() => toggleService(service.id)}
+                        className="flex-shrink-0"
                       />
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium">{service.name}</p>
                         <p className="text-xs text-muted-foreground">{service.description}</p>
                       </div>
                     </div>
-                    <p className="text-sm font-bold text-secondary">+${service.price}</p>
+                    <p className="text-sm font-bold text-secondary flex-shrink-0 ml-2">+${service.price}</p>
                   </label>
                 ))}
               </div>
@@ -883,13 +932,111 @@ export function QuoteBuilder() {
               <h3 className="text-xl font-bold">Review & Confirm</h3>
             </div>
 
-            {/* Estimate Display */}
-            <div className="border border-secondary bg-secondary/10 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-xs font-mono text-muted-foreground">ESTIMATED_TOTAL</p>
-                <p className="text-xs font-mono text-secondary">AUD</p>
+            {/* Quote Breakdown */}
+            <div className="border border-primary/30 bg-black/50 p-6 space-y-4">
+              <p className="text-xs font-mono text-muted-foreground mb-4">QUOTE_BREAKDOWN</p>
+              
+              {selectedMoveType && (
+                <>
+                  <div className="flex items-center justify-between border-b border-primary/30 pb-2">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-mono text-muted-foreground">BASE_PRICE</p>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-xs">Base price includes standard moving equipment, crew, and basic insurance coverage.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <p className="text-sm font-bold text-primary">${selectedMoveType.baseRate.toLocaleString()}</p>
+                  </div>
+                  
+                  {squareMeters[0] > 0 && (
+                    <div className="flex items-center justify-between border-b border-primary/30 pb-2">
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs font-mono text-muted-foreground">
+                          SQM_CHARGE ({squareMeters[0]} sqm × ${selectedMoveType.perSqm})
+                        </p>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="max-w-xs">Charged per square meter of space being moved. Larger spaces require more time and resources.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-sm font-bold text-primary">
+                        ${(selectedMoveType.perSqm * squareMeters[0]).toLocaleString()}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {distance && Number.parseInt(distance) > 0 && (
+                    <div className="flex items-center justify-between border-b border-primary/30 pb-2">
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs font-mono text-muted-foreground">
+                          DISTANCE_FEE ({distance} km × $8)
+                        </p>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="max-w-xs">Distance-based fee covers fuel, travel time, and vehicle wear for longer moves.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-sm font-bold text-primary">
+                        ${(Number.parseInt(distance) * 8).toLocaleString()}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {selectedServices.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs font-mono text-muted-foreground">ADDITIONAL_SERVICES</p>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="max-w-xs">Optional services to enhance your move, such as premium insurance or after-hours scheduling.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      {selectedServices.map((serviceId) => {
+                        const service = additionalServices.find((s) => s.id === serviceId)
+                        return service ? (
+                          <div key={serviceId} className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">{service.name}</span>
+                            <span className="font-bold text-secondary">+${service.price}</span>
+                          </div>
+                        ) : null
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+              
+              <div className="flex items-center justify-between border-t-2 border-primary pt-2">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-mono text-muted-foreground">ESTIMATED_TOTAL</p>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs">This is an estimate. Final pricing may vary based on site assessment and actual requirements.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <p className="text-2xl font-bold text-secondary">${estimate?.toLocaleString()}</p>
               </div>
-              <p className="text-4xl font-bold text-secondary">${estimate?.toLocaleString()}</p>
+              
               {isBelowMinimum && selectedMoveType && (
                 <p className="text-xs text-accent mt-2 font-mono">
                   * Minimum cost applies for spaces under {selectedMoveType.minSqm} sqm
@@ -917,7 +1064,7 @@ export function QuoteBuilder() {
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
                       type="email"
-                      placeholder="you@company.com"
+                      placeholder="your.email@company.com.au"
                       value={email}
                       onChange={handleEmailChange}
                       onBlur={handleEmailBlur}
@@ -926,6 +1073,7 @@ export function QuoteBuilder() {
                         errors.email && "border-destructive"
                       )}
                       required
+                      title="Your business email address"
                     />
                   </div>
                   {errors.email && (
@@ -938,7 +1086,7 @@ export function QuoteBuilder() {
                     <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
                       type="tel"
-                      placeholder="04XX XXX XXX"
+                      placeholder="0412 345 678"
                       value={phone}
                       onChange={handlePhoneChange}
                       onBlur={handlePhoneBlur}
@@ -946,11 +1094,13 @@ export function QuoteBuilder() {
                         "pl-10 bg-black/50 border-muted-foreground/30",
                         errors.phone && "border-destructive"
                       )}
+                      title="Australian phone number (mobile: 04XX XXX XXX or landline: (03) XXXX XXXX)"
                     />
                   </div>
                   {errors.phone && (
                     <p className="text-xs text-destructive mt-1">{errors.phone}</p>
                   )}
+                  <p className="text-xs text-muted-foreground">Optional - helps us contact you quickly</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs">Contact Name</Label>
@@ -961,6 +1111,7 @@ export function QuoteBuilder() {
                       value={contactName}
                       onChange={(e) => setContactName(e.target.value)}
                       className="pl-10 bg-black/50 border-muted-foreground/30"
+                      title="Name of the person we should contact"
                     />
                   </div>
                 </div>
@@ -969,10 +1120,11 @@ export function QuoteBuilder() {
                   <div className="relative">
                     <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
-                      placeholder="Acme Pty Ltd"
+                      placeholder="Acme Corporation Pty Ltd"
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
                       className="pl-10 bg-black/50 border-muted-foreground/30"
+                      title="Your company or business name"
                     />
                   </div>
                 </div>

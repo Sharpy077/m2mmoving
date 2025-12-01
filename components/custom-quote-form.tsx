@@ -242,7 +242,7 @@ export function CustomQuoteForm() {
               <Input
                 required
                 type="email"
-                placeholder="john@company.com.au"
+                placeholder="john.smith@company.com.au"
                 className={cn(
                   "bg-background border-border",
                   errors.email && "border-destructive"
@@ -250,6 +250,7 @@ export function CustomQuoteForm() {
                 value={formData.email}
                 onChange={(e) => updateFormData("email", e.target.value)}
                 onBlur={() => handleBlur("email")}
+                title="Your business email address"
               />
               {errors.email && (
                 <p className="text-xs text-destructive mt-1">{errors.email}</p>
@@ -262,7 +263,7 @@ export function CustomQuoteForm() {
               <Input
                 required
                 type="tel"
-                placeholder="04XX XXX XXX"
+                placeholder="0412 345 678"
                 className={cn(
                   "bg-background border-border",
                   errors.phone && "border-destructive"
@@ -270,6 +271,7 @@ export function CustomQuoteForm() {
                 value={formData.phone}
                 onChange={(e) => updateFormData("phone", e.target.value)}
                 onBlur={() => handleBlur("phone")}
+                title="Australian phone number (mobile: 04XX XXX XXX or landline: (03) XXXX XXXX)"
               />
               {errors.phone && (
                 <p className="text-xs text-destructive mt-1">{errors.phone}</p>
@@ -300,7 +302,7 @@ export function CustomQuoteForm() {
                 </SelectTrigger>
                 <SelectContent>
                   {businessTypes.map((type) => (
-                    <SelectItem key={type} value={type.toLowerCase().replace(/ /g, "-")}>
+                    <SelectItem key={type} value={type}>
                       {type}
                     </SelectItem>
                   ))}
@@ -328,20 +330,22 @@ export function CustomQuoteForm() {
               <Label className="text-sm font-mono text-muted-foreground">CURRENT_LOCATION *</Label>
               <Input
                 required
-                placeholder="123 Collins St, Melbourne VIC 3000"
+                placeholder="123 Collins Street, Melbourne VIC 3000"
                 className="bg-background border-border"
                 value={formData.currentLocation}
                 onChange={(e) => updateFormData("currentLocation", e.target.value)}
+                title="Full address of your current location"
               />
             </div>
             <div className="space-y-2">
               <Label className="text-sm font-mono text-muted-foreground">NEW_LOCATION *</Label>
               <Input
                 required
-                placeholder="456 Bourke St, Melbourne VIC 3000"
+                placeholder="456 Bourke Street, Melbourne VIC 3000"
                 className="bg-background border-border"
                 value={formData.newLocation}
                 onChange={(e) => updateFormData("newLocation", e.target.value)}
+                title="Full address of your new location"
               />
             </div>
           </div>
@@ -352,20 +356,27 @@ export function CustomQuoteForm() {
               </Label>
               <Input
                 type="date"
+                min={new Date().toISOString().split('T')[0]}
                 className="bg-background border-border"
                 value={formData.targetMoveDate}
                 onChange={(e) => updateFormData("targetMoveDate", e.target.value)}
+                title="Preferred date for your move (must be in the future)"
               />
+              <p className="text-xs text-muted-foreground">Optional - helps us check availability</p>
             </div>
             <div className="space-y-2">
               <Label className="text-sm font-mono text-muted-foreground">ESTIMATED_SQM</Label>
               <Input
                 type="number"
-                placeholder="e.g., 500"
+                placeholder="500"
+                min="10"
+                max="2000"
                 className="bg-background border-border"
                 value={formData.estimatedSqm}
                 onChange={(e) => updateFormData("estimatedSqm", e.target.value)}
+                title="Estimated square meters of space to be moved (10-2000 sqm)"
               />
+              <p className="text-xs text-muted-foreground">Optional - helps us provide accurate pricing</p>
             </div>
           </div>
         </CardContent>

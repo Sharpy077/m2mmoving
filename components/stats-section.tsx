@@ -22,16 +22,55 @@ function calculateRelocations(): number {
   return count
 }
 
+async function fetchStats() {
+  try {
+    const response = await fetch('/api/fleet-stats')
+    if (response.ok) {
+      const data = await response.json()
+      return {
+        relocations: data.completedMoves || calculateRelocations(),
+        damageClaims: data.damageClaims || 0,
+        avgProjectTime: data.avgProjectTime || "48hrs",
+        satisfaction: data.satisfactionRate || "100%",
+      }
+    }
+  } catch (error) {
+    console.error('Failed to fetch stats:', error)
+  }
+  // Fallback to calculated values
+  return {
+    relocations: calculateRelocations(),
+    damageClaims: 0,
+    avgProjectTime: "48hrs",
+    satisfaction: "100%",
+  }
+}
+
 export function StatsSection() {
   const [relocations, setRelocations] = useState(2)
+  const [damageClaims, setDamageClaims] = useState("$0")
+  const [avgProjectTime, setAvgProjectTime] = useState("48hrs")
+  const [satisfaction, setSatisfaction] = useState("100%")
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Calculate on mount
-    setRelocations(calculateRelocations())
+    // Fetch stats on mount
+    fetchStats().then((stats) => {
+      setRelocations(stats.relocations)
+      setDamageClaims(stats.damageClaims === 0 ? "$0" : `$${stats.damageClaims}`)
+      setAvgProjectTime(stats.avgProjectTime)
+      setSatisfaction(stats.satisfaction)
+      setIsLoading(false)
+    })
 
-    // Update every hour in case date changes
+    // Update every hour
     const interval = setInterval(() => {
-      setRelocations(calculateRelocations())
+      fetchStats().then((stats) => {
+        setRelocations(stats.relocations)
+        setDamageClaims(stats.damageClaims === 0 ? "$0" : `$${stats.damageClaims}`)
+        setAvgProjectTime(stats.avgProjectTime)
+        setSatisfaction(stats.satisfaction)
+      })
     }, 3600000)
 
     return () => clearInterval(interval)
@@ -42,10 +81,10 @@ export function StatsSection() {
   }
 
   const stats = [
-    { value: relocations.toString(), label: "Relocations Complete", highlight: false },
-    { value: "$0", label: "Damage Claims", highlight: true },
-    { value: "48hrs", label: "Avg. Project Time", highlight: false },
-    { value: "100%", label: "Client Satisfaction", highlight: true },
+    { value: isLoading ? "..." : relocations.toString(), label: "Relocations Complete", highlight: false },
+    { value: isLoading ? "..." : damageClaims, label: "Damage Claims", highlight: true },
+    { value: isLoading ? "..." : avgProjectTime, label: "Avg. Project Time", highlight: false },
+    { value: isLoading ? "..." : satisfaction, label: "Client Satisfaction", highlight: true },
   ]
 
   return (
