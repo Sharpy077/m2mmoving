@@ -84,7 +84,7 @@ export async function createDepositCheckout({
   origin?: string
   destination?: string
   scheduledDate?: string
-}) {
+}): Promise<{ success: boolean; clientSecret?: string; error?: string }> {
   try {
     const session = await stripe.checkout.sessions.create({
       ui_mode: "embedded",
@@ -115,9 +115,15 @@ export async function createDepositCheckout({
       },
     })
 
-    return session.client_secret || ""
+    return {
+      success: true,
+      clientSecret: session.client_secret ?? undefined,
+    }
   } catch (error) {
     console.error("[v0] Error creating deposit checkout:", error)
-    throw new Error(error instanceof Error ? error.message : "Failed to create checkout session")
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to create checkout session",
+    }
   }
 }
