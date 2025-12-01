@@ -3,9 +3,7 @@
  * Enables real-time streaming responses from AI agents
  */
 
-import { StreamingTextResponse, LangChainStream } from "ai"
-import { OpenAI } from "openai"
-import { getCortex, AGENT_REGISTRY, type AgentName } from "@/lib/agents"
+import { getCortex } from "@/lib/agents"
 
 export const runtime = "edge"
 export const maxDuration = 60
@@ -21,7 +19,6 @@ export async function POST(request: Request) {
       })
     }
 
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
     const cortex = getCortex()
 
     // Determine which agent should handle this
@@ -36,38 +33,38 @@ export async function POST(request: Request) {
       })
     }
 
-    const agentIdentity = targetAgent.getIdentity()
+    const agentIdentity = targetAgent.getAgentIdentity()
     
-    // Build system prompt based on agent
-    const systemPrompt = buildAgentSystemPrompt(agentIdentity)
-
-    // Create streaming response
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      stream: true,
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...messages.map((m: any) => ({
-          role: m.role,
-          content: m.content,
-        })),
-      ],
-      temperature: 0.7,
-      max_tokens: 1500,
+    // Process the message through the agent
+    const result = await targetAgent.process({
+      type: "message",
+      content: messages[messages.length - 1].content,
+      messages: messages.map((m: { role: string; content: string }, i: number) => ({
+        id: `msg-${i}`,
+        role: m.role as "user" | "assistant" | "system",
+        content: m.content,
+        timestamp: new Date(),
+      })),
+      conversationId,
     })
 
-    // Convert to streaming response
+    // Simulate streaming by sending the response in chunks
+    const responseText = result.response || "I'm here to help with your commercial moving needs. How can I assist you today?"
+    
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder()
         
         try {
-          for await (const chunk of response) {
-            const content = chunk.choices[0]?.delta?.content || ""
-            if (content) {
-              // SSE format
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content, agent: agentIdentity.codename })}\n\n`))
-            }
+          // Simulate streaming by sending words with small delays
+          const words = responseText.split(" ")
+          for (let i = 0; i < words.length; i++) {
+            const word = words[i] + (i < words.length - 1 ? " " : "")
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ content: word, agent: agentIdentity.codename })}\n\n`)
+            )
+            // Small delay to simulate streaming (edge runtime compatible)
+            await new Promise(resolve => setTimeout(resolve, 20))
           }
           
           // Send completion message
@@ -97,28 +94,3 @@ export async function POST(request: Request) {
     })
   }
 }
-
-function buildAgentSystemPrompt(identity: any): string {
-  const baseContext = `You are ${identity.name}, an AI agent for M&M Commercial Moving.
-
-## Your Identity
-- Codename: ${identity.codename}
-- Role: ${identity.description}
-- Capabilities: ${identity.capabilities?.join(", ") || "General assistance"}
-
-## Company Context
-- M&M Commercial Moving specializes in commercial relocations in Melbourne
-- Services: Office moves, datacenter relocations, warehouse moves, IT equipment
-- Values: Professionalism, reliability, care for client assets
-
-## Communication Guidelines
-- Be helpful, professional, and friendly
-- Use Australian English
-- Provide clear, actionable responses
-- If unsure, ask clarifying questions
-- Never make up information
-- Acknowledge when you need to escalate to a human`
-
-  return baseContext
-}
-

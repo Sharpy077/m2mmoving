@@ -3,30 +3,13 @@
  * Central export for all AI agents in the M&M Commercial Moving salesforce
  */
 
-// Core Types & Base
+// Core Types
 export * from "./types"
-export { BaseAgent, type AgentInput, type AgentOutput, type AgentAction } from "./base-agent"
+export type { AgentInput, AgentOutput, AgentAction } from "./base-agent"
+export { BaseAgent } from "./base-agent"
 
 // Orchestrator
 export { CortexOrchestrator, getCortex, resetCortex } from "./cortex/orchestrator"
-
-// Core Sales Agents
-export { MayaAgent, getMaya, resetMaya } from "./maya/agent"
-export { SentinelAgent, getSentinel, resetSentinel } from "./sentinel/agent"
-export { HunterAgent, getHunter, resetHunter } from "./hunter/agent"
-export { AuroraAgent, getAurora, resetAurora } from "./aurora/agent"
-export { OracleAgent, getOracle, resetOracle } from "./oracle/agent"
-
-// Extended Agents
-export { PhoenixAgent, getPhoenix, resetPhoenix } from "./phoenix/agent"
-export { EchoAgent, getEcho, resetEcho } from "./echo/agent"
-export { NexusAgent, getNexus, resetNexus } from "./nexus/agent"
-export { PrismAgent, getPrism, resetPrism } from "./prism/agent"
-
-// Support Agents
-export { CipherAgent, getCipher, resetCipher } from "./cipher/agent"
-export { BridgeAgent, getBridge, resetBridge } from "./bridge/agent"
-export { GuardianAgent, getGuardian, resetGuardian } from "./guardian/agent"
 
 // =============================================================================
 // AGENT REGISTRY
@@ -59,42 +42,17 @@ export type AgentName = keyof typeof AGENT_REGISTRY
 // AGENT FACTORY
 // =============================================================================
 
-import { getMaya } from "./maya/agent"
-import { getSentinel } from "./sentinel/agent"
-import { getHunter } from "./hunter/agent"
-import { getAurora } from "./aurora/agent"
-import { getOracle } from "./oracle/agent"
-import { getPhoenix } from "./phoenix/agent"
-import { getEcho } from "./echo/agent"
-import { getNexus } from "./nexus/agent"
-import { getPrism } from "./prism/agent"
-import { getCipher } from "./cipher/agent"
-import { getBridge } from "./bridge/agent"
-import { getGuardian } from "./guardian/agent"
+import type { AgentCodename } from "./types"
+import { getCortex } from "./cortex/orchestrator"
 
-export function getAgent(name: AgentName): BaseAgent {
-  switch (name) {
-    case "MAYA": return getMaya()
-    case "SENTINEL": return getSentinel()
-    case "HUNTER": return getHunter()
-    case "AURORA": return getAurora()
-    case "ORACLE": return getOracle()
-    case "PHOENIX": return getPhoenix()
-    case "ECHO": return getEcho()
-    case "NEXUS": return getNexus()
-    case "PRISM": return getPrism()
-    case "CIPHER": return getCipher()
-    case "BRIDGE": return getBridge()
-    case "GUARDIAN": return getGuardian()
-    default:
-      throw new Error(`Unknown agent: ${name}`)
-  }
+export function getAgent(codename: AgentCodename): BaseAgent | undefined {
+  const cortex = getCortex()
+  return cortex.getAgent(codename)
 }
 
-export function getAllAgents(): BaseAgent[] {
-  return Object.keys(AGENT_REGISTRY)
-    .filter(k => k !== "CORTEX")
-    .map(k => getAgent(k as AgentName))
+export function initializeAISalesforce(): void {
+  // Initialize the cortex which initializes all agents
+  getCortex()
 }
 
 // =============================================================================

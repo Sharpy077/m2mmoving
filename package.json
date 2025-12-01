@@ -67,6 +67,7 @@
     "speech-recognition": "0.0.1",
     "stripe": "latest",
     "tailwind-merge": "^2.5.5",
+    "uuid": "^9.0.1",
     "tailwindcss-animate": "^1.0.7",
     "twilio": "latest",
     "vaul": "^1.1.2",
@@ -75,6 +76,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.9",
     "@types/node": "^22",
+    "@types/uuid": "^9.0.7",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "postcss": "^8.5",
