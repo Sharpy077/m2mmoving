@@ -1,0 +1,51 @@
+/* Print styles for business cards */
+@media print {
+  /* Hide everything except print content */
+  .no-print {
+    display: none !important;
+  }
+
+  /* Show print-only content */
+  .print-only {
+    display: block !important;
+  }
+
+  /* Page setup */
+  @page {
+    size: letter;
+    margin: 0.5in;
+  }
+
+  body {
+    background: white;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Grid layout for cards */
+  .print-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5in;
+    align-items: start;
+    justify-items: center;
+    min-height: 10in;
+  }
+
+  .print-card {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Ensure cards maintain exact size */
+  .print-card > * {
+    width: 3.5in !important;
+    height: 2in !important;
+    border: none !important;
+  }
+}
+
+/* Hide print layout on screen */
+.print-only {
+  display: none;
+}
