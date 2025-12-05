@@ -1,7 +1,8 @@
 "use server"
 
+import { resend, EMAIL_FROM_ADDRESS, LEAD_NOTIFICATION_RECIPIENTS, formatCurrency } from "@/lib/email"
 import { createClient } from "@/lib/supabase/server"
-import type { LeadInsert } from "@/lib/types"
+import type { Lead, LeadInsert } from "@/lib/types"
 
 export async function submitLead(data: LeadInsert) {
   console.log("[v0] submitLead called with:", JSON.stringify(data, null, 2))
@@ -9,7 +10,6 @@ export async function submitLead(data: LeadInsert) {
   try {
     console.log("[v0] Creating Supabase client...")
     const supabase = await createClient()
-    console.log("[v0] Supabase client created successfully")
 
     console.log("[v0] Inserting lead into database...")
     const { data: lead, error } = await supabase.from("leads").insert(data).select().single()
@@ -21,7 +21,6 @@ export async function submitLead(data: LeadInsert) {
 
     console.log("[v0] Lead inserted successfully:", JSON.stringify(lead, null, 2))
 
-    // Send email notification (simulated - in production, use a service like Resend)
     await sendEmailNotification(lead)
 
     return { success: true, lead }
@@ -85,15 +84,82 @@ export async function updateLeadNotes(id: string, notes: string) {
   }
 }
 
-async function sendEmailNotification(lead: any) {
-  // In production, integrate with Resend, SendGrid, or similar
-  console.log(`
+async function sendEmailNotification(lead: Lead) {
+  if (!lead) return
+
+  console.log(
+    `
     ====== NEW LEAD NOTIFICATION ======
     Type: ${lead.lead_type}
     Email: ${lead.email}
     Company: ${lead.company_name || "N/A"}
     Move Type: ${lead.move_type || "Custom Request"}
-    Estimated Value: $${lead.estimated_total || "TBD"}
+    Estimated Value: ${lead.estimated_total ? formatCurrency(lead.estimated_total) : "TBD"}
     ===================================
-  `)
+  `,
+  )
+
+  if (!resend) {
+    console.warn("[v0] Resend API key not configured. Skipping email notification.")
+    return
+  }
+
+  const recipients = LEAD_NOTIFICATION_RECIPIENTS
+  if (recipients.length === 0) {
+    console.warn("[v0] No lead notification recipients configured.")
+    return
+  }
+
+  const leadTypeLabel = lead.lead_type === "custom_quote" ? "Custom Quote" : "Instant Quote"
+  const moveTypeLabel = lead.move_type || (lead.lead_type === "custom_quote" ? "Custom Request" : "Instant Quote")
+
+  const internalHtml = `
+    <p>A new ${leadTypeLabel.toLowerCase()} has been submitted on the website.</p>
+    <table style="border-collapse:collapse">
+      <tbody>
+        <tr><td style="padding:4px 8px;font-weight:600">Company</td><td style="padding:4px 8px">${lead.company_name || "N/A"}</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:600">Contact</td><td style="padding:4px 8px">${lead.contact_name || "N/A"} (${lead.email})</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:600">Phone</td><td style="padding:4px 8px">${lead.phone || "N/A"}</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:600">Move Type</td><td style="padding:4px 8px">${moveTypeLabel}</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:600">Locations</td><td style="padding:4px 8px">${lead.origin_suburb || "TBD"} → ${lead.destination_suburb || "TBD"}</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:600">Space</td><td style="padding:4px 8px">${lead.square_meters ? `${lead.square_meters} sqm` : "TBD"}</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:600">Estimate</td><td style="padding:4px 8px">${formatCurrency(lead.estimated_total)}</td></tr>
+      </tbody>
+    </table>
+  `
+
+  try {
+    await resend.emails.send({
+      from: EMAIL_FROM_ADDRESS,
+      to: recipients,
+      subject: `[M&M Moving] New ${leadTypeLabel}`,
+      html: internalHtml,
+    })
+
+    if (lead.email) {
+      const customerHtml = `
+        <p>Hi ${lead.contact_name || "there"},</p>
+        <p>Thanks for requesting a quote with M&M Commercial Moving. Our team has received your ${
+          leadTypeLabel.toLowerCase()
+        } and will be in touch within 24 hours.</p>
+        <p><strong>Summary</strong></p>
+        <ul>
+          <li>Move Type: ${moveTypeLabel}</li>
+          <li>Estimate: ${formatCurrency(lead.estimated_total)}</li>
+          <li>Reference: ${lead.id?.slice(0, 8).toUpperCase()}</li>
+        </ul>
+        <p>If anything changes, reply to this email or call us on (03) 8820 1801.</p>
+        <p>— M&M Commercial Moving</p>
+      `
+
+      await resend.emails.send({
+        from: EMAIL_FROM_ADDRESS,
+        to: [lead.email],
+        subject: "We've received your moving request",
+        html: customerHtml,
+      })
+    }
+  } catch (error) {
+    console.error("[v0] Failed to send email notification:", error)
+  }
 }

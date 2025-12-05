@@ -1,4 +1,5 @@
 "use client"
+
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Shield, Zap, Target, Phone, MessageSquare } from "lucide-react"
@@ -60,7 +61,6 @@ export function HeroSection() {
   return (
     <>
       <section id="quote-assistant" className="relative pt-20 pb-16 md:pt-28 md:pb-24 overflow-hidden">
-        {/* Grid background */}
         <div className="absolute inset-0 opacity-10">
           <div
             className="absolute inset-0"
@@ -72,7 +72,6 @@ export function HeroSection() {
           />
         </div>
 
-        {/* Scanline effect */}
         <div className="absolute inset-0 pointer-events-none opacity-5">
           <div
             className="absolute inset-0"
@@ -85,8 +84,14 @@ export function HeroSection() {
 
         <div className="container mx-auto px-4 relative z-10">
           <div className="grid lg:grid-cols-2 gap-12 items-start">
-            {/* Left Column - Main Content */}
             <div>
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-card border border-border mb-6">
+                <div className="w-2 h-2 bg-secondary animate-pulse" />
+                <span className="text-xs uppercase tracking-widest text-muted-foreground font-mono">
+                  System Active // Commercial Operations Online
+                </span>
+              </div>
+
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-6 text-balance">
                 <span className="text-foreground">Get Your Office</span>
                 <br />
@@ -95,9 +100,8 @@ export function HeroSection() {
               </h1>
 
               <p className="text-lg md:text-xl text-muted-foreground max-w-xl mb-8 leading-relaxed">
-                Melbourne's commercial moving specialists. Office relocations, data centres, and IT equipment handled
-                with precision.{" "}
-                <span className="text-foreground font-semibold">Free instant quotes via AI or phone.</span>
+                Melbourne's commercial moving specialists. Office relocations, data centres, and IT equipment handled with
+                precision. <span className="text-foreground font-semibold">Free instant quotes via AI or phone.</span>
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 mb-8">
@@ -149,7 +153,6 @@ export function HeroSection() {
               </div>
             </div>
 
-            {/* Right Column - AI Quote Assistant */}
             <div ref={assistantContainerRef} className="lg:mt-0">
               <ErrorBoundary fallback={<QuoteAssistantFallback />}>
                 <QuoteAssistant embedded />

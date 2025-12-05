@@ -1,11 +1,11 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ArrowRight, Phone, Mail, Clock, CheckCircle2, Loader2, Sparkles } from "lucide-react"
+import { ArrowRight, Phone, Mail, Clock, CheckCircle2, Loader2, Sparkles, MapPin } from "lucide-react"
 import { submitLead } from "@/app/actions/leads"
 
 export function CTASection() {
@@ -50,7 +50,7 @@ export function CTASection() {
           <div>
             <div className="flex items-center gap-3 mb-4">
               <div className="h-px flex-1 max-w-16 bg-primary" />
-              <span className="text-xs uppercase tracking-widest text-primary font-mono">// Get Started</span>
+              <span className="text-xs uppercase tracking-widest text-primary font-mono">// Initialize Contact</span>
             </div>
             <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
               READY TO
@@ -59,7 +59,7 @@ export function CTASection() {
             </h2>
             <p className="text-muted-foreground mb-8 max-w-lg">
               Get a custom quote for your commercial move. Our AI assistant can help you get an instant estimate, or
-              speak with our team directly.
+              speak with our team directly for a precision-engineered relocation plan.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 mb-8">
@@ -76,7 +76,6 @@ export function CTASection() {
               </Button>
             </div>
 
-            {/* Contact Info Cards */}
             <div className="space-y-4">
               <a
                 href="tel:+61388201801"
@@ -111,6 +110,16 @@ export function CTASection() {
                 <div>
                   <div className="text-xs text-muted-foreground uppercase tracking-wider">Response Time</div>
                   <div className="text-lg font-bold text-foreground">Under 24 Hours</div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4 p-4 border border-border bg-background">
+                <div className="w-12 h-12 bg-muted/20 border border-muted/40 flex items-center justify-center">
+                  <MapPin className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider">HQ Location</div>
+                  <div className="text-lg font-bold text-foreground">Melbourne, VIC</div>
                 </div>
               </div>
             </div>
@@ -189,9 +198,7 @@ export function CTASection() {
                   </Button>
                 </form>
 
-                <p className="text-xs text-muted-foreground text-center mt-4">
-                  We respect your privacy. No spam, ever.
-                </p>
+                <p className="text-xs text-muted-foreground text-center mt-4">We respect your privacy. No spam, ever.</p>
               </>
             )}
           </div>

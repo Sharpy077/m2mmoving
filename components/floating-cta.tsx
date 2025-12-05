@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Phone, Calculator } from "lucide-react"
+import { Phone, Calculator, X, PhoneCall, Mail } from "lucide-react"
 
 export function FloatingCTA() {
   const [isVisible, setIsVisible] = useState(false)
@@ -35,8 +35,9 @@ export function FloatingCTA() {
               <button
                 onClick={() => setIsExpanded(false)}
                 className="text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Close quick actions"
               >
-                {/* Placeholder for icon */}
+                <X className="w-4 h-4" />
               </button>
             </div>
             <div className="p-4 space-y-3">
@@ -45,10 +46,16 @@ export function FloatingCTA() {
                 Get Instant Quote
               </Button>
               <Button variant="outline" className="w-full justify-start gap-3 bg-transparent" asChild>
-                <a href="tel:+61388201801">{/* Placeholder for icon */}</a>
+                <a href="tel:+61388201801" aria-label="Call our team">
+                  <PhoneCall className="w-4 h-4" />
+                  Call 03 8820 1801
+                </a>
               </Button>
               <Button variant="outline" className="w-full justify-start gap-3 bg-transparent" asChild>
-                <a href="mailto:sales@m2mmoving.au">{/* Placeholder for icon */}</a>
+                <a href="mailto:sales@m2mmoving.au" aria-label="Email sales">
+                  <Mail className="w-4 h-4" />
+                  Email Sales
+                </a>
               </Button>
             </div>
             <div className="px-4 pb-4">
@@ -58,7 +65,7 @@ export function FloatingCTA() {
         ) : (
           <Button onClick={() => setIsExpanded(true)} size="lg" className="h-14 px-6 shadow-lg group">
             <span className="uppercase tracking-wider">Get Quote</span>
-            {/* Placeholder for icon */}
+            <Calculator className="w-4 h-4 ml-2" />
           </Button>
         )}
       </div>
