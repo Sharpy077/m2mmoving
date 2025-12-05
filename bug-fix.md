@@ -40,13 +40,13 @@ This document outlines all identified UX bugs, usability issues, and improvement
 - Careers → Create `/careers` page or remove if not available
 
 **Code Example:**
-\`\`\`tsx
+```tsx
 // Current (broken)
 <a href="#" className="hover:text-primary transition-colors">Office Relocation</a>
 
 // Fixed
 <a href="/#services" className="hover:text-primary transition-colors">Office Relocation</a>
-\`\`\`
+```
 
 ---
 
@@ -61,14 +61,14 @@ This document outlines all identified UX bugs, usability issues, and improvement
 - Clear error messages below each field
 
 **Example:**
-\`\`\`tsx
+```tsx
 {!email && touched.email && (
   <p className="text-xs text-destructive mt-1">Email is required</p>
 )}
 {email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && (
   <p className="text-xs text-destructive mt-1">Please enter a valid email address</p>
 )}
-\`\`\`
+```
 
 ---
 
@@ -89,11 +89,11 @@ This document outlines all identified UX bugs, usability issues, and improvement
 **Issue:** No skip navigation link for keyboard users and screen readers  
 **Impact:** Accessibility violation (WCAG 2.1), poor experience for assistive technology users  
 **Fix:** Add skip link at the top of the page:
-\`\`\`tsx
+```tsx
 <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground">
   Skip to main content
 </a>
-\`\`\`
+```
 
 ---
 
@@ -102,9 +102,9 @@ This document outlines all identified UX bugs, usability issues, and improvement
 **Issue:** Icons used as decorative elements don't have proper `aria-hidden="true"` or alt text  
 **Impact:** Screen readers announce unnecessary information, cluttering the experience  
 **Fix:** Add `aria-hidden="true"` to decorative icons:
-\`\`\`tsx
+```tsx
 <Truck className="w-6 h-6 text-primary-foreground" aria-hidden="true" />
-\`\`\`
+```
 
 ---
 
@@ -125,11 +125,11 @@ This document outlines all identified UX bugs, usability issues, and improvement
 **Issue:** If business lookup doesn't return the correct business, users can't proceed  
 **Impact:** Users stuck in the flow, cannot complete quote  
 **Fix:** Add "None of these match" button that allows manual entry:
-\`\`\`tsx
+```tsx
 <button onClick={() => setBusinessLookupResults(null)} className="text-sm text-muted-foreground hover:text-primary">
   None of these match - enter manually
 </button>
-\`\`\`
+```
 
 ---
 
@@ -152,7 +152,7 @@ This document outlines all identified UX bugs, usability issues, and improvement
 **Issue:** Mobile menu closes on navigation link click, but not consistently. Hash links (#services) may not scroll properly.  
 **Impact:** Mobile users may experience jarring navigation  
 **Fix:** Ensure smooth scroll behavior and consistent menu closing:
-\`\`\`tsx
+```tsx
 onClick={() => {
   setIsOpen(false)
   // Small delay to allow menu to close before scroll
@@ -161,7 +161,7 @@ onClick={() => {
     element?.scrollIntoView({ behavior: 'smooth' })
   }, 100)
 }}
-\`\`\`
+```
 
 ---
 
@@ -181,7 +181,7 @@ onClick={() => {
 **Issue:** Form submission errors are not displayed to the user. Only success state is shown.  
 **Impact:** Users don't know if submission failed, may resubmit unnecessarily  
 **Fix:** Add error state display:
-\`\`\`tsx
+```tsx
 const [submitError, setSubmitError] = useState<string | null>(null)
 
 // In handleSubmit
@@ -196,7 +196,7 @@ if (!result.success) {
     {submitError}
   </div>
 )}
-\`\`\`
+```
 
 ---
 
@@ -205,13 +205,13 @@ if (!result.success) {
 **Issue:** Phone number inputs accept any format, no Australian phone number validation  
 **Impact:** Invalid phone numbers may be collected, causing contact issues  
 **Fix:** Add Australian phone number validation:
-\`\`\`tsx
+```tsx
 const validatePhone = (phone: string) => {
   // Australian phone: 04XX XXX XXX or +61 4XX XXX XXX
   const regex = /^(?:\+61|0)[2-478](?:[ -]?[0-9]){8}$/
   return regex.test(phone.replace(/\s/g, ''))
 }
-\`\`\`
+```
 
 ---
 
@@ -220,10 +220,10 @@ const validatePhone = (phone: string) => {
 **Issue:** Mobile sticky bottom bar may overlap page content, especially on shorter screens  
 **Impact:** Content becomes unreadable, poor mobile UX  
 **Fix:** Add bottom padding to main content when floating CTA is visible:
-\`\`\`tsx
+```tsx
 // In main layout
 <main className="min-h-screen bg-background pb-20 md:pb-0">
-\`\`\`
+```
 
 ---
 
@@ -262,11 +262,11 @@ const validatePhone = (phone: string) => {
 **Issue:** Calendar month state persists, users may navigate far into future and get lost  
 **Impact:** Confusing UX, users may not find current month easily  
 **Fix:** Add "Today" button that resets to current month:
-\`\`\`tsx
+```tsx
 <Button onClick={() => setCalendarMonth(new Date())} variant="ghost" size="sm">
   Today
 </Button>
-\`\`\`
+```
 
 ---
 
@@ -275,7 +275,7 @@ const validatePhone = (phone: string) => {
 **Issue:** Long forms can't be saved, users lose progress if they navigate away  
 **Impact:** High abandonment rate, poor UX for complex quotes  
 **Fix:** Implement localStorage draft saving:
-\`\`\`tsx
+```tsx
 useEffect(() => {
   const draft = localStorage.getItem('quote-draft')
   if (draft) {
@@ -287,7 +287,7 @@ useEffect(() => {
 useEffect(() => {
   localStorage.setItem('quote-draft', JSON.stringify(formData))
 }, [formData])
-\`\`\`
+```
 
 ---
 
@@ -296,7 +296,7 @@ useEffect(() => {
 **Issue:** Browser back button doesn't work properly with multi-step form  
 **Impact:** Users expect back button to work, creates confusion  
 **Fix:** Use URL parameters or history API to track step:
-\`\`\`tsx
+```tsx
 const [step, setStep] = useState(() => {
   const params = new URLSearchParams(window.location.search)
   return parseInt(params.get('step') || '1')
@@ -305,7 +305,7 @@ const [step, setStep] = useState(() => {
 useEffect(() => {
   window.history.pushState({ step }, '', `?step=${step}`)
 }, [step])
-\`\`\`
+```
 
 ---
 
@@ -314,7 +314,7 @@ useEffect(() => {
 **Issue:** Stripe errors may show technical messages that users don't understand  
 **Impact:** Users don't know how to fix payment issues  
 **Fix:** Map Stripe error codes to user-friendly messages:
-\`\`\`tsx
+```tsx
 const getErrorMessage = (error: string) => {
   const errorMap: Record<string, string> = {
     'card_declined': 'Your card was declined. Please try a different payment method.',
@@ -324,7 +324,7 @@ const getErrorMessage = (error: string) => {
   }
   return errorMap[error] || 'Payment failed. Please try again or contact support.'
 }
-\`\`\`
+```
 
 ---
 
@@ -333,12 +333,12 @@ const getErrorMessage = (error: string) => {
 **Issue:** Focus states may not be visible enough for keyboard navigation  
 **Impact:** Accessibility issue, keyboard users can't see where they are  
 **Fix:** Ensure all interactive elements have visible focus states:
-\`\`\`css
+```css
 *:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
-\`\`\`
+```
 
 ---
 
@@ -347,12 +347,12 @@ const getErrorMessage = (error: string) => {
 **Issue:** Voice input button has no aria-label explaining its function  
 **Impact:** Screen reader users don't know what the button does  
 **Fix:** Add proper aria-label:
-\`\`\`tsx
+```tsx
 <Button
   aria-label={isListening ? "Stop voice input" : "Start voice input"}
   title={isListening ? "Stop voice input" : "Start voice input"}
 >
-\`\`\`
+```
 
 ---
 
@@ -361,7 +361,7 @@ const getErrorMessage = (error: string) => {
 **Issue:** Users can accidentally navigate away and lose form data  
 **Impact:** Frustration, data loss, increased abandonment  
 **Fix:** Implement beforeunload warning:
-\`\`\`tsx
+```tsx
 useEffect(() => {
   const handleBeforeUnload = (e: BeforeUnloadEvent) => {
     if (hasUnsavedChanges) {
@@ -372,7 +372,7 @@ useEffect(() => {
   window.addEventListener('beforeunload', handleBeforeUnload)
   return () => window.removeEventListener('beforeunload', handleBeforeUnload)
 }, [hasUnsavedChanges])
-\`\`\`
+```
 
 ---
 
@@ -399,7 +399,7 @@ useEffect(() => {
 **Issue:** Slider for square meters may be difficult to use precisely on touch devices  
 **Impact:** Users may select wrong values, affecting quote accuracy  
 **Fix:** Add manual input field alongside slider:
-\`\`\`tsx
+```tsx
 <div className="flex gap-2">
   <Slider value={squareMeters} onValueChange={setSquareMeters} />
   <Input 
@@ -409,7 +409,7 @@ useEffect(() => {
     className="w-24"
   />
 </div>
-\`\`\`
+```
 
 ---
 
@@ -426,9 +426,9 @@ useEffect(() => {
 **Issue:** CTA buttons may be difficult to tap on mobile devices  
 **Impact:** Poor mobile UX, reduced conversions  
 **Fix:** Ensure buttons meet minimum touch target size (44x44px):
-\`\`\`tsx
+```tsx
 <Button size="lg" className="min-h-[44px] min-w-[120px]">
-\`\`\`
+```
 
 ---
 
@@ -453,12 +453,12 @@ useEffect(() => {
 **Issue:** Users can't easily see where they are in the site hierarchy  
 **Impact:** Poor navigation, especially for deep pages  
 **Fix:** Add breadcrumb component:
-\`\`\`tsx
+```tsx
 <Breadcrumb>
   <BreadcrumbItem><Link href="/">Home</Link></BreadcrumbItem>
   <BreadcrumbItem>Get Quote</BreadcrumbItem>
 </Breadcrumb>
-\`\`\`
+```
 
 ---
 
@@ -483,11 +483,11 @@ useEffect(() => {
 **Issue:** Mobile menu appears/disappears instantly, feels jarring  
 **Impact:** Poor UX, feels unpolished  
 **Fix:** Add smooth slide-in animation:
-\`\`\`tsx
+```tsx
 <div className={`md:hidden py-4 border-t border-border transition-all duration-300 ${
   isOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0 overflow-hidden'
 }`}>
-\`\`\`
+```
 
 ---
 
@@ -520,13 +520,13 @@ useEffect(() => {
 **Issue:** Some placeholders use examples that may not match actual format requirements  
 **Impact:** Users may enter data in wrong format  
 **Fix:** Use clearer placeholders and add format hints:
-\`\`\`tsx
+```tsx
 <Input 
   placeholder="04XX XXX XXX"
   pattern="[0-9]{10}"
   title="10-digit Australian mobile number"
 />
-\`\`\`
+```
 
 ---
 
@@ -547,12 +547,12 @@ useEffect(() => {
 **Issue:** Distance accepts any number, no validation for reasonable ranges  
 **Impact:** Users may enter unrealistic distances, affecting quote accuracy  
 **Fix:** Add validation:
-\`\`\`tsx
+```tsx
 const validateDistance = (distance: string) => {
   const num = parseInt(distance)
   return num >= 0 && num <= 1000 // Reasonable range for Melbourne
 }
-\`\`\`
+```
 
 ---
 
@@ -561,12 +561,12 @@ const validateDistance = (distance: string) => {
 **Issue:** Users can select past dates for move date  
 **Impact:** Invalid data, may cause confusion  
 **Fix:** Add `min` attribute:
-\`\`\`tsx
+```tsx
 <Input 
   type="date" 
   min={new Date().toISOString().split('T')[0]}
 />
-\`\`\`
+```
 
 ---
 

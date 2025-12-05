@@ -38,7 +38,7 @@
    - File: `components/footer.tsx`
    - Replace all `href="#"` with proper routes
 
-\`\`\`tsx
+```tsx
 // Before (line 10, 42, 47, 52, 63, 68, 73, 78)
 <a href="#" className="...">Office Relocation</a>
 
@@ -47,7 +47,7 @@
 <a href="/quote" className="...">Get Quote</a>
 // For pages that don't exist yet, use mailto or remove
 <a href="mailto:sales@m2mmoving.au?subject=About Us" className="...">About Us</a>
-\`\`\`
+```
 
 2. **Create Missing Pages (if needed)**
    - Create placeholder pages for About, Blog, Careers if they should exist
@@ -73,7 +73,7 @@
 1. **Create Validation Utilities**
    - File: `lib/validation.ts` (new file)
 
-\`\`\`typescript
+```typescript
 export const validateEmail = (email: string): string | null => {
   if (!email) return "Email is required"
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -106,12 +106,12 @@ export const validateNumber = (value: string, min?: number, max?: number): strin
   if (max !== undefined && num > max) return `Must be at most ${max}`
   return null
 }
-\`\`\`
+```
 
 2. **Update Quote Builder with Validation**
    - File: `components/quote-builder.tsx`
 
-\`\`\`tsx
+```tsx
 // Add state for touched fields and errors
 const [touched, setTouched] = useState<Record<string, boolean>>({})
 const [errors, setErrors] = useState<Record<string, string | null>>({})
@@ -170,7 +170,7 @@ const handleEmailBlur = () => {
     <p className="text-xs text-destructive mt-1">{errors.email}</p>
   )}
 </div>
-\`\`\`
+```
 
 3. **Update Custom Quote Form with Validation**
    - File: `components/custom-quote-form.tsx`
@@ -198,7 +198,7 @@ const handleEmailBlur = () => {
 1. **Create Error Recovery Hook**
    - File: `hooks/use-error-recovery.ts` (new)
 
-\`\`\`typescript
+```typescript
 import { useState, useCallback } from 'react'
 
 interface RetryOptions {
@@ -255,12 +255,12 @@ export function useErrorRecovery<T>(
     execute: executeWithRetry
   }
 }
-\`\`\`
+```
 
 2. **Create Form State Persistence**
    - File: `hooks/use-form-persistence.ts` (new)
 
-\`\`\`typescript
+```typescript
 import { useEffect } from 'react'
 
 export function useFormPersistence<T>(
@@ -302,12 +302,12 @@ export function useFormPersistence<T>(
 
   return { loadSavedData, clearSavedData }
 }
-\`\`\`
+```
 
 3. **Update Quote Assistant with Error Recovery**
    - File: `components/quote-assistant.tsx`
 
-\`\`\`tsx
+```tsx
 import { useErrorRecovery } from '@/hooks/use-error-recovery'
 import { useFormPersistence } from '@/hooks/use-form-persistence'
 
@@ -356,7 +356,7 @@ useFormPersistence(
     </div>
   </div>
 )}
-\`\`\`
+```
 
 4. **Test**
    - Simulate network failures
@@ -384,7 +384,7 @@ useFormPersistence(
 1. **Create Skip Link Component**
    - File: `components/skip-link.tsx` (new)
 
-\`\`\`tsx
+```tsx
 "use client"
 
 import Link from "next/link"
@@ -399,12 +399,12 @@ export function SkipLink() {
     </Link>
   )
 }
-\`\`\`
+```
 
 2. **Add to Root Layout**
    - File: `app/layout.tsx`
 
-\`\`\`tsx
+```tsx
 import { SkipLink } from "@/components/skip-link"
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -418,21 +418,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   )
 }
-\`\`\`
+```
 
 3. **Add Main Content ID**
    - File: `app/page.tsx`
 
-\`\`\`tsx
+```tsx
 <main id="main-content" className="min-h-screen bg-background">
   {/* ... */}
 </main>
-\`\`\`
+```
 
 4. **Add CSS for Screen Reader Only**
    - File: `app/globals.css`
 
-\`\`\`css
+```css
 @layer utilities {
   .sr-only {
     position: absolute;
@@ -457,7 +457,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     white-space: normal;
   }
 }
-\`\`\`
+```
 
 5. **Test**
    - Test with keyboard navigation (Tab key)
@@ -488,7 +488,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 2. **Add aria-hidden to Decorative Icons**
    - Files: Multiple components
 
-\`\`\`tsx
+```tsx
 // Decorative icons (no action, just visual)
 <Truck className="w-6 h-6 text-primary-foreground" aria-hidden="true" />
 <Building2 className="w-5 h-5 text-primary" aria-hidden="true" />
@@ -497,7 +497,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 <Button aria-label="Close menu">
   <X className="w-4 h-4" aria-hidden="true" />
 </Button>
-\`\`\`
+```
 
 3. **Update Components**
    - `components/navbar.tsx` - Logo icon
@@ -532,7 +532,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 1. **Create Payment Confirmation Component**
    - File: `components/payment-confirmation.tsx` (new)
 
-\`\`\`tsx
+```tsx
 "use client"
 
 import { CheckCircle2, Mail, Clock, FileText } from "lucide-react"
@@ -653,12 +653,12 @@ export function PaymentConfirmation({
     </div>
   )
 }
-\`\`\`
+```
 
 2. **Update Quote Assistant Payment Section**
    - File: `components/quote-assistant.tsx`
 
-\`\`\`tsx
+```tsx
 import { PaymentConfirmation } from "@/components/payment-confirmation"
 
 // Replace payment complete section
@@ -670,7 +670,7 @@ import { PaymentConfirmation } from "@/components/payment-confirmation"
     scheduledDate={selectedDate || undefined}
   />
 )}
-\`\`\`
+```
 
 3. **Update Quote Builder Payment Section**
    - File: `components/quote-builder.tsx`
@@ -700,7 +700,7 @@ import { PaymentConfirmation } from "@/components/payment-confirmation"
 1. **Update Business Results Component**
    - File: `components/quote-assistant.tsx`
 
-\`\`\`tsx
+```tsx
 // In BusinessResults component
 const BusinessResults = () => {
   if (!businessLookupResults?.length) return null
@@ -734,7 +734,7 @@ const BusinessResults = () => {
     </div>
   )
 }
-\`\`\`
+```
 
 2. **Handle Manual Entry Flow**
    - Update AI prompt to handle manual business entry
@@ -761,7 +761,7 @@ const BusinessResults = () => {
 1. **Update Calendar Picker Component**
    - File: `components/quote-assistant.tsx`
 
-\`\`\`tsx
+```tsx
 // In CalendarPicker component
 <button
   key={day}
@@ -787,7 +787,7 @@ const BusinessResults = () => {
 >
   {day}
 </button>
-\`\`\`
+```
 
 2. **Add Visual Indicators**
    - Add tooltip explaining disabled states
@@ -814,7 +814,7 @@ const BusinessResults = () => {
 1. **Fix Menu Closing and Smooth Scroll**
    - File: `components/navbar.tsx`
 
-\`\`\`tsx
+```tsx
 const handleNavClick = (href: string) => {
   setIsOpen(false)
   
@@ -847,17 +847,17 @@ const handleNavClick = (href: string) => {
     {link.name}
   </Link>
 ))}
-\`\`\`
+```
 
 2. **Add Menu Animation**
    - Add smooth slide-in/out animation
 
-\`\`\`tsx
+```tsx
 <div className={cn(
   "md:hidden py-4 border-t border-border transition-all duration-300 ease-in-out",
   isOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0 overflow-hidden"
 )}>
-\`\`\`
+```
 
 3. **Test**
    - Test on various mobile devices
@@ -878,7 +878,7 @@ const handleNavClick = (href: string) => {
 1. **Add Error State**
    - File: `components/custom-quote-form.tsx`
 
-\`\`\`tsx
+```tsx
 const [submitError, setSubmitError] = useState<string | null>(null)
 
 const handleSubmit = async (e: React.FormEvent) => {
@@ -925,7 +925,7 @@ const handleSubmit = async (e: React.FormEvent) => {
     </CardContent>
   </Card>
 )}
-\`\`\`
+```
 
 2. **Test**
    - Test error scenarios
@@ -946,7 +946,7 @@ const handleSubmit = async (e: React.FormEvent) => {
 1. **Update Validation Utility**
    - File: `lib/validation.ts` (already created in Issue #2)
 
-\`\`\`typescript
+```typescript
 export const validatePhone = (phone: string, required: boolean = false): string | null => {
   if (!phone || phone.trim() === '') {
     return required ? "Phone number is required" : null
@@ -967,12 +967,12 @@ export const validatePhone = (phone: string, required: boolean = false): string 
   
   return null
 }
-\`\`\`
+```
 
 2. **Add Phone Formatting**
    - Optional: Add auto-formatting as user types
 
-\`\`\`tsx
+```tsx
 const formatPhoneNumber = (value: string): string => {
   const cleaned = value.replace(/\D/g, '')
   if (cleaned.startsWith('0')) {
@@ -982,7 +982,7 @@ const formatPhoneNumber = (value: string): string => {
   }
   return cleaned
 }
-\`\`\`
+```
 
 3. **Update Forms**
    - Apply validation to all phone inputs
@@ -1008,20 +1008,20 @@ const formatPhoneNumber = (value: string): string => {
 1. **Add Bottom Padding to Main Content**
    - File: `app/page.tsx`
 
-\`\`\`tsx
+```tsx
 <main className="min-h-screen bg-background pb-20 md:pb-0">
   {/* ... */}
 </main>
-\`\`\`
+```
 
 2. **Update Quote Page**
    - File: `app/quote/page.tsx`
 
-\`\`\`tsx
+```tsx
 <main className="min-h-screen bg-background pb-20 md:pb-0">
   {/* ... */}
 </main>
-\`\`\`
+```
 
 3. **Test**
    - Test on various mobile screen sizes
@@ -1050,7 +1050,7 @@ const formatPhoneNumber = (value: string): string => {
    - Quote calculation
    - Payment processing
 
-\`\`\`tsx
+```tsx
 // In quote-assistant.tsx
 const [isLookingUpBusiness, setIsLookingUpBusiness] = useState(false)
 const [isCheckingAvailability, setIsCheckingAvailability] = useState(false)
@@ -1062,7 +1062,7 @@ const [isCheckingAvailability, setIsCheckingAvailability] = useState(false)
     <span className="text-sm text-muted-foreground">Looking up business...</span>
   </div>
 )}
-\`\`\`
+```
 
 3. **Test**
    - Test all loading states
@@ -1086,7 +1086,7 @@ const [isCheckingAvailability, setIsCheckingAvailability] = useState(false)
 2. **Update Quote Builder**
    - File: `components/quote-builder.tsx`
 
-\`\`\`tsx
+```tsx
 import { useFormPersistence } from '@/hooks/use-form-persistence'
 
 // Save form state
@@ -1127,12 +1127,12 @@ useEffect(() => {
     clearSavedData()
   }
 }, [submitted])
-\`\`\`
+```
 
 3. **Add "Restore Draft" Banner**
    - Show banner if draft exists
 
-\`\`\`tsx
+```tsx
 const [showDraftBanner, setShowDraftBanner] = useState(false)
 
 useEffect(() => {
@@ -1157,7 +1157,7 @@ useEffect(() => {
     </div>
   </div>
 )}
-\`\`\`
+```
 
 4. **Test**
    - Test draft saving
@@ -1180,7 +1180,7 @@ useEffect(() => {
 1. **Create Error Message Mapper**
    - File: `lib/stripe-errors.ts` (new)
 
-\`\`\`typescript
+```typescript
 export const getStripeErrorMessage = (error: string): string => {
   const errorMap: Record<string, string> = {
     'card_declined': 'Your card was declined. Please try a different payment method or contact your bank.',
@@ -1211,12 +1211,12 @@ export const getStripeErrorMessage = (error: string): string => {
   // Default message
   return 'Payment failed. Please try again or contact support at 03 8820 1801.'
 }
-\`\`\`
+```
 
 2. **Update Payment Components**
    - File: `components/quote-assistant.tsx`
 
-\`\`\`tsx
+```tsx
 import { getStripeErrorMessage } from '@/lib/stripe-errors'
 
 // In StripeCheckout component
@@ -1241,7 +1241,7 @@ if (creationError || !clientSecret || !stripePromise) {
     </div>
   )
 }
-\`\`\`
+```
 
 3. **Test**
    - Test various error scenarios
@@ -1266,7 +1266,7 @@ if (creationError || !clientSecret || !stripePromise) {
 1. **Update Global CSS**
    - File: `app/globals.css`
 
-\`\`\`css
+```css
 @layer base {
   *:focus-visible {
     outline: 2px solid var(--primary);
@@ -1288,7 +1288,7 @@ if (creationError || !clientSecret || !stripePromise) {
     outline: none;
   }
 }
-\`\`\`
+```
 
 2. **Test All Interactive Elements**
    - Buttons
@@ -1315,7 +1315,7 @@ if (creationError || !clientSecret || !stripePromise) {
 1. **Create Hook for Beforeunload**
    - File: `hooks/use-beforeunload.ts` (new)
 
-\`\`\`typescript
+```typescript
 import { useEffect } from 'react'
 
 export function useBeforeUnload(hasUnsavedChanges: boolean) {
@@ -1332,12 +1332,12 @@ export function useBeforeUnload(hasUnsavedChanges: boolean) {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [hasUnsavedChanges])
 }
-\`\`\`
+```
 
 2. **Apply to Forms**
    - File: `components/quote-builder.tsx`
 
-\`\`\`tsx
+```tsx
 import { useBeforeUnload } from '@/hooks/use-beforeunload'
 
 const hasUnsavedChanges = step > 1 && !submitted && (
@@ -1345,7 +1345,7 @@ const hasUnsavedChanges = step > 1 && !submitted && (
 )
 
 useBeforeUnload(hasUnsavedChanges)
-\`\`\`
+```
 
 3. **Test**
    - Test browser warning
@@ -1373,7 +1373,7 @@ useBeforeUnload(hasUnsavedChanges)
 1. **Update Services Section**
    - File: `components/services-section.tsx`
 
-\`\`\`tsx
+```tsx
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowRight } from "lucide-react"
@@ -1395,12 +1395,12 @@ import { ArrowRight } from "lucide-react"
     </Link>
   </Button>
 </CardContent>
-\`\`\`
+```
 
 2. **Update Quote Builder to Accept Service Parameter**
    - File: `app/quote/page.tsx`
 
-\`\`\`tsx
+```tsx
 'use client'
 
 import { useSearchParams } from 'next/navigation'
@@ -1413,7 +1413,7 @@ export default function QuotePage() {
   // Pass to QuoteBuilder component
   return <QuoteBuilder initialService={serviceParam} />
 }
-\`\`\`
+```
 
 3. **Test**
    - Test service card CTAs
@@ -1436,7 +1436,7 @@ export default function QuotePage() {
 1. **Add Manual Input to Slider**
    - File: `components/quote-builder.tsx`
 
-\`\`\`tsx
+```tsx
 <div className="space-y-4">
   <div className="flex items-center justify-between">
     <p className="text-xs font-mono text-muted-foreground">SPACE_SIZE</p>
@@ -1472,7 +1472,7 @@ export default function QuotePage() {
     <span>2000 sqm</span>
   </div>
 </div>
-\`\`\`
+```
 
 2. **Test**
    - Test on mobile devices
@@ -1493,7 +1493,7 @@ export default function QuotePage() {
 1. **Create Breadcrumb Component** (if not exists)
    - File: `components/breadcrumbs.tsx` (new)
 
-\`\`\`tsx
+```tsx
 "use client"
 
 import Link from "next/link"
@@ -1538,12 +1538,12 @@ export function Breadcrumbs({ items, className }: BreadcrumbsProps) {
     </nav>
   )
 }
-\`\`\`
+```
 
 2. **Add to Pages**
    - File: `app/quote/page.tsx`
 
-\`\`\`tsx
+```tsx
 import { Breadcrumbs } from "@/components/breadcrumbs"
 
 <Breadcrumbs
@@ -1552,7 +1552,7 @@ import { Breadcrumbs } from "@/components/breadcrumbs"
   ]}
   className="mb-6"
 />
-\`\`\`
+```
 
 3. **Test**
    - Test navigation
@@ -1577,7 +1577,7 @@ import { Breadcrumbs } from "@/components/breadcrumbs"
 1. **Create 404 Page**
    - File: `app/not-found.tsx` (new)
 
-\`\`\`tsx
+```tsx
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Home, ArrowLeft, AlertTriangle } from "lucide-react"
@@ -1620,7 +1620,7 @@ export default function NotFound() {
     </main>
   )
 }
-\`\`\`
+```
 
 2. **Test**
    - Navigate to non-existent page
@@ -1649,7 +1649,7 @@ export default function NotFound() {
    - Add proper sizing
    - Add alt text
 
-\`\`\`tsx
+```tsx
 import Image from "next/image"
 
 <Image
@@ -1659,7 +1659,7 @@ import Image from "next/image"
   height={40}
   priority
 />
-\`\`\`
+```
 
 3. **Test**
    - Verify image loading
@@ -1680,7 +1680,7 @@ import Image from "next/image"
 1. **Create Analytics Utility**
    - File: `lib/analytics.ts` (new)
 
-\`\`\`typescript
+```typescript
 export const trackEvent = (eventName: string, properties?: Record<string, any>) => {
   if (typeof window !== 'undefined' && window.gtag) {
     window.gtag('event', eventName, properties)
@@ -1709,7 +1709,7 @@ export const trackPaymentStart = (amount: number) => {
 export const trackPaymentComplete = (amount: number, referenceId: string) => {
   trackEvent('payment_complete', { amount, reference_id: referenceId })
 }
-\`\`\`
+```
 
 2. **Add Tracking to Components**
    - Form starts
@@ -1717,7 +1717,7 @@ export const trackPaymentComplete = (amount: number, referenceId: string) => {
    - CTA clicks
    - Payment events
 
-\`\`\`tsx
+```tsx
 import { trackFormStart, trackFormComplete } from '@/lib/analytics'
 
 // On form start
@@ -1733,7 +1733,7 @@ const handleSubmit = async () => {
     estimated_total: estimate
   })
 }
-\`\`\`
+```
 
 3. **Test**
    - Verify events fire correctly
@@ -1761,7 +1761,7 @@ const handleSubmit = async () => {
 1. **Create Sitemap**
    - File: `app/sitemap.ts` (new)
 
-\`\`\`typescript
+```typescript
 import { MetadataRoute } from 'next'
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -1788,12 +1788,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
   ]
 }
-\`\`\`
+```
 
 2. **Create Robots.txt**
    - File: `app/robots.ts` (new)
 
-\`\`\`typescript
+```typescript
 import { MetadataRoute } from 'next'
 
 export default function robots(): MetadataRoute.Robots {
@@ -1806,7 +1806,7 @@ export default function robots(): MetadataRoute.Robots {
     sitemap: 'https://m2mmoving.com.au/sitemap.xml',
   }
 }
-\`\`\`
+```
 
 3. **Test**
    - Verify sitemap.xml is accessible

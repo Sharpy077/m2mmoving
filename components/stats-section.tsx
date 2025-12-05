@@ -4,12 +4,17 @@ import { useEffect, useState } from "react"
 import { ArrowRight, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
+// First relocation: ~3 months ago, Second: ~2 weeks ago
+// We simulate gradual growth based on business trajectory
 function calculateRelocations(): number {
-  const startDate = new Date("2025-08-26")
-  const secondRelocationDate = new Date("2025-11-12")
+  const startDate = new Date("2025-08-26") // ~3 months ago - first relocation
+  const secondRelocationDate = new Date("2025-11-12") // ~2 weeks ago
   const now = new Date()
 
+  // Base count is 2 (the completed ones)
   let count = 2
+
+  // If we're before the second relocation date, only count 1
   if (now < secondRelocationDate) {
     count = 1
   }
@@ -17,14 +22,57 @@ function calculateRelocations(): number {
   return count
 }
 
+async function fetchStats() {
+  try {
+    const response = await fetch('/api/fleet-stats')
+    if (response.ok) {
+      const data = await response.json()
+      return {
+        relocations: data.completedMoves || calculateRelocations(),
+        damageClaims: data.damageClaims || 0,
+        avgProjectTime: data.avgProjectTime || "48hrs",
+        satisfaction: data.satisfactionRate || "100%",
+      }
+    }
+  } catch (error) {
+    console.error('Failed to fetch stats:', error)
+  }
+  // Fallback to calculated values
+  return {
+    relocations: calculateRelocations(),
+    damageClaims: 0,
+    avgProjectTime: "48hrs",
+    satisfaction: "100%",
+  }
+}
+
 export function StatsSection() {
   const [relocations, setRelocations] = useState(2)
+  const [damageClaims, setDamageClaims] = useState("$0")
+  const [avgProjectTime, setAvgProjectTime] = useState("48hrs")
+  const [satisfaction, setSatisfaction] = useState("100%")
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    setRelocations(calculateRelocations())
+    // Fetch stats on mount
+    fetchStats().then((stats) => {
+      setRelocations(stats.relocations)
+      setDamageClaims(stats.damageClaims === 0 ? "$0" : `$${stats.damageClaims}`)
+      setAvgProjectTime(stats.avgProjectTime)
+      setSatisfaction(stats.satisfaction)
+      setIsLoading(false)
+    })
+
+    // Update every hour
     const interval = setInterval(() => {
-      setRelocations(calculateRelocations())
+      fetchStats().then((stats) => {
+        setRelocations(stats.relocations)
+        setDamageClaims(stats.damageClaims === 0 ? "$0" : `$${stats.damageClaims}`)
+        setAvgProjectTime(stats.avgProjectTime)
+        setSatisfaction(stats.satisfaction)
+      })
     }, 3600000)
+
     return () => clearInterval(interval)
   }, [])
 
@@ -33,10 +81,10 @@ export function StatsSection() {
   }
 
   const stats = [
-    { value: relocations.toString(), label: "Relocations Complete", highlight: false },
-    { value: "$0", label: "Damage Claims", highlight: true },
-    { value: "48hrs", label: "Avg. Project Time", highlight: false },
-    { value: "100%", label: "Client Retention", highlight: true },
+    { value: isLoading ? "..." : relocations.toString(), label: "Relocations Complete", highlight: false },
+    { value: isLoading ? "..." : damageClaims, label: "Damage Claims", highlight: true },
+    { value: isLoading ? "..." : avgProjectTime, label: "Avg. Project Time", highlight: false },
+    { value: isLoading ? "..." : satisfaction, label: "Client Satisfaction", highlight: true },
   ]
 
   return (
@@ -45,7 +93,7 @@ export function StatsSection() {
         <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-8 pb-8 border-b border-border">
           <div>
             <h2 className="text-xl md:text-2xl font-bold text-foreground mb-1">Ready to move your business?</h2>
-            <p className="text-muted-foreground">Get a free, no-obligation quote in under 60 seconds.</p>
+            <p className="text-muted-foreground">Get a free, no-obligation quote in under 60 seconds</p>
           </div>
           <div className="flex gap-3">
             <Button className="uppercase tracking-wider group" onClick={scrollToAssistant}>
