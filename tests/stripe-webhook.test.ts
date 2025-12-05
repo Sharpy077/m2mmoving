@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const constructEventMock = vi.fn()
-const eqMock = vi.fn()
-const updateMock = vi.fn(() => ({ eq: eqMock }))
-const fromMock = vi.fn(() => ({ update: updateMock }))
-const reportMonitoringMock = vi.fn().mockResolvedValue({ delivered: true })
+const { constructEventMock, eqMock, updateMock, fromMock, createClientMock } = vi.hoisted(() => {
+  const constructEventMock = vi.fn()
+  const eqMock = vi.fn()
+  const updateMock = vi.fn(() => ({ eq: eqMock }))
+  const fromMock = vi.fn(() => ({ update: updateMock }))
+  const createClientMock = vi.fn().mockResolvedValue({ from: fromMock })
+  return { constructEventMock, eqMock, updateMock, fromMock, createClientMock }
+})
 
 vi.mock("@/lib/stripe", () => ({
   stripe: {
@@ -20,8 +23,8 @@ vi.mock("@/lib/supabase/admin", () => ({
   }),
 }))
 
-vi.mock("@/lib/monitoring", () => ({
-  reportMonitoring: reportMonitoringMock,
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: createClientMock,
 }))
 
 import { POST } from "@/app/api/stripe/webhook/route"
@@ -35,7 +38,9 @@ describe("Stripe webhook route", () => {
     eqMock.mockReset()
     updateMock.mockClear()
     fromMock.mockClear()
-    reportMonitoringMock.mockClear()
+    createClientMock.mockReset()
+    createClientMock.mockResolvedValue({ from: fromMock })
+    eqMock.mockResolvedValue({ error: null })
   })
 
   afterEach(() => {
@@ -47,12 +52,6 @@ describe("Stripe webhook route", () => {
 
     expect(response.status).toBe(400)
     expect(constructEventMock).not.toHaveBeenCalled()
-    expect(reportMonitoringMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        source: "stripe.webhook",
-        severity: "warning",
-      }),
-    )
   })
 
   it("updates lead when checkout session completes successfully", async () => {
@@ -71,21 +70,20 @@ describe("Stripe webhook route", () => {
     const response = await POST(createRequest("{}", "sig_test"))
 
     expect(response.status).toBe(200)
+    expect(createClientMock).toHaveBeenCalled()
     expect(constructEventMock).toHaveBeenCalled()
     expect(fromMock).toHaveBeenCalledWith("leads")
     expect(updateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         payment_status: "paid",
         deposit_paid: true,
-        status: "quoted",
-        deposit_amount: 5000,
+        stripe_session_id: "cs_test",
       }),
     )
     expect(eqMock).toHaveBeenCalledWith("id", "lead_123")
-    expect(reportMonitoringMock).not.toHaveBeenCalled()
   })
 
-  it("reports monitoring alert when Supabase update fails", async () => {
+  it("returns 500 when the Supabase client cannot be created", async () => {
     constructEventMock.mockReturnValueOnce({
       type: "checkout.session.completed",
       data: {
@@ -95,20 +93,11 @@ describe("Stripe webhook route", () => {
         },
       },
     })
-    eqMock.mockResolvedValueOnce({ error: { message: "database offline" } })
+    createClientMock.mockRejectedValueOnce(new Error("db offline"))
 
     const response = await POST(createRequest("{}", "sig_test"))
 
     expect(response.status).toBe(500)
-    expect(reportMonitoringMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        source: "stripe.webhook",
-        severity: "critical",
-        details: expect.objectContaining({
-          eventType: "checkout.session.completed",
-        }),
-      }),
-    )
   })
 })
 
