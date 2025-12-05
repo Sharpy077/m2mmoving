@@ -2,6 +2,7 @@ import type React from "react"
 import type { Metadata } from "next"
 
 import { Analytics } from "@vercel/analytics/next"
+import { SkipLink } from "@/components/skip-link"
 import "./globals.css"
 
 import { Oxanium, Source_Code_Pro, Source_Serif_4, Oxanium as V0_Font_Oxanium, Source_Code_Pro as V0_Font_Source_Code_Pro, Source_Serif_4 as V0_Font_Source_Serif_4 } from 'next/font/google'
@@ -53,6 +54,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`font-sans antialiased`}>
+        <SkipLink />
         {children}
         <Analytics />
       </body>

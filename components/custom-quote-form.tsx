@@ -10,9 +10,11 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Send, Building2, User, Mail, Phone, Calendar, FileText, CheckCircle2, Loader2 } from "lucide-react"
+import { Send, Building2, User, Mail, Phone, Calendar, FileText, CheckCircle2, Loader2, AlertCircle } from "lucide-react"
 import { submitLead } from "@/app/actions/leads"
-import { buildCustomQuoteLeadPayload, type CustomQuoteFormData } from "@/lib/quote/custom"
+import { validateEmail, validatePhone } from "@/lib/validation"
+import { cn } from "@/lib/utils"
+import { useBeforeUnload } from "@/hooks/use-beforeunload"
 
 const businessTypes = [
   "Corporate Office",
@@ -44,8 +46,12 @@ export function CustomQuoteForm() {
   const [selectedRequirements, setSelectedRequirements] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  
+  // Validation state
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const [errors, setErrors] = useState<Record<string, string | null>>({})
 
-  const [formData, setFormData] = useState<CustomQuoteFormData>({
+  const [formData, setFormData] = useState({
     fullName: "",
     companyName: "",
     email: "",
@@ -64,29 +70,84 @@ export function CustomQuoteForm() {
     setSelectedRequirements((prev) => (prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]))
   }
 
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = !submitted && (
+    formData.fullName || formData.email || formData.phone || formData.companyName ||
+    formData.currentLocation || formData.newLocation || formData.projectDescription ||
+    selectedRequirements.length > 0
+  )
+
+  // Warn before leaving with unsaved changes
+  useBeforeUnload(hasUnsavedChanges)
+
   const updateFormData = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
+    // Validate on change if field has been touched
+    if (touched[field]) {
+      validateField(field, value)
+    }
+  }
+
+  const validateField = (field: string, value: string) => {
+    let error: string | null = null
+    
+    switch (field) {
+      case 'email':
+        error = validateEmail(value)
+        break
+      case 'phone':
+        error = validatePhone(value, true) // Required in custom form
+        break
+    }
+    
+    setErrors(prev => ({ ...prev, [field]: error }))
+    return error === null
+  }
+
+  const handleBlur = (field: string) => {
+    setTouched(prev => ({ ...prev, [field]: true }))
+    validateField(field, formData[field as keyof typeof formData] || '')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // Validate all required fields
+    setTouched({ email: true, phone: true, fullName: true, companyName: true })
+    const emailValid = validateField('email', formData.email)
+    const phoneValid = validateField('phone', formData.phone)
+    
+    if (!emailValid || !phoneValid) {
+      return
+    }
+    
     setIsSubmitting(true)
     setSubmitError(null)
 
-    try {
-      const payload = buildCustomQuoteLeadPayload(formData, selectedRequirements)
-      const result = await submitLead(payload)
+    const result = await submitLead({
+      lead_type: "custom_quote",
+      email: formData.email,
+      contact_name: formData.fullName || undefined,
+      company_name: formData.companyName || undefined,
+      phone: formData.phone || undefined,
+      industry_type: formData.industryType || undefined,
+      employee_count: formData.employeeCount || undefined,
+      current_location: formData.currentLocation || undefined,
+      new_location: formData.newLocation || undefined,
+      target_move_date: formData.targetMoveDate || undefined,
+      square_meters: formData.estimatedSqm ? Number.parseInt(formData.estimatedSqm) : undefined,
+      special_requirements: selectedRequirements.length > 0 ? selectedRequirements : undefined,
+      project_description: formData.projectDescription || undefined,
+      preferred_contact_time: formData.preferredContactTime || undefined,
+    })
 
-      if (result.success) {
-        setSubmitted(true)
-        setSubmittedLead(result.lead)
-      } else {
-        setSubmitError(result.error || "Unable to submit your request. Please try again.")
-      }
-    } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Unable to submit your request.")
-    } finally {
-      setIsSubmitting(false)
+    setIsSubmitting(false)
+
+    if (result.success) {
+      setSubmitted(true)
+      setSubmittedLead(result.lead)
+    } else {
+      setSubmitError(result.error || "Failed to submit quote. Please try again.")
     }
   }
 
@@ -181,11 +242,19 @@ export function CustomQuoteForm() {
               <Input
                 required
                 type="email"
-                placeholder="john@company.com.au"
-                className="bg-background border-border"
+                placeholder="john.smith@company.com.au"
+                className={cn(
+                  "bg-background border-border",
+                  errors.email && "border-destructive"
+                )}
                 value={formData.email}
                 onChange={(e) => updateFormData("email", e.target.value)}
+                onBlur={() => handleBlur("email")}
+                title="Your business email address"
               />
+              {errors.email && (
+                <p className="text-xs text-destructive mt-1">{errors.email}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label className="text-sm font-mono text-muted-foreground flex items-center gap-2">
@@ -194,11 +263,19 @@ export function CustomQuoteForm() {
               <Input
                 required
                 type="tel"
-                placeholder="04XX XXX XXX"
-                className="bg-background border-border"
+                placeholder="0412 345 678"
+                className={cn(
+                  "bg-background border-border",
+                  errors.phone && "border-destructive"
+                )}
                 value={formData.phone}
                 onChange={(e) => updateFormData("phone", e.target.value)}
+                onBlur={() => handleBlur("phone")}
+                title="Australian phone number (mobile: 04XX XXX XXX or landline: (03) XXXX XXXX)"
               />
+              {errors.phone && (
+                <p className="text-xs text-destructive mt-1">{errors.phone}</p>
+              )}
             </div>
           </div>
         </CardContent>
@@ -225,7 +302,7 @@ export function CustomQuoteForm() {
                 </SelectTrigger>
                 <SelectContent>
                   {businessTypes.map((type) => (
-                    <SelectItem key={type} value={type.toLowerCase().replace(/ /g, "-")}>
+                    <SelectItem key={type} value={type}>
                       {type}
                     </SelectItem>
                   ))}
@@ -253,20 +330,22 @@ export function CustomQuoteForm() {
               <Label className="text-sm font-mono text-muted-foreground">CURRENT_LOCATION *</Label>
               <Input
                 required
-                placeholder="123 Collins St, Melbourne VIC 3000"
+                placeholder="123 Collins Street, Melbourne VIC 3000"
                 className="bg-background border-border"
                 value={formData.currentLocation}
                 onChange={(e) => updateFormData("currentLocation", e.target.value)}
+                title="Full address of your current location"
               />
             </div>
             <div className="space-y-2">
               <Label className="text-sm font-mono text-muted-foreground">NEW_LOCATION *</Label>
               <Input
                 required
-                placeholder="456 Bourke St, Melbourne VIC 3000"
+                placeholder="456 Bourke Street, Melbourne VIC 3000"
                 className="bg-background border-border"
                 value={formData.newLocation}
                 onChange={(e) => updateFormData("newLocation", e.target.value)}
+                title="Full address of your new location"
               />
             </div>
           </div>
@@ -277,20 +356,27 @@ export function CustomQuoteForm() {
               </Label>
               <Input
                 type="date"
+                min={new Date().toISOString().split('T')[0]}
                 className="bg-background border-border"
                 value={formData.targetMoveDate}
                 onChange={(e) => updateFormData("targetMoveDate", e.target.value)}
+                title="Preferred date for your move (must be in the future)"
               />
+              <p className="text-xs text-muted-foreground">Optional - helps us check availability</p>
             </div>
             <div className="space-y-2">
               <Label className="text-sm font-mono text-muted-foreground">ESTIMATED_SQM</Label>
               <Input
                 type="number"
-                placeholder="e.g., 500"
+                placeholder="500"
+                min="10"
+                max="2000"
                 className="bg-background border-border"
                 value={formData.estimatedSqm}
                 onChange={(e) => updateFormData("estimatedSqm", e.target.value)}
+                title="Estimated square meters of space to be moved (10-2000 sqm)"
               />
+              <p className="text-xs text-muted-foreground">Optional - helps us provide accurate pricing</p>
             </div>
           </div>
         </CardContent>
@@ -366,14 +452,32 @@ export function CustomQuoteForm() {
         </CardContent>
       </Card>
 
+      {/* Error Display */}
+      {submitError && (
+        <Card className="border-destructive bg-destructive/10">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h4 className="font-semibold text-destructive mb-1">Submission Error</h4>
+                <p className="text-sm text-muted-foreground">{submitError}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => setSubmitError(null)}
+                >
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Submit */}
       <Card className="border-secondary bg-card">
         <CardContent className="py-6">
-          {submitError && (
-            <div className="w-full mb-4 rounded border border-destructive/60 bg-destructive/10 px-4 py-2 text-sm text-destructive">
-              {submitError}
-            </div>
-          )}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-sm text-muted-foreground">
               <span className="text-secondary font-mono">*</span> Required fields must be completed

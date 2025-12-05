@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card"
-import { MessageSquare } from "lucide-react"
+import { MessageSquare, Star } from "lucide-react"
 
 const testimonials = [
   {
@@ -24,6 +24,9 @@ const testimonials = [
 ]
 
 export function TestimonialsSection() {
+  // Show testimonials if we have them, otherwise show a more professional "coming soon" message
+  const hasTestimonials = testimonials.length > 0
+
   return (
     <section id="testimonials" className="py-16 md:py-24">
       <div className="container mx-auto px-4">
@@ -33,23 +36,51 @@ export function TestimonialsSection() {
             <span className="text-xs uppercase tracking-widest text-accent font-mono">// Client Logs</span>
           </div>
           <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">MISSION_REPORTS</h2>
-          <p className="text-muted-foreground max-w-2xl">Client testimonials and feedback from completed operations.</p>
+          <p className="text-muted-foreground max-w-2xl">
+            {hasTestimonials 
+              ? "Client testimonials and feedback from completed operations."
+              : "Client feedback from completed operations. We're building our reputation one successful move at a time."}
+          </p>
         </div>
 
-        <Card className="bg-card border-dashed border-2 border-border">
-          <CardContent className="py-16 flex flex-col items-center justify-center text-center">
-            <div className="w-16 h-16 rounded-none bg-muted flex items-center justify-center mb-6">
-              <MessageSquare className="w-8 h-8 text-muted-foreground" />
-            </div>
-            <div className="inline-block px-3 py-1 bg-accent/20 text-accent text-xs font-mono uppercase tracking-wider mb-4">
-              Coming Soon
-            </div>
-            <h3 className="text-xl font-bold text-foreground mb-2">Client Testimonials</h3>
-            <p className="text-muted-foreground max-w-md">
-              We're currently completing our first missions. Check back soon for verified feedback from our clients.
+        {hasTestimonials ? (
+          <div className="grid md:grid-cols-3 gap-6">
+            {testimonials.map((testimonial, index) => (
+              <Card key={index} className="bg-card border-border">
+                <CardContent className="p-6">
+                  <div className="flex gap-1 mb-4">
+                    {[...Array(5)].map((_, i) => (
+                      <Star key={i} className="h-4 w-4 fill-accent text-accent" aria-hidden="true" />
+                    ))}
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-4 italic leading-relaxed">
+                    "{testimonial.quote}"
+                  </p>
+                  <div className="border-t border-border pt-4">
+                    <p className="font-semibold text-foreground text-sm">{testimonial.author}</p>
+                    <p className="text-xs text-muted-foreground">{testimonial.role}</p>
+                    <p className="text-xs text-muted-foreground font-mono">{testimonial.company}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Card className="bg-card border-border">
+            <CardContent className="py-12 flex flex-col items-center justify-center text-center">
+              <div className="w-16 h-16 rounded-none bg-muted flex items-center justify-center mb-6">
+                <MessageSquare className="w-8 h-8 text-muted-foreground" aria-hidden="true" />
+              </div>
+            <h3 className="text-xl font-bold text-foreground mb-2">Building Our Reputation</h3>
+            <p className="text-muted-foreground max-w-md mb-4">
+              We're a new company focused on delivering exceptional service. As we complete more moves, we'll share verified feedback from our clients here.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Have questions? <a href="tel:+61388201801" className="text-primary hover:underline">Call us</a> or <a href="mailto:sales@m2mmoving.au" className="text-primary hover:underline">email us</a> to discuss your move.
             </p>
           </CardContent>
         </Card>
+        )}
       </div>
     </section>
   )

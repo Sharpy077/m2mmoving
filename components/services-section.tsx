@@ -1,5 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Building2, Server, MonitorDot, Package } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Building2, Server, MonitorDot, Package, ArrowRight } from "lucide-react"
+import Link from "next/link"
 
 const services = [
   {
@@ -8,6 +10,7 @@ const services = [
     description:
       "Complete office moves with furniture, equipment, and IT infrastructure. Minimal disruption to your operations.",
     code: "OFC_REL",
+    id: "office",
   },
   {
     icon: Server,
@@ -15,18 +18,21 @@ const services = [
     description:
       "Secure server rack and infrastructure relocation with anti-static handling and careful coordination for mission-critical systems.",
     code: "DC_MIG",
+    id: "datacenter",
   },
   {
     icon: MonitorDot,
     title: "IT Equipment Transfer",
     description: "Specialized handling for sensitive electronics, networking gear, and mission-critical hardware.",
     code: "IT_TRF",
+    id: "it-equipment",
   },
   {
     icon: Package,
     title: "Asset Management",
     description: "Full asset tagging, tracking, and documentation throughout the entire relocation process.",
     code: "AST_MGT",
+    id: "asset-management",
   },
 ]
 
@@ -52,14 +58,25 @@ export function ServicesSection() {
               <CardHeader>
                 <div className="flex items-start justify-between mb-4">
                   <div className="w-12 h-12 bg-primary/10 border border-primary/30 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                    {service.icon && <service.icon className="w-6 h-6 text-primary" />}
+                    {service.icon && <service.icon className="w-6 h-6 text-primary" aria-hidden="true" />}
                   </div>
                   <span className="text-xs font-mono text-muted-foreground">[{service.code}]</span>
                 </div>
                 <CardTitle className="text-lg font-bold text-foreground">{service.title}</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground leading-relaxed">{service.description}</p>
+                <p className="text-sm text-muted-foreground leading-relaxed mb-4">{service.description}</p>
+                <Button 
+                  asChild 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full group/btn"
+                >
+                  <Link href={`/quote?service=${service.id}`}>
+                    Get Quote
+                    <ArrowRight className="ml-2 h-4 w-4 group-hover/btn:translate-x-1 transition-transform" />
+                  </Link>
+                </Button>
               </CardContent>
             </Card>
           ))}

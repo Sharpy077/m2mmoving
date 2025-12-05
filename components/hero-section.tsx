@@ -105,18 +105,22 @@ export function HeroSection() {
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 mb-8">
-                <Button size="lg" className="uppercase tracking-wider group text-lg h-14" onClick={scrollToAssistant}>
+                <Button 
+                  size="lg" 
+                  className="uppercase tracking-wider group text-lg min-h-[44px] min-w-[120px] px-6" 
+                  onClick={scrollToAssistant}
+                >
                   Get Free Quote
                   <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </Button>
                 <Button
                   size="lg"
                   variant="outline"
-                  className="uppercase tracking-wider bg-transparent h-14 text-lg"
+                  className="uppercase tracking-wider bg-transparent min-h-[44px] min-w-[120px] px-6 text-lg"
                   asChild
                 >
-                  <a href="tel:+61388201801" className="flex items-center gap-2">
-                    <Phone className="w-5 h-5" />
+                  <a href="tel:+61388201801" className="flex items-center justify-center gap-2 min-h-[44px]">
+                    <Phone className="w-5 h-5" aria-hidden="true" />
                     03 8820 1801
                   </a>
                 </Button>
@@ -125,7 +129,7 @@ export function HeroSection() {
               <div className="flex flex-wrap gap-6">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-primary/20 border border-primary/50 flex items-center justify-center">
-                    <Shield className="w-5 h-5 text-primary" />
+                    <Shield className="w-5 h-5 text-primary" aria-hidden="true" />
                   </div>
                   <div>
                     <div className="text-xs text-muted-foreground uppercase tracking-wider">Fully Insured</div>
@@ -134,7 +138,7 @@ export function HeroSection() {
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-secondary/20 border border-secondary/50 flex items-center justify-center">
-                    <Zap className="w-5 h-5 text-secondary" />
+                    <Zap className="w-5 h-5 text-secondary" aria-hidden="true" />
                   </div>
                   <div>
                     <div className="text-xs text-muted-foreground uppercase tracking-wider">Fast Turnaround</div>
@@ -143,11 +147,29 @@ export function HeroSection() {
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-accent/20 border border-accent/50 flex items-center justify-center">
-                    <Target className="w-5 h-5 text-accent" />
+                    <Target className="w-5 h-5 text-accent" aria-hidden="true" />
                   </div>
                   <div>
                     <div className="text-xs text-muted-foreground uppercase tracking-wider">Track Record</div>
                     <div className="text-sm font-bold text-foreground">$0 Damage Claims</div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Social Proof */}
+              <div className="mt-8 pt-6 border-t border-border/50">
+                <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-foreground">500+</span>
+                    <span>Commercial Moves</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-foreground">98%</span>
+                    <span>Customer Satisfaction</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-foreground">15+</span>
+                    <span>Years Experience</span>
                   </div>
                 </div>
               </div>
