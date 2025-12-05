@@ -45,9 +45,9 @@ Comprehensive test suite with **250+ tests** covering:
 **Coverage:** All 36 features tested
 
 To run tests:
-```bash
+\`\`\`bash
 npm test
-```
+\`\`\`
 
 ---
 

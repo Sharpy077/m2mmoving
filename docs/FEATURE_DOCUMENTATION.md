@@ -172,9 +172,9 @@ Conversational AI-powered quote assistant that guides customers through the enti
 6. **Quote Calculation**
    - Tool: `calculateQuote`
    - Pricing formula:
-     ```
+     \`\`\`
      Base Rate + (Square Meters × Per SQM Rate) + (Distance × $8/km) + Additional Services
-     ```
+     \`\`\`
    - Displays detailed breakdown:
      - Base rate
      - Square meter charge
@@ -268,7 +268,7 @@ Conversational AI-powered quote assistant that guides customers through the enti
 
 **Conversation Flow:**
 
-```
+\`\`\`
 1. Welcome → Business Lookup
 2. Business Confirmation → Service Selection
 3. Service Selected → Qualifying Questions (2-3)
@@ -277,7 +277,7 @@ Conversational AI-powered quote assistant that guides customers through the enti
 6. Date Selection → Contact Info Collection
 7. Contact Confirmed → Payment Initiation
 8. Payment Complete → Booking Confirmation
-```
+\`\`\`
 
 **AI Model Configuration:**
 - Model: OpenAI GPT-4o
@@ -670,13 +670,13 @@ Dynamic calendar system showing available dates for scheduling commercial moves.
 **Current Implementation:**
 
 **Data Structure:**
-```typescript
+\`\`\`typescript
 interface AvailabilitySlot {
   date: string          // YYYY-MM-DD format
   available: boolean    // Is date bookable
   slots: number        // Available crew slots
 }
-```
+\`\`\`
 
 **API Endpoint:**
 - **Method:** GET
@@ -764,7 +764,7 @@ Real-time business verification using the Australian Business Register API to va
 - `type`: Search type ("abn" or "name")
 
 **Response Format:**
-```json
+\`\`\`json
 {
   "success": true,
   "results": [
@@ -786,7 +786,7 @@ Real-time business verification using the Australian Business Register API to va
     }
   ]
 }
-```
+\`\`\`
 
 **Display Features:**
 - Search input with type toggle (ABN/Name)
@@ -910,7 +910,7 @@ Secure payment processing for 50% booking deposits using Stripe's embedded check
 **Stripe Configuration:**
 
 **Metadata Stored:**
-```json
+\`\`\`json
 {
   "lead_id": "abc123",
   "customer_name": "John Smith",
@@ -921,7 +921,7 @@ Secure payment processing for 50% booking deposits using Stripe's embedded check
   "scheduled_date": "2025-01-15",
   "deposit_amount": "2500"
 }
-```
+\`\`\`
 
 **Session Settings:**
 - UI Mode: `embedded`
@@ -1124,7 +1124,7 @@ Automated email notification system for internal team alerts and customer confir
 
 **Email Utility Functions:**
 
-```typescript
+\`\`\`typescript
 // lib/email.ts
 
 export const formatCurrency = (amount?: number): string => {
@@ -1142,7 +1142,7 @@ export const EMAIL_FROM_ADDRESS =
 export const LEAD_NOTIFICATION_RECIPIENTS = 
   process.env.LEAD_NOTIFICATION_EMAILS?.split(',') || 
   ['sales@m2mmoving.au']
-```
+\`\`\`
 
 **Delivery Features:**
 - Async sending (non-blocking)
@@ -1230,7 +1230,7 @@ Intelligent phone system using Twilio that routes incoming calls based on busine
 - **TwiML Response:** Voice instructions for Twilio
 
 **Business Hours Logic:**
-```typescript
+\`\`\`typescript
 function isBusinessHours(): boolean {
   const now = new Date()
   const melbourneTime = new Date(
@@ -1245,7 +1245,7 @@ function isBusinessHours(): boolean {
   // Monday-Friday, 7 AM - 5 PM AEST
   return day >= 1 && day <= 5 && hour >= 7 && hour < 17
 }
-```
+\`\`\`
 
 **During Business Hours (Mon-Fri, 7AM-5PM):**
 1. Greeting message:
@@ -1285,7 +1285,7 @@ function isBusinessHours(): boolean {
 - **Database:** Record saved to `voicemails` table
 
 **Voicemail Data Captured:**
-```typescript
+\`\`\`typescript
 interface Voicemail {
   id: string                    // UUID
   caller_number: string         // From number
@@ -1297,7 +1297,7 @@ interface Voicemail {
   notes: string | null          // Admin notes
   created_at: string            // Timestamp
 }
-```
+\`\`\`
 
 **4. Transcription Processing**
 - **Route:** `/api/voice/transcription` (POST)
@@ -1327,7 +1327,7 @@ interface Voicemail {
 
 **Phone Number Formatting:**
 
-```typescript
+\`\`\`typescript
 function formatAustralianNumber(number: string): string {
   // Removes spaces, parentheses, hyphens
   let cleaned = number.replace(/[\s\(\)\-]/g, '')
@@ -1346,7 +1346,7 @@ function formatAustralianNumber(number: string): string {
   
   return cleaned
 }
-```
+\`\`\`
 
 **Error Handling:**
 - If forwarding fails → voicemail
@@ -2098,11 +2098,11 @@ Authentication and authorization system protecting admin routes and ensuring onl
 - `/api/agents/*` - Agent management
 
 **Route Matching:**
-```typescript
+\`\`\`typescript
 matcher: [
   "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
 ]
-```
+\`\`\`
 
 **Middleware Logic:**
 1. Extract session from cookies
@@ -2437,7 +2437,7 @@ Comprehensive database schema supporting all application features with proper in
 
 **1. Leads Table**
 
-```sql
+\`\`\`sql
 CREATE TABLE leads (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   lead_type TEXT NOT NULL CHECK (lead_type IN ('instant_quote', 'custom_quote')),
@@ -2489,11 +2489,11 @@ CREATE INDEX idx_leads_email ON leads(email);
 CREATE INDEX idx_leads_status ON leads(status);
 CREATE INDEX idx_leads_created_at ON leads(created_at DESC);
 CREATE INDEX idx_leads_lead_type ON leads(lead_type);
-```
+\`\`\`
 
 **2. Voicemails Table**
 
-```sql
+\`\`\`sql
 CREATE TABLE voicemails (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   
@@ -2519,11 +2519,11 @@ CREATE TABLE voicemails (
 CREATE INDEX idx_voicemails_status ON voicemails(status);
 CREATE INDEX idx_voicemails_created_at ON voicemails(created_at DESC);
 CREATE INDEX idx_voicemails_caller_number ON voicemails(caller_number);
-```
+\`\`\`
 
 **3. Availability Table (Planned)**
 
-```sql
+\`\`\`sql
 CREATE TABLE availability (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   date DATE NOT NULL UNIQUE,
@@ -2536,11 +2536,11 @@ CREATE TABLE availability (
 );
 
 CREATE INDEX idx_availability_date ON availability(date);
-```
+\`\`\`
 
 **4. Vehicles Table (Planned)**
 
-```sql
+\`\`\`sql
 CREATE TABLE vehicles (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT NOT NULL,
@@ -2551,7 +2551,7 @@ CREATE TABLE vehicles (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-```
+\`\`\`
 
 **5. Agent Tables (Planned - see migrations)**
 
@@ -2564,7 +2564,7 @@ See `supabase/migrations/20241201000000_create_agent_tables.sql` for:
 **Database Functions:**
 
 **Auto-update timestamps:**
-```sql
+\`\`\`sql
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -2578,11 +2578,11 @@ FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_voicemails_updated_at BEFORE UPDATE ON voicemails
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-```
+\`\`\`
 
 **Row Level Security (RLS):**
 
-```sql
+\`\`\`sql
 ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE voicemails ENABLE ROW LEVEL SECURITY;
 
@@ -2599,7 +2599,7 @@ CREATE POLICY "Admins can do anything with voicemails" ON voicemails
   TO authenticated
   USING (true)
   WITH CHECK (true);
-```
+\`\`\`
 
 **Testing Considerations:**
 - Data integrity constraints
@@ -2630,13 +2630,13 @@ RESTful and function-calling API architecture powering the application.
 - **Purpose:** AI chat completions with function calling
 - **Model:** OpenAI GPT-4o via Vercel AI SDK
 - **Request:**
-  ```json
+  \`\`\`json
   {
     "messages": [
       { "role": "user", "content": "I need a quote" }
     ]
   }
-  ```
+  \`\`\`
 - **Response:** Streaming text with tool calls
 - **Tools:** 9 function calling tools
 - **Rate Limit:** 30 req/min per IP
@@ -2650,7 +2650,7 @@ RESTful and function-calling API architecture powering the application.
   - `type`: "abn" or "name"
 - **Integration:** Australian Business Register API
 - **Response:**
-  ```json
+  \`\`\`json
   {
     "success": true,
     "results": [
@@ -2665,7 +2665,7 @@ RESTful and function-calling API architecture powering the application.
       }
     ]
   }
-  ```
+  \`\`\`
 
 **3. Availability Check**
 - **Route:** `GET /api/availability`
@@ -2674,7 +2674,7 @@ RESTful and function-calling API architecture powering the application.
   - `start`: Start date (YYYY-MM-DD)
   - `end`: End date (YYYY-MM-DD)
 - **Response:**
-  ```json
+  \`\`\`json
   {
     "availability": [
       {
@@ -2686,20 +2686,20 @@ RESTful and function-calling API architecture powering the application.
       }
     ]
   }
-  ```
+  \`\`\`
 
 **4. Fleet Stats** (Planned)
 - **Route:** `GET /api/fleet-stats`
 - **Purpose:** Real-time fleet status
 - **Response:**
-  ```json
+  \`\`\`json
   {
     "vehicles": 5,
     "active": 3,
     "available": 2,
     "in_maintenance": 0
   }
-  ```
+  \`\`\`
 
 **5. Voicemail Management**
 - **Route:** `GET /api/voicemails`
@@ -2711,13 +2711,13 @@ RESTful and function-calling API architecture powering the application.
 - **Purpose:** Update voicemail status/notes
 - **Auth:** Required
 - **Body:**
-  ```json
+  \`\`\`json
   {
     "id": "uuid",
     "status": "listened",
     "notes": "Called customer back"
   }
-  ```
+  \`\`\`
 
 **6. Twilio Voice Webhooks**
 - **Route:** `POST /api/voice/incoming`
@@ -2764,13 +2764,13 @@ RESTful and function-calling API architecture powering the application.
 
 **Error Handling:**
 - Consistent error format:
-  ```json
+  \`\`\`json
   {
     "error": "Error message",
     "code": "ERROR_CODE",
     "details": {}
   }
-  ```
+  \`\`\`
 - HTTP status codes:
   - 200: Success
   - 400: Bad Request
@@ -2881,13 +2881,13 @@ Transactional email service using Resend for reliable email delivery.
 **Technical Configuration:**
 
 **API Setup:**
-```typescript
+\`\`\`typescript
 import { Resend } from 'resend'
 
 export const resend = process.env.RESEND_API_KEY 
   ? new Resend(process.env.RESEND_API_KEY)
   : null
-```
+\`\`\`
 
 **Environment Variables:**
 - `RESEND_API_KEY`: API key from Resend
@@ -3002,14 +3002,14 @@ export const resend = process.env.RESEND_API_KEY
 
 **Build Configuration:**
 
-```json
+\`\`\`json
 {
   "buildCommand": "next build",
   "outputDirectory": ".next",
   "installCommand": "npm install",
   "framework": "nextjs"
 }
-```
+\`\`\`
 
 **Environment Variables:**
 - Production secrets in Vercel dashboard
@@ -3092,7 +3092,7 @@ Database-level security using Row Level Security (RLS) policies ensuring data ac
 **RLS Policies:**
 
 **Leads Table:**
-```sql
+\`\`\`sql
 -- Only authenticated admins can access
 ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
 
@@ -3110,10 +3110,10 @@ CREATE POLICY "Authenticated users can update leads" ON leads
   FOR UPDATE
   TO authenticated
   USING (true);
-```
+\`\`\`
 
 **Voicemails Table:**
-```sql
+\`\`\`sql
 -- Same pattern as leads
 ALTER TABLE voicemails ENABLE ROW LEVEL SECURITY;
 
@@ -3122,7 +3122,7 @@ CREATE POLICY "Authenticated users can manage voicemails" ON voicemails
   TO authenticated
   USING (true)
   WITH CHECK (true);
-```
+\`\`\`
 
 **Future Enhancement:**
 - Role-based policies
@@ -3323,14 +3323,14 @@ CREATE POLICY "Authenticated users can manage voicemails" ON voicemails
 - Token limits
 
 **Configuration:**
-```typescript
+\`\`\`typescript
 {
   model: "gpt-4o",
   temperature: 0.7,
   maxTokens: 2000,
   tools: { /* 9 tools */ }
 }
-```
+\`\`\`
 
 **API Key:** `OPENAI_API_KEY` env variable
 

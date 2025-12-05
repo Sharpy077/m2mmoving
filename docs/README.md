@@ -129,14 +129,14 @@ This directory contains comprehensive documentation for the M&M Commercial Movin
 
 ### Prerequisites
 
-```bash
+\`\`\`bash
 # Install dependencies (may need legacy peer deps)
 npm install --legacy-peer-deps
-```
+\`\`\`
 
 ### Run Tests
 
-```bash
+\`\`\`bash
 # Run all tests
 npm test
 
@@ -148,7 +148,7 @@ npm test -- --coverage
 
 # Run specific test file
 npm test -- tests/user-features.test.ts
-```
+\`\`\`
 
 ---
 

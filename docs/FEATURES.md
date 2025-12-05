@@ -83,10 +83,10 @@
 - Error handling and validation
 
 **Pricing Algorithm**:
-```
+\`\`\`
 Total = Base Rate + (Square Meters × Per SQM Rate) + (Distance × $8/km) + Additional Services
 Deposit = Total × 50%
-```
+\`\`\`
 
 **Integration Points**:
 - Supabase (lead storage)

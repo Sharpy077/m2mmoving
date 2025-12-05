@@ -96,7 +96,7 @@ Check **[docs/TESTING_SUMMARY.md](docs/TESTING_SUMMARY.md)** for strategic overv
 
 ## 🧪 Running Tests
 
-```bash
+\`\`\`bash
 # Install dependencies (if not already installed)
 npm install
 
@@ -108,7 +108,7 @@ npm test -- --watch
 
 # Run tests with coverage
 npm test -- --coverage
-```
+\`\`\`
 
 ---
 

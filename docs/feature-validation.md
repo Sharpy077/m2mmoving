@@ -31,12 +31,12 @@ Validated on **2025-12-01** after running `pnpm test`.
 
 ## Automated Test Snapshot
 
-```
+\`\`\`
 pnpm test
 
 Test Files  6 passed
 Tests      19 passed
-```
+\`\`\`
 
 - Core user flows: `tests/quote-builder.test.tsx`
 - Lead ingestion: `tests/lead-submission.test.ts`
