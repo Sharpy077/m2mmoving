@@ -1,14 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const { sendMock, resendConstructorMock } = vi.hoisted(() => {
-  const send = vi.fn()
-  const resend = vi.fn().mockImplementation(() => ({
-    emails: {
-      send,
-    },
-  }))
-  return { sendMock: send, resendConstructorMock: resend }
-})
+const sendMock = vi.fn()
+const resendConstructorMock = vi.fn().mockImplementation(() => ({
+  emails: {
+    send: sendMock,
+  },
+}))
 
 vi.mock("resend", () => ({
   Resend: resendConstructorMock,

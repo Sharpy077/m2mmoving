@@ -1,29 +1,17 @@
-"use client"
-
 import { Suspense } from "react"
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import { QuoteBuilder } from "@/components/quote-builder"
 import { Shield, Clock, CheckCircle2, Phone, MapPin } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useSearchParams } from "next/navigation"
-import { Breadcrumbs } from "@/components/breadcrumbs"
 
 function QuotePageContent() {
-  const searchParams = useSearchParams()
-  const serviceParam = searchParams.get('service')
   return (
-    <main className="min-h-screen bg-background pb-20 md:pb-0">
+    <main className="min-h-screen bg-background">
       <Navbar />
       <div className="pt-24 pb-16">
         <div className="container mx-auto px-4">
           <div className="max-w-5xl mx-auto">
-            <Breadcrumbs
-              items={[
-                { label: "Get Quote" }
-              ]}
-              className="mb-6"
-            />
             <div className="grid lg:grid-cols-3 gap-8 mb-8">
               <div className="lg:col-span-2">
                 <div className="flex items-center gap-2 text-primary font-mono text-sm mb-2">
@@ -70,7 +58,7 @@ function QuotePageContent() {
               </div>
             </div>
 
-            <QuoteBuilder initialService={serviceParam || undefined} />
+            <QuoteBuilder />
           </div>
         </div>
       </div>

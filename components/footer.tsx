@@ -7,14 +7,14 @@ export function Footer() {
       <div className="container mx-auto px-4">
         <div className="grid md:grid-cols-4 gap-8 mb-12">
           <div className="md:col-span-2">
-            <Link href="/" className="flex items-center gap-2 mb-4">
+            <a href="#" className="flex items-center gap-2 mb-4">
               <div className="w-10 h-10 bg-primary flex items-center justify-center">
-                <Truck className="w-6 h-6 text-primary-foreground" aria-hidden="true" />
+                <Truck className="w-6 h-6 text-primary-foreground" />
               </div>
               <span className="text-xl font-bold tracking-tight text-foreground">
                 M&M<span className="text-primary">_MOVING</span>
               </span>
-            </Link>
+            </a>
             <p className="text-sm text-muted-foreground max-w-sm leading-relaxed mb-4">
               Melbourne's tech-powered commercial relocation services. Moving businesses forward with precision,
               security, and zero downtime across Victoria and Australia.
@@ -23,14 +23,14 @@ export function Footer() {
               href="tel:+61388201801"
               className="flex items-center gap-2 text-foreground hover:text-primary transition-colors mb-2"
             >
-              <Phone className="w-4 h-4" aria-hidden="true" />
+              <Phone className="w-4 h-4" />
               <span className="font-mono">03 8820 1801</span>
             </a>
             <a
               href="mailto:sales@m2mmoving.au"
               className="flex items-center gap-2 text-foreground hover:text-primary transition-colors"
             >
-              <Mail className="w-4 h-4" aria-hidden="true" />
+              <Mail className="w-4 h-4" />
               <span className="font-mono">sales@m2mmoving.au</span>
             </a>
           </div>
@@ -39,17 +39,17 @@ export function Footer() {
             <h4 className="font-bold text-foreground mb-4 uppercase text-sm tracking-wider">Services</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
-                <a href="/#services" className="hover:text-primary transition-colors">
+                <a href="#" className="hover:text-primary transition-colors">
                   Office Relocation
                 </a>
               </li>
               <li>
-                <a href="/#services" className="hover:text-primary transition-colors">
+                <a href="#" className="hover:text-primary transition-colors">
                   Data Center Migration
                 </a>
               </li>
               <li>
-                <a href="/#services" className="hover:text-primary transition-colors">
+                <a href="#" className="hover:text-primary transition-colors">
                   IT Equipment
                 </a>
               </li>
@@ -60,22 +60,22 @@ export function Footer() {
             <h4 className="font-bold text-foreground mb-4 uppercase text-sm tracking-wider">Company</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
-                <a href="mailto:sales@m2mmoving.au?subject=About Us Inquiry" className="hover:text-primary transition-colors">
+                <a href="#" className="hover:text-primary transition-colors">
                   About Us
                 </a>
               </li>
               <li>
-                <a href="mailto:sales@m2mmoving.au?subject=Careers Inquiry" className="hover:text-primary transition-colors">
+                <a href="#" className="hover:text-primary transition-colors">
                   Careers
                 </a>
               </li>
               <li>
-                <a href="/#contact" className="hover:text-primary transition-colors">
+                <a href="#" className="hover:text-primary transition-colors">
                   Contact
                 </a>
               </li>
               <li>
-                <a href="mailto:sales@m2mmoving.au?subject=Blog Inquiry" className="hover:text-primary transition-colors">
+                <a href="#" className="hover:text-primary transition-colors">
                   Blog
                 </a>
               </li>
