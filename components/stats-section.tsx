@@ -1,30 +1,22 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ArrowRight, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
-
-function calculateRelocations(): number {
-  const startDate = new Date("2025-08-26")
-  const secondRelocationDate = new Date("2025-11-12")
-  const now = new Date()
-
-  let count = 2
-  if (now < secondRelocationDate) {
-    count = 1
-  }
-
-  return count
-}
+import { buildMarketingStats, calculateRelocations } from "@/lib/landing/stats"
 
 export function StatsSection() {
   const [relocations, setRelocations] = useState(2)
 
   useEffect(() => {
+    // Calculate on mount
     setRelocations(calculateRelocations())
+
+    // Update every hour in case date changes
     const interval = setInterval(() => {
       setRelocations(calculateRelocations())
     }, 3600000)
+
     return () => clearInterval(interval)
   }, [])
 
@@ -32,12 +24,7 @@ export function StatsSection() {
     document.getElementById("quote-assistant")?.scrollIntoView({ behavior: "smooth", block: "center" })
   }
 
-  const stats = [
-    { value: relocations.toString(), label: "Relocations Complete", highlight: false },
-    { value: "$0", label: "Damage Claims", highlight: true },
-    { value: "48hrs", label: "Avg. Project Time", highlight: false },
-    { value: "100%", label: "Client Retention", highlight: true },
-  ]
+  const stats = useMemo(() => buildMarketingStats(relocations), [relocations])
 
   return (
     <section className="py-12 bg-card border-y border-border">
@@ -45,7 +32,7 @@ export function StatsSection() {
         <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-8 pb-8 border-b border-border">
           <div>
             <h2 className="text-xl md:text-2xl font-bold text-foreground mb-1">Ready to move your business?</h2>
-            <p className="text-muted-foreground">Get a free, no-obligation quote in under 60 seconds.</p>
+            <p className="text-muted-foreground">Get a free, no-obligation quote in under 60 seconds</p>
           </div>
           <div className="flex gap-3">
             <Button className="uppercase tracking-wider group" onClick={scrollToAssistant}>

@@ -34,6 +34,7 @@ export interface Lead {
 export interface LeadInsert {
   lead_type?: "instant_quote" | "custom_quote"
   email: string
+  status?: Lead["status"]
   contact_name?: string
   company_name?: string
   phone?: string
@@ -57,4 +58,5 @@ export interface LeadInsert {
   special_requirements?: string[]
   project_description?: string
   preferred_contact_time?: string
+  internal_notes?: string
 }

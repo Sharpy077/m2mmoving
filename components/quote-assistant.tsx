@@ -37,6 +37,7 @@ import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe
 import { loadStripe } from "@stripe/stripe-js"
 import { submitLead } from "@/app/actions/leads"
 import { createDepositCheckout } from "@/app/actions/stripe"
+import { buildAssistantLeadPayload, formatBookingDate, sanitizeVoiceTranscript } from "@/lib/quote/assistant"
 
 const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null
@@ -481,7 +482,12 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           recognition.interimResults = false
           recognition.lang = "en-AU"
           recognition.onresult = (event: any) => {
-            const transcript = event.results[0][0].transcript
+            const transcript = sanitizeVoiceTranscript(event.results[0][0].transcript)
+            if (!transcript) {
+              setIsListening(false)
+              return
+            }
+
             setInputValue(transcript)
             setIsListening(false)
             setTimeout(() => {
@@ -543,12 +549,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const handleSelectDate = (date: string) => {
       setSelectedDate(date)
       setShowCalendar(false)
-      const formattedDate = new Date(date).toLocaleDateString("en-AU", {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      })
+      const formattedDate = formatBookingDate(date)
       sendMessage({
         text: `I'd like to book for ${formattedDate}`,
       })
@@ -565,21 +566,26 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       if (currentQuote && contactInfo && selectedDate) {
         setIsSubmittingLead(true)
         try {
-          await submitLead({
-            company_name: confirmedBusiness?.name || contactInfo.companyName || "",
-            contact_name: contactInfo.contactName,
-            email: contactInfo.email,
-            phone: contactInfo.phone,
-            move_type: currentQuote.moveTypeKey || "office",
-            origin_suburb: currentQuote.origin,
-            destination_suburb: currentQuote.destination,
-            estimated_value: currentQuote.estimatedTotal,
-            status: "confirmed",
-            notes: `Deposit paid. Move scheduled for ${selectedDate}. ABN: ${confirmedBusiness?.abn || "N/A"}`,
-            scheduled_date: selectedDate,
-            deposit_amount: currentQuote.depositRequired,
-            deposit_paid: true,
+          const payload = buildAssistantLeadPayload({
+            quote: {
+              moveType: currentQuote.moveType,
+              moveTypeKey: currentQuote.moveTypeKey,
+              estimatedTotal: currentQuote.estimatedTotal,
+              depositRequired: currentQuote.depositRequired,
+              origin: currentQuote.origin,
+              destination: currentQuote.destination,
+              squareMeters: currentQuote.squareMeters,
+            },
+            contact: {
+              contactName: contactInfo.contactName,
+              email: contactInfo.email,
+              phone: contactInfo.phone,
+              companyName: contactInfo.companyName,
+            },
+            business: confirmedBusiness,
+            scheduledDate,
           })
+          await submitLead(payload)
           setLeadSubmitted(true)
         } catch (error) {
           console.error("Failed to submit lead:", error)

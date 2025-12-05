@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Send, Building2, User, Mail, Phone, Calendar, FileText, CheckCircle2, Loader2 } from "lucide-react"
 import { submitLead } from "@/app/actions/leads"
+import { buildCustomQuoteLeadPayload, type CustomQuoteFormData } from "@/lib/quote/custom"
 
 const businessTypes = [
   "Corporate Office",
@@ -42,8 +43,9 @@ export function CustomQuoteForm() {
   const [submittedLead, setSubmittedLead] = useState<any>(null)
   const [selectedRequirements, setSelectedRequirements] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<CustomQuoteFormData>({
     fullName: "",
     companyName: "",
     email: "",
@@ -69,29 +71,22 @@ export function CustomQuoteForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
+    setSubmitError(null)
 
-    const result = await submitLead({
-      lead_type: "custom_quote",
-      email: formData.email,
-      contact_name: formData.fullName || undefined,
-      company_name: formData.companyName || undefined,
-      phone: formData.phone || undefined,
-      industry_type: formData.industryType || undefined,
-      employee_count: formData.employeeCount || undefined,
-      current_location: formData.currentLocation || undefined,
-      new_location: formData.newLocation || undefined,
-      target_move_date: formData.targetMoveDate || undefined,
-      square_meters: formData.estimatedSqm ? Number.parseInt(formData.estimatedSqm) : undefined,
-      special_requirements: selectedRequirements.length > 0 ? selectedRequirements : undefined,
-      project_description: formData.projectDescription || undefined,
-      preferred_contact_time: formData.preferredContactTime || undefined,
-    })
+    try {
+      const payload = buildCustomQuoteLeadPayload(formData, selectedRequirements)
+      const result = await submitLead(payload)
 
-    setIsSubmitting(false)
-
-    if (result.success) {
-      setSubmitted(true)
-      setSubmittedLead(result.lead)
+      if (result.success) {
+        setSubmitted(true)
+        setSubmittedLead(result.lead)
+      } else {
+        setSubmitError(result.error || "Unable to submit your request. Please try again.")
+      }
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Unable to submit your request.")
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -374,6 +369,11 @@ export function CustomQuoteForm() {
       {/* Submit */}
       <Card className="border-secondary bg-card">
         <CardContent className="py-6">
+          {submitError && (
+            <div className="w-full mb-4 rounded border border-destructive/60 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+              {submitError}
+            </div>
+          )}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-sm text-muted-foreground">
               <span className="text-secondary font-mono">*</span> Required fields must be completed
