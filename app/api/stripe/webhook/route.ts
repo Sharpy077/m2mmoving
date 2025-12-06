@@ -13,14 +13,14 @@ export async function POST(request: NextRequest) {
   let event
 
   try {
-    // If you have a webhook secret, verify the signature
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
-    if (webhookSecret) {
-      event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
-    } else {
-      // For development without webhook secret
-      event = JSON.parse(body)
+
+    if (!webhookSecret) {
+      console.error("[v0] STRIPE_WEBHOOK_SECRET is not set")
+      return NextResponse.json({ error: "Webhook secret not configured" }, { status: 500 })
     }
+
+    event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
   } catch (err) {
     console.error("[v0] Webhook signature verification failed:", err)
     return NextResponse.json({ error: "Webhook signature verification failed" }, { status: 400 })
@@ -41,6 +41,23 @@ export async function POST(request: NextRequest) {
             .update({
               deposit_paid: true,
               payment_status: "paid",
+              stripe_payment_intent_id: session.payment_intent ?? null,
+            })
+            .eq("id", session.metadata.lead_id)
+        }
+        break
+      }
+
+      case "checkout.session.expired": {
+        const session = event.data.object
+        console.log("[v0] Checkout session expired:", session.id)
+
+        if (session.metadata?.lead_id) {
+          const supabase = await createClient()
+          await supabase
+            .from("leads")
+            .update({
+              payment_status: "abandoned",
               stripe_session_id: session.id,
             })
             .eq("id", session.metadata.lead_id)
@@ -57,6 +74,59 @@ export async function POST(request: NextRequest) {
       case "payment_intent.payment_failed": {
         const paymentIntent = event.data.object
         console.log("[v0] Payment intent failed:", paymentIntent.id)
+
+        if (paymentIntent.metadata?.lead_id) {
+          const supabase = await createClient()
+          await supabase
+            .from("leads")
+            .update({
+              payment_status: "failed",
+            })
+            .eq("id", paymentIntent.metadata.lead_id)
+        }
+        break
+      }
+
+      case "charge.refunded": {
+        const charge = event.data.object
+        console.log("[v0] Charge refunded:", charge.id)
+
+        if (charge.payment_intent) {
+          const paymentIntent = await stripe.paymentIntents.retrieve(charge.payment_intent as string)
+          const leadId = paymentIntent.metadata?.lead_id
+
+          if (leadId) {
+            const supabase = await createClient()
+            await supabase
+              .from("leads")
+              .update({
+                payment_status: "refunded",
+                deposit_paid: false,
+              })
+              .eq("id", leadId)
+          }
+        }
+        break
+      }
+
+      case "charge.dispute.created": {
+        const dispute = event.data.object
+        console.log("[v0] Charge dispute created:", dispute.id)
+
+        if (dispute.payment_intent) {
+          const paymentIntent = await stripe.paymentIntents.retrieve(dispute.payment_intent as string)
+          const leadId = paymentIntent.metadata?.lead_id
+
+          if (leadId) {
+            const supabase = await createClient()
+            await supabase
+              .from("leads")
+              .update({
+                payment_status: "disputed",
+              })
+              .eq("id", leadId)
+          }
+        }
         break
       }
 
