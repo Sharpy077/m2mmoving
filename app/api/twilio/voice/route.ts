@@ -1,5 +1,7 @@
 import { runTurn } from "@/lib/ai-orchestrator";
 import { verifyTwilioSignature } from "@/lib/twilio";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { sanitizeText } from "@/lib/validation";
 
 function twiml(body: string) {
   return new Response(body, {
@@ -29,6 +31,7 @@ export async function POST(req: Request) {
   const signature = req.headers.get("x-twilio-signature");
   const webhookUrl = resolveWebhookUrl(req.url);
 
+  // Verify Twilio signature
   const verified = verifyTwilioSignature({
     signature,
     url: webhookUrl,
@@ -41,10 +44,29 @@ export async function POST(req: Request) {
 
   const params = Object.fromEntries(new URLSearchParams(rawBody));
   const callSid = (params["CallSid"] as string | undefined) ?? undefined;
+  const from = (params["From"] as string | undefined)?.trim();
+
+  // Rate limit by caller phone number
+  if (from) {
+    const { allowed } = checkRateLimit(`twilio:voice:${from}`, {
+      windowMs: 60_000,
+      maxRequests: 30, // Higher limit for voice (multiple turns per call)
+    });
+    if (!allowed) {
+      const response = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>We're receiving too many calls from this number. Please try again later.</Say>
+  <Hangup />
+</Response>`;
+      return twiml(response);
+    }
+  }
+
   const speech = (params["SpeechResult"] as string | undefined)?.trim();
   const digits = (params["Digits"] as string | undefined)?.trim();
   const userInput = speech || digits;
 
+  // Initial greeting if no input
   if (!userInput) {
     const response = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -55,10 +77,14 @@ export async function POST(req: Request) {
   }
 
   try {
-    const ai = await runTurn({ message: userInput, sessionId: callSid });
+    // Sanitize input
+    const sanitized = sanitizeText(userInput);
+    const ai = await runTurn({ message: sanitized, sessionId: callSid });
+    const reply = escapeXml(ai.reply || "Thanks, we will follow up shortly.");
+
     const response = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say>${escapeXml(ai.reply || "Thanks, we will follow up shortly.")}</Say>
+  <Say>${reply}</Say>
   <Gather input="speech" speechTimeout="auto" action="/api/twilio/voice" method="POST" />
 </Response>`;
     return twiml(response);
