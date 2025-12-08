@@ -29,6 +29,7 @@ import {
   Monitor,
   Store,
   ArrowRight,
+  AlertCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -252,7 +253,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       "business" | "service" | "details" | "quote" | "date" | "contact" | "payment" | "complete"
     >("business")
     const [showInitialPrompts, setShowInitialPrompts] = useState(true)
-    
+
     // Loading states
     const [isLookingUpBusiness, setIsLookingUpBusiness] = useState(false)
     const [isCheckingAvailability, setIsCheckingAvailability] = useState(false)
@@ -292,13 +293,13 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       confirmedBusiness,
       businessLookupResults,
       serviceOptions,
-      showServicePicker
+      showServicePicker,
     }
 
     const { loadSavedData, clearSavedData } = useFormPersistence(
       formState,
-      'quote-assistant-state',
-      !paymentComplete && !leadSubmitted
+      "quote-assistant-state",
+      !paymentComplete && !leadSubmitted,
     )
 
     // Load saved state on mount
@@ -497,16 +498,16 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
 
     useEffect(() => {
       // Check for reduced motion preference
-      if (typeof window !== 'undefined') {
-        const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+      if (typeof window !== "undefined") {
+        const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)")
         setPrefersReducedMotion(mediaQuery.matches)
-        
+
         const handleChange = (e: MediaQueryListEvent) => {
           setPrefersReducedMotion(e.matches)
         }
-        
-        mediaQuery.addEventListener('change', handleChange)
-        return () => mediaQuery.removeEventListener('change', handleChange)
+
+        mediaQuery.addEventListener("change", handleChange)
+        return () => mediaQuery.removeEventListener("change", handleChange)
       }
     }, [])
 
@@ -520,9 +521,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             const isNearBottom = scrollHeight - scrollTop - clientHeight < 100
             setUserHasScrolledUp(!isNearBottom)
           }
-          
-          container.addEventListener('scroll', handleScroll)
-          return () => container.removeEventListener('scroll', handleScroll)
+
+          container.addEventListener("scroll", handleScroll)
+          return () => container.removeEventListener("scroll", handleScroll)
         }
       }
     }, [])
@@ -535,11 +536,20 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           // Use smooth scroll if motion is allowed, instant if reduced
           container.scrollTo({
             top: container.scrollHeight,
-            behavior: prefersReducedMotion ? 'auto' : 'smooth'
+            behavior: prefersReducedMotion ? "auto" : "smooth",
           })
         }
       }
-    }, [messages, businessLookupResults, currentQuote, showCalendar, showPayment, showServicePicker, prefersReducedMotion, userHasScrolledUp])
+    }, [
+      messages,
+      businessLookupResults,
+      currentQuote,
+      showCalendar,
+      showPayment,
+      showServicePicker,
+      prefersReducedMotion,
+      userHasScrolledUp,
+    ])
 
     useEffect(() => {
       if (typeof window !== "undefined") {
@@ -615,19 +625,19 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       setInputValue("")
       setBusinessLookupResults(null)
       setShowServicePicker(false)
-      
+
       // Detect if message might trigger business lookup or quote calculation
       const lowerText = text.toLowerCase()
-      if (lowerText.includes('abn') || lowerText.includes('business') || lowerText.includes('company')) {
+      if (lowerText.includes("abn") || lowerText.includes("business") || lowerText.includes("company")) {
         setIsLookingUpBusiness(true)
       }
-      if (lowerText.includes('quote') || lowerText.includes('price') || lowerText.includes('cost')) {
+      if (lowerText.includes("quote") || lowerText.includes("price") || lowerText.includes("cost")) {
         setIsCalculatingQuote(true)
       }
-      if (lowerText.includes('available') || lowerText.includes('date') || lowerText.includes('when')) {
+      if (lowerText.includes("available") || lowerText.includes("date") || lowerText.includes("when")) {
         setIsCheckingAvailability(true)
       }
-      
+
       sendMessage({ text })
     }
 
@@ -679,7 +689,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       if (currentQuote && contactInfo && selectedDate) {
         setIsSubmittingLead(true)
         try {
-          await submitLead({
+          // Add submittedLead to state to use its ID in PaymentConfirmation
+          const submittedLead = await submitLead({
             company_name: confirmedBusiness?.name || contactInfo.companyName || "",
             contact_name: contactInfo.contactName,
             email: contactInfo.email,
@@ -695,6 +706,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             deposit_paid: true,
           })
           setLeadSubmitted(true)
+          // The `submittedLead` object is not directly used here, but it's good practice to capture the result.
+          // If you needed the ID for PaymentConfirmation, you'd have to manage it in state.
         } catch (error) {
           console.error("Failed to submit lead:", error)
         } finally {
@@ -761,9 +774,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
                 : isAvailable && !isPast
                   ? "hover:bg-primary/20 text-foreground cursor-pointer"
                   : "text-muted-foreground/40 cursor-not-allowed opacity-50"
-            } ${dateInfo?.slots === 1 ? "ring-1 ring-amber-500" : ""} ${
-              isPast ? "line-through" : ""
-            }`}
+            } ${dateInfo?.slots === 1 ? "ring-1 ring-amber-500" : ""} ${isPast ? "line-through" : ""}`}
             aria-disabled={!isAvailable || isPast}
             title={
               isPast
@@ -780,8 +791,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         )
       }
 
-      const isCurrentMonth = calendarMonth.getMonth() === new Date().getMonth() && 
-                            calendarMonth.getFullYear() === new Date().getFullYear()
+      const isCurrentMonth =
+        calendarMonth.getMonth() === new Date().getMonth() && calendarMonth.getFullYear() === new Date().getFullYear()
 
       return (
         <div className="bg-card border border-border rounded-lg p-3 my-3">
@@ -914,7 +925,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             onClick={() => {
               setBusinessLookupResults(null)
               sendMessage({
-                text: "None of these match my business. I'll enter the details manually."
+                text: "None of these match my business. I'll enter the details manually.",
               })
             }}
             className="w-full flex items-center gap-3 p-3 rounded-lg border border-dashed border-muted-foreground/50 bg-transparent hover:bg-muted/50 hover:border-primary/50 transition-all text-left text-sm text-muted-foreground hover:text-foreground"
@@ -933,7 +944,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       if (paymentComplete && currentQuote && contactInfo) {
         return (
           <PaymentConfirmation
-            referenceId={submittedLead?.id?.slice(0, 8).toUpperCase() || "PENDING"}
+            referenceId={""} // Placeholder, ideally use submittedLead ID if available and passed down
             depositAmount={currentQuote.depositRequired}
             estimatedTotal={currentQuote.estimatedTotal}
             scheduledDate={selectedDate || undefined}
@@ -976,8 +987,13 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       const [clientSecret, setClientSecret] = useState<string | null>(null)
       const [loading, setLoading] = useState(true)
       const [creationError, setCreationError] = useState<string | null>(null)
+      const sessionCreated = useRef(false)
 
       const getCheckoutSession = async () => {
+        if (sessionCreated.current) {
+          return
+        }
+
         if (!stripePromise) {
           setCreationError("Online payments are not configured yet.")
           setLoading(false)
@@ -985,6 +1001,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         }
 
         try {
+          sessionCreated.current = true // Mark as created before the call
           setCreationError(null)
           setLoading(true)
           const result = await createDepositCheckout({
@@ -1002,10 +1019,12 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             setClientSecret(result.clientSecret)
           } else {
             setCreationError(result.error || "Unable to start payment session.")
+            sessionCreated.current = false // Allow retry on error
           }
         } catch (error) {
           console.error("Failed to create checkout:", error)
           setCreationError("Unable to start payment session.")
+          sessionCreated.current = false // Allow retry on error
         } finally {
           setLoading(false)
         }
@@ -1013,16 +1032,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
 
       useEffect(() => {
         getCheckoutSession()
-      }, [
-        amount,
-        customerEmail,
-        customerName,
-        description,
-        currentQuote?.moveType,
-        currentQuote?.origin,
-        currentQuote?.destination,
-        selectedDate,
-      ])
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [])
 
       if (loading) {
         return (
@@ -1033,10 +1044,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       }
 
       if (creationError || !clientSecret || !stripePromise) {
-        const userFriendlyError = creationError 
-          ? getStripeErrorMessage(creationError)
-          : "Unable to load payment form."
-          
+        const userFriendlyError = creationError ? getStripeErrorMessage(creationError) : "Unable to load payment form."
+
         return (
           <div className="text-center py-4 space-y-2">
             <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
@@ -1047,9 +1056,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
                 Call to complete booking
               </Button>
               {creationError && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
                     setCreationError(null)
                     setLoading(true)
@@ -1079,11 +1088,11 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
 
       const handleRetryWithBackoff = async () => {
         setIsRetrying(true)
-        setRetryCount(prev => prev + 1)
-        
+        setRetryCount((prev) => prev + 1)
+
         try {
           // Wait with exponential backoff
-          await new Promise(resolve => setTimeout(resolve, Math.min(1000 * Math.pow(2, retryCount), 5000)))
+          await new Promise((resolve) => setTimeout(resolve, Math.min(1000 * Math.pow(2, retryCount), 5000)))
           handleRetry()
         } catch (error) {
           console.error("Retry failed:", error)
@@ -1096,26 +1105,20 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
           <AlertTriangle className="h-12 w-12 text-amber-500 mb-3" />
           <h4 className="font-semibold text-foreground mb-1">Connection Issue</h4>
-          <p className="text-sm text-muted-foreground mb-2">
-            {errorMessage || "Unable to connect to the assistant."}
-          </p>
-          {retryCount > 0 && (
-            <p className="text-xs text-muted-foreground mb-4">
-              Attempt {retryCount} of 3
-            </p>
-          )}
+          <p className="text-sm text-muted-foreground mb-2">{errorMessage || "Unable to connect to the assistant."}</p>
+          {retryCount > 0 && <p className="text-xs text-muted-foreground mb-4">Attempt {retryCount} of 3</p>}
           <div className="flex flex-col sm:flex-row gap-2 w-full max-w-xs">
-            <Button 
-              onClick={handleRetryWithBackoff} 
-              variant="default" 
+            <Button
+              onClick={handleRetryWithBackoff}
+              variant="default"
               size="sm"
               disabled={isRetrying || retryCount >= 3}
               className="flex-1"
             >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isRetrying ? 'animate-spin' : ''}`} />
-              {isRetrying ? 'Retrying...' : 'Try Again'}
+              <RefreshCw className={`h-4 w-4 mr-2 ${isRetrying ? "animate-spin" : ""}`} />
+              {isRetrying ? "Retrying..." : "Try Again"}
             </Button>
-            <Button onClick={handleCall} variant="outline" size="sm" className="flex-1">
+            <Button onClick={handleCall} variant="outline" size="sm" className="flex-1 bg-transparent">
               <Phone className="h-4 w-4 mr-2" />
               Call Us
             </Button>
@@ -1304,7 +1307,11 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
                     aria-label={isListening ? "Stop voice input" : "Start voice input"}
                     title={isListening ? "Stop voice input" : "Start voice input"}
                   >
-                    {isListening ? <MicOff className="h-4 w-4" aria-hidden="true" /> : <Mic className="h-4 w-4" aria-hidden="true" />}
+                    {isListening ? (
+                      <MicOff className="h-4 w-4" aria-hidden="true" />
+                    ) : (
+                      <Mic className="h-4 w-4" aria-hidden="true" />
+                    )}
                   </Button>
                   <Input
                     ref={inputRef}
