@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>M&M Commercial Moving - Business Card Preview</title>
+  <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@400;500;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Oxanium', sans-serif;
+      background: #0a0a0a;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+      color: #E0E0E0;
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: #E0E0E0;
+    }
+
+    .subtitle {
+      font-family: 'Source Code Pro', monospace;
+      font-size: 14px;
+      color: #A0A0A0;
+      margin-bottom: 40px;
+    }
+
+    .cards-container {
+      display: flex;
+      gap: 60px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 40px;
+    }
+
+    .card-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .card-label {
+      font-family: 'Source Code Pro', monospace;
+      font-size: 12px;
+      color: #A0A0A0;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+
+    /* Standard business card: 3.5" x 2" = 336px x 192px at 96dpi */
+    /* Using 2x for better detail: 672px x 384px scaled to display size */
+    .card {
+      width: 336px;
+      height: 192px;
+      border-radius: 0;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px #4A4A4A;
+      position: relative;
+    }
+
+    /* ========== FRONT CARD ========== */
+    .card-front {
+      background: #1A1A1A;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 24px 28px;
+      position: relative;
+    }
+
+    /* Grid pattern overlay */
+    .card-front::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image: 
+        linear-gradient(to right, rgba(229, 57, 53, 0.08) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(229, 57, 53, 0.08) 1px, transparent 1px);
+      background-size: 20px 20px;
+      pointer-events: none;
+    }
+
+    /* Red accent bar */
+    .card-front::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      background: #E53935;
+    }
+
+    .front-content {
+      position: relative;
+      z-index: 1;
+    }
+
+    .logo-section {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: #E53935;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .logo-icon svg {
+      width: 22px;
+      height: 22px;
+      fill: white;
+    }
+
+    .logo-text {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+
+    .logo-text .white {
+      color: #FFFFFF;
+    }
+
+    .logo-text .red {
+      color: #E53935;
+    }
+
+    .tagline {
+      font-size: 10px;
+      color: #A0A0A0;
+      line-height: 1.4;
+      margin-bottom: 12px;
+    }
+
+    .services-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px 12px;
+      font-family: 'Source Code Pro', monospace;
+      font-size: 8px;
+      color: #E0E0E0;
+      max-width: 240px;
+    }
+
+    .service-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .service-dot {
+      width: 4px;
+      height: 4px;
+      background: #E53935;
+    }
+
+    .front-contact {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 14px;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #333;
+      max-width: 220px;
+    }
+
+    .front-contact-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 5px;
+    }
+
+    .front-contact-icon {
+      width: 12px;
+      height: 12px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .front-contact-icon svg {
+      width: 12px;
+      height: 12px;
+      fill: #E53935;
+    }
+
+    .front-contact-details {
+      display: flex;
+      flex-direction: column;
+      gap: 0px;
+    }
+
+    .front-contact-label {
+      font-family: 'Source Code Pro', monospace;
+      font-size: 6px;
+      color: #A0A0A0;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .front-contact-value {
+      font-size: 9px;
+      color: #E0E0E0;
+      font-weight: 500;
+    }
+
+    .qr-section {
+      position: absolute;
+      bottom: 18px;
+      right: 18px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      z-index: 2;
+    }
+
+    .qr-code {
+      width: 56px;
+      height: 56px;
+      background: white;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .qr-code img {
+      width: 100%;
+      height: 100%;
+    }
+
+    .qr-label {
+      font-family: 'Source Code Pro', monospace;
+      font-size: 6px;
+      color: #A0A0A0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      text-align: center;
+    }
+
+    .service-area {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'Source Code Pro', monospace;
+      font-size: 8px;
+      color: #689F38;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #333;
+    }
+
+    .service-area-icon {
+      width: 12px;
+      height: 12px;
+    }
+
+    .service-area-icon svg {
+      width: 12px;
+      height: 12px;
+      fill: #689F38;
+    }
+
+    /* ========== BACK CARD ========== */
+    .card-back {
+      background: #1A1A1A;
+      display: flex;
+      flex-direction: column;
+      padding: 20px 24px;
+      position: relative;
+    }
+
+    /* Grid pattern overlay */
+    .card-back::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image: 
+        linear-gradient(to right, rgba(229, 57, 53, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(229, 57, 53, 0.05) 1px, transparent 1px);
+      background-size: 20px 20px;
+      pointer-events: none;
+    }
+
+    /* Red accent bar on right */
+    .card-back::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 4px;
+      height: 100%;
+      background: #E53935;
+    }
+
+    .back-content {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .back-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #4A4A4A;
+    }
+
+    .back-logo-icon {
+      width: 24px;
+      height: 24px;
+      background: #E53935;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .back-logo-icon svg {
+      width: 14px;
+      height: 14px;
+      fill: white;
+    }
+
+    .back-logo-text {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .back-logo-text .white {
+      color: #FFFFFF;
+    }
+
+    .back-logo-text .red {
+      color: #E53935;
+    }
+
+    .contact-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 20px;
+      flex: 1;
+    }
+
+    .contact-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .contact-icon {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .contact-icon svg {
+      width: 16px;
+      height: 16px;
+      fill: #E53935;
+    }
+
+    .contact-details {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .contact-label {
+      font-family: 'Source Code Pro', monospace;
+      font-size: 8px;
+      color: #A0A0A0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .contact-value {
+      font-size: 11px;
+      color: #E0E0E0;
+      font-weight: 500;
+    }
+
+    .back-footer {
+      font-family: 'Source Code Pro', monospace;
+      font-size: 8px;
+      color: #666;
+      margin-top: auto;
+      padding-top: 8px;
+      border-top: 1px solid #333;
+    }
+
+    /* Download section */
+    .download-section {
+      margin-top: 40px;
+      text-align: center;
+    }
+
+    .download-title {
+      font-family: 'Source Code Pro', monospace;
+      font-size: 12px;
+      color: #A0A0A0;
+      margin-bottom: 15px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+
+    .download-links {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+    }
+
+    .download-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      background: #2A2A2A;
+      border: 1px solid #4A4A4A;
+      color: #E0E0E0;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .download-link:hover {
+      background: #E53935;
+      border-color: #E53935;
+      color: white;
+    }
+
+    .download-link svg {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
+    }
+
+    /* Print specs */
+    .print-specs {
+      margin-top: 40px;
+      padding: 20px;
+      background: #2A2A2A;
+      border: 1px solid #4A4A4A;
+      max-width: 500px;
+    }
+
+    .print-specs h3 {
+      font-family: 'Source Code Pro', monospace;
+      font-size: 12px;
+      color: #E53935;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .print-specs ul {
+      list-style: none;
+      font-family: 'Source Code Pro', monospace;
+      font-size: 11px;
+      color: #A0A0A0;
+    }
+
+    .print-specs li {
+      padding: 4px 0;
+      border-bottom: 1px solid #333;
+    }
+
+    .print-specs li:last-child {
+      border-bottom: none;
+    }
+
+    .print-specs span {
+      color: #E0E0E0;
+    }
+  </style>
+</head>
+<body>
+  <h1>M&M Commercial Moving</h1>
+  <p class="subtitle">// BUSINESS_CARD_PREVIEW</p>
+
+  <div class="cards-container">
+    <!-- FRONT -->
+    <div class="card-wrapper">
+      <span class="card-label">Front</span>
+      <div class="card card-front">
+        <div class="front-content">
+          <div class="logo-section">
+            <div class="logo-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"></path>
+                <path d="M15 18H9"></path>
+                <path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"></path>
+                <circle cx="17" cy="18" r="2"></circle>
+                <circle cx="7" cy="18" r="2"></circle>
+              </svg>
+            </div>
+            <div class="logo-text">
+              <span class="white">M&amp;M</span><span class="red">_MOVING</span>
+            </div>
+          </div>
+          <p class="tagline">Melbourne's tech-powered commercial relocation services.</p>
+          <div class="services-list">
+            <div class="service-item"><span class="service-dot"></span>Office Relocation</div>
+            <div class="service-item"><span class="service-dot"></span>Data Centre Migration</div>
+            <div class="service-item"><span class="service-dot"></span>IT Equipment Transfer</div>
+            <div class="service-item"><span class="service-dot"></span>Asset Management</div>
+          </div>
+          <div class="front-contact">
+            <div class="front-contact-item">
+              <div class="front-contact-icon">
+                <svg viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+              </div>
+              <div class="front-contact-details">
+                <span class="front-contact-label">Phone</span>
+                <span class="front-contact-value">03 8820 1801</span>
+              </div>
+            </div>
+            <div class="front-contact-item">
+              <div class="front-contact-icon">
+                <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+              </div>
+              <div class="front-contact-details">
+                <span class="front-contact-label">Email</span>
+                <span class="front-contact-value">sales@m2mmoving.au</span>
+              </div>
+            </div>
+            <div class="front-contact-item">
+              <div class="front-contact-icon">
+                <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+              </div>
+              <div class="front-contact-details">
+                <span class="front-contact-label">Web</span>
+                <span class="front-contact-value">m2mmoving.au</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- QR Code -->
+        <div class="qr-section">
+          <div class="qr-code">
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://m2mmoving.au/quote&bgcolor=FFFFFF&color=1A1A1A&margin=0" alt="Scan for Quote">
+          </div>
+          <span class="qr-label">Scan for Quote</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- BACK -->
+    <div class="card-wrapper">
+      <span class="card-label">Back</span>
+      <div class="card card-back">
+        <div class="back-content">
+          <div class="back-header">
+            <div class="back-logo-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"></path>
+                <path d="M15 18H9"></path>
+                <path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"></path>
+                <circle cx="17" cy="18" r="2"></circle>
+                <circle cx="7" cy="18" r="2"></circle>
+              </svg>
+            </div>
+            <div class="back-logo-text">
+              <span class="white">M&M</span><span class="red">_MOVING</span>
+            </div>
+          </div>
+
+          <div class="contact-grid">
+            <div class="contact-item">
+              <div class="contact-icon">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+                </svg>
+              </div>
+              <div class="contact-details">
+                <span class="contact-label">Phone</span>
+                <span class="contact-value">03 8820 1801</span>
+              </div>
+            </div>
+
+            <div class="contact-item">
+              <div class="contact-icon">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+                </svg>
+              </div>
+              <div class="contact-details">
+                <span class="contact-label">Email</span>
+                <span class="contact-value">sales@m2mmoving.au</span>
+              </div>
+            </div>
+
+            <div class="contact-item">
+              <div class="contact-icon">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                </svg>
+              </div>
+              <div class="contact-details">
+                <span class="contact-label">Web</span>
+                <span class="contact-value">m2mmoving.au</span>
+              </div>
+            </div>
+
+            <div class="contact-item">
+              <div class="contact-icon">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                </svg>
+              </div>
+              <div class="contact-details">
+                <span class="contact-label">Location</span>
+                <span class="contact-value">Melbourne, VIC</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="service-area">
+            <div class="service-area-icon">
+              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+              </svg>
+            </div>
+            <span>Servicing Melbourne Metro & Victoria</span>
+          </div>
+
+          <div class="back-footer">
+            ABN: 71 661 027 309 | A subsidiary of Sharp Horizons Technology Pty Ltd
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="download-section">
+    <p class="download-title">Download Print-Ready Files</p>
+    <div class="download-links">
+      <a href="card-front.svg" class="download-link" download>
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+        </svg>
+        Front (SVG)
+      </a>
+      <a href="card-front-offline.svg" class="download-link" download>
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+        </svg>
+        Front (SVG Offline)
+      </a>
+      <a href="card-back.svg" class="download-link" download>
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+        </svg>
+        Back (SVG)
+      </a>
+    </div>
+  </div>
+
+  <div class="print-specs">
+    <h3>// Print Specifications</h3>
+    <ul>
+      <li>Size: <span>3.5" × 2" (89mm × 51mm)</span></li>
+      <li>Bleed: <span>Add 3mm bleed for printing</span></li>
+      <li>Color Mode: <span>CMYK for professional print</span></li>
+      <li>Resolution: <span>Vector (infinite scaling)</span></li>
+      <li>Finish: <span>Matte black recommended</span></li>
+    </ul>
+  </div>
+</body>
+</html>
+

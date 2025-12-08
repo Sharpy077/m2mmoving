@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="767" height="1181" viewBox="0 0 767 1181" xmlns="http://www.w3.org/2000/svg">
+  <!-- Portrait version: 65mm x 100mm at 300dpi (767 x 1181 px) with 5mm bleed on all sides. Safe area inset ~9mm (~106px). -->
+  <defs>
+    <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
+      <path d="M 60 0 L 0 0 0 60" fill="none" stroke="#E53935" stroke-width="1" opacity="0.08"/>
+    </pattern>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Oxanium:wght@400;500;600;700&amp;family=Source+Code+Pro:wght@400;500&amp;display=swap');
+      .logo-text { font-family: 'Oxanium', sans-serif; font-weight: 700; }
+      .tagline { font-family: 'Oxanium', sans-serif; font-weight: 400; }
+      .mono { font-family: 'Source Code Pro', monospace; font-weight: 400; }
+      .contact-label { font-family: 'Source Code Pro', monospace; font-weight: 400; }
+      .contact-value { font-family: 'Oxanium', sans-serif; font-weight: 500; }
+    </style>
+  </defs>
+
+  <!-- Background & grid -->
+  <rect width="767" height="1181" fill="#1A1A1A"/>
+  <rect width="767" height="1181" fill="url(#grid)"/>
+
+  <!-- Accent bar (left) -->
+  <rect x="0" y="0" width="8" height="1181" fill="#E53935"/>
+
+  <!-- Content scaled and positioned into safe area -->
+  <g transform="translate(106, 140) scale(0.9)">
+    <!-- Logo Section -->
+    <g transform="translate(40, 60)">
+      <rect width="110" height="110" fill="#E53935"/>
+      <g transform="translate(20, 22) scale(2.8)">
+        <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M15 18H9" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="17" cy="18" r="2" fill="none" stroke="white" stroke-width="2"/>
+        <circle cx="7" cy="18" r="2" fill="none" stroke="white" stroke-width="2"/>
+      </g>
+      <text x="130" y="70" class="logo-text" font-size="62" letter-spacing="2">
+        <tspan fill="#FFFFFF">M&amp;M</tspan><tspan fill="#E53935">_MOVING</tspan>
+      </text>
+    </g>
+
+    <!-- Tagline -->
+    <text x="40" y="230" class="tagline" font-size="28" fill="#A0A0A0" letter-spacing="0.5">
+      Melbourne's tech-powered commercial relocation services.
+    </text>
+
+    <!-- Services List -->
+    <g transform="translate(40, 270)">
+      <rect x="0" y="0" width="10" height="10" fill="#E53935"/>
+      <text x="18" y="10" class="mono" font-size="20" fill="#E0E0E0">Office Relocation</text>
+
+      <rect x="280" y="0" width="10" height="10" fill="#E53935"/>
+      <text x="298" y="10" class="mono" font-size="20" fill="#E0E0E0">Data Centre Migration</text>
+
+      <rect x="0" y="35" width="10" height="10" fill="#E53935"/>
+      <text x="18" y="45" class="mono" font-size="20" fill="#E0E0E0">IT Equipment Transfer</text>
+
+      <rect x="280" y="35" width="10" height="10" fill="#E53935"/>
+      <text x="298" y="45" class="mono" font-size="20" fill="#E0E0E0">Asset Management</text>
+    </g>
+
+    <!-- Contact Info -->
+    <g transform="translate(40, 380)">
+      <line x1="0" y1="0" x2="620" y2="0" stroke="#333333" stroke-width="2"/>
+
+      <g transform="translate(0, 25)">
+        <g fill="#E53935" transform="scale(1.1)">
+          <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+        </g>
+        <text x="32" y="6" class="mono" font-size="15" fill="#A0A0A0" letter-spacing="1">PHONE</text>
+        <text x="32" y="28" class="tagline" font-size="24" fill="#E0E0E0" font-weight="500">03 8820 1801</text>
+      </g>
+
+      <g transform="translate(260, 25)">
+        <g fill="#E53935" transform="scale(1.1)">
+          <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+        </g>
+        <text x="32" y="6" class="mono" font-size="15" fill="#A0A0A0" letter-spacing="1">EMAIL</text>
+        <text x="32" y="28" class="tagline" font-size="24" fill="#E0E0E0" font-weight="500">sales@m2mmoving.au</text>
+      </g>
+
+      <g transform="translate(0, 80)">
+        <g fill="#E53935" transform="scale(1.1)">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+        </g>
+        <text x="32" y="6" class="mono" font-size="15" fill="#A0A0A0" letter-spacing="1">WEB</text>
+        <text x="32" y="28" class="tagline" font-size="24" fill="#E0E0E0" font-weight="500">m2mmoving.au</text>
+      </g>
+    </g>
+
+    <!-- QR -->
+    <g transform="translate(540, 760)">
+      <rect width="140" height="140" fill="white"/>
+      <image x="0" y="0" width="140" height="140" href="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz48IURPQ1RZUEUgc3ZnIFBVQkxJQyAiLS8vVzNDLy9EVEQgU1ZHIDEuMS8vRU4iICJodHRwOi8vd3d3LnczLm9yZy9HcmFwaGljcy9TVkcvMS4xL0RURC9zdmcxMS5kdGQiPjxzdmcgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMzAwIiBoZWlnaHQ9IjMwMCIgdmlld0JveD0iMCAwIDMzIDMzIiBzaGFwZS1yZW5kZXJpbmc9ImNyaXNwRWRnZXMiPjxwYXRoIGZpbGw9IiNmZmZmZmYiIGQ9Ik0wIDBoMzN2MzNIMHoiLz48cGF0aCBzdHJva2U9IiMwMDAwMDAiIGQ9Ik00IDQuNWg3bTMgMGgxbTIgMGgxbTQgMGg3TTQgNS41aDFtNSAwaDFtMiAwaDFtMiAwaDVtMSAwaDFtNSAwaDFNNCA2LjVoMW0xIDBoM20xIDBoMW0xIDBoMW0xIDBoMW0xIDBoMW0zIDBoMW0xIDBoMW0xIDBoM20xIDBoMU00IDcuNWgxbTEgMGgzbTEgMGgxbTEgMGgxbTQgMGgzbTIgMGgxbTEgMGgzbTEgMGgxTTQgOC41aDFtMSAwaDNtMSAwaDFtMSAwaDVtMyAwaDFtMSAwaDFtMSAwaDNtMSAwaDFNNCA5LjVoMW01IDBoMW0xIDBoM200IDBoMW0yIDBoMW01IDBoMU00IDEwLjVoN20xIDBoMW0xIDBoMW0xIDBoMW0xIDBoMW0xIDBoMW0xIDBoN00xMiAxMS41aDNtMyAwaDFtMSAwaDFNNCAxMi41aDFtMSAwaDVtMyAwaDVtMyAwaDVNNSAxMy41aDRtMiAwaDFtMSAwaDNtMiAwaDFtMSAwaDJtNSAwaDFNNiAxNC41aDdtMSAwaDJtMiAwaDNtMSAwaDJtMSAwaDFtMSAwaDJNNCAxNS41aDFtMSAwaDFtNCAwaDFtMiAwaDFtMyAwaDJtMyAwaDJtMyAwaDFNNSAxNi41aDNtMSAwaDNtMSAwaDFtMiAwaDJtMyAwaDJtMSAwaDFtMSAwaDNNNCAxNy41aDFtMiAwaDJtMyAwaDFtMSAwaDFtMSAwaDJtMiAwaDFtMiAwaDFtMSAwaDFtMSAwaDFNNCAxOC41aDFtMSAwaDNtMSAwaDFtMSAwaDNtMiAwaDNtMSAwaDFtMSAwaDNtMSAwaDJNNCAxOS41aDFtNiAwaDFtNiAwaDFtMSAwaDVtMyAwaDFNNCAyMC41aDFtMSAwaDJtMSAwaDJtMSAwaDNtMSAwaDltMSAwaDFNMTIgMjEuNWgxbTIgMGgxbTIgMGgxbTEgMGgxbTMgMGgyTTQgMjIuNWg3bTIgMGgybTEgMGgxbTMgMGgxbTEgMGgxbTEgMGgxbTEgMGgzTTQgMjMuNWgxbTUgMGgxbTEgMGgybTQgMGgxbTEgMGgxbTMgMGgyTTQgMjQuNWgxbTEgMGgzbTEgMGgxbTEgMGgzbTIgMGg4bTEgMGgxTTQgMjUuNWgxbTEgMGgzbTEgMGgxbTEgMGg0bTIgMGgxbTEgMGgzbTEgMGg1TTQgMjYuNWgxbTEgMGgzbTEgMGgxbTEgMGgybTQgMGgxbTEgMGgxbTQgMGgybTEgMGgxTTQgMjcuNWgxbTUgMGgxbTMgMGgybTIgMGg0bTEgMGgzbTIgMGgxTTQgMjguNWg3bTEgMGgxbTEgMGg1bTIgMGg4Ii8+PC9zdmc+Cg=="
+        preserveAspectRatio="xMidYMid slice"
+      />
+      <text x="70" y="165" class="mono" font-size="14" fill="#A0A0A0" text-anchor="middle">SCAN FOR QUOTE</text>
+    </g>
+  </g>
+</svg>
+
