@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock twilio module
 vi.mock("twilio", () => {
-  const mockValidateRequest = vi.fn();
+  const mockValidateRequest = vi.fn().mockReturnValue(false);
   const mockClient = vi.fn(() => ({
     messages: { create: vi.fn() },
     calls: { create: vi.fn() },
@@ -14,8 +14,10 @@ vi.mock("twilio", () => {
 import { verifyTwilioSignature } from "@/lib/twilio";
 
 describe("Twilio Utilities", () => {
-  beforeEach(() => {
-    vi.resetModules();
+  const originalEnv = process.env.TWILIO_AUTH_TOKEN;
+
+  afterEach(() => {
+    process.env.TWILIO_AUTH_TOKEN = originalEnv;
   });
 
   describe("verifyTwilioSignature", () => {
@@ -40,17 +42,16 @@ describe("Twilio Utilities", () => {
       ).toThrow("TWILIO_AUTH_TOKEN is not set");
     });
 
-    it("should parse body params correctly", () => {
+    it("should call validateRequest with correct params", () => {
       process.env.TWILIO_AUTH_TOKEN = "test_token";
-      // The function should parse URL-encoded body
       const body = "Body=Hello%20World&From=%2B1234567890";
       const result = verifyTwilioSignature({
-        signature: "invalid_sig",
+        signature: "test_sig",
         url: "https://example.com/webhook",
         body,
       });
-      // Will return false due to invalid signature, but should not throw
-      expect(typeof result).toBe("boolean");
+      // Mock returns false, so result should be false
+      expect(result).toBe(false);
     });
   });
 });

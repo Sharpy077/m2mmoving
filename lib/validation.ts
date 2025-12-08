@@ -21,7 +21,7 @@ export function sanitizeHtml(input: string): string {
 // Validate and constrain message length
 export const messageSchema = z
   .string()
-  .min(1, "Message cannot be empty")
+  .min(1, "message is required")
   .max(2000, "Message too long (max 2000 chars)")
   .transform((s) => s.trim());
 

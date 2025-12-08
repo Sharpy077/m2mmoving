@@ -33,7 +33,8 @@ describe("API Routes", () => {
       expect(res.status).toBe(400);
 
       const json = await res.json();
-      expect(json.error).toBe("message is required");
+      // Zod returns "Required" when field is missing entirely
+      expect(json.error).toBe("Required");
     });
 
     it("should return AI response with sessionId", async () => {
@@ -57,19 +58,20 @@ describe("API Routes", () => {
       const { runTurn } = await import("@/lib/ai-orchestrator");
       const { POST } = await import("@/app/api/quote-assistant/route");
 
+      const validSessionId = "123e4567-e89b-12d3-a456-426614174000";
       const req = new Request("http://localhost/api/quote-assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: "Follow up",
-          sessionId: "existing-session",
+          sessionId: validSessionId,
         }),
       });
 
       await POST(req);
       expect(runTurn).toHaveBeenCalledWith({
         message: "Follow up",
-        sessionId: "existing-session",
+        sessionId: validSessionId,
       });
     });
   });
