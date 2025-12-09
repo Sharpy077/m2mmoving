@@ -5,19 +5,15 @@ import { Analytics } from "@vercel/analytics/next"
 import { SkipLink } from "@/components/skip-link"
 import "./globals.css"
 
-import { Oxanium, Source_Code_Pro, Source_Serif_4, Oxanium as V0_Font_Oxanium, Source_Code_Pro as V0_Font_Source_Code_Pro, Source_Serif_4 as V0_Font_Source_Serif_4 } from 'next/font/google'
+import { Oxanium, Source_Code_Pro, Source_Serif_4 } from "next/font/google"
 
 // Initialize fonts
-const _oxanium = V0_Font_Oxanium({ subsets: ['latin'], weight: ["200","300","400","500","600","700","800"] })
-const _sourceCodePro = V0_Font_Source_Code_Pro({ subsets: ['latin'], weight: ["200","300","400","500","600","700","800","900"] })
-const _sourceSerif_4 = V0_Font_Source_Serif_4({ subsets: ['latin'], weight: ["200","300","400","500","600","700","800","900"] })
-
-const oxaniumFont = Oxanium({ subsets: ["latin"], weight: ["200", "300", "400", "500", "600", "700", "800"] })
-const sourceCodeProFont = Source_Code_Pro({
+const _oxanium = Oxanium({ subsets: ["latin"], weight: ["200", "300", "400", "500", "600", "700", "800"] })
+const _sourceCodePro = Source_Code_Pro({
   subsets: ["latin"],
   weight: ["200", "300", "400", "500", "600", "700", "800", "900"],
 })
-const sourceSerifFont = Source_Serif_4({
+const _sourceSerif4 = Source_Serif_4({
   subsets: ["latin"],
   weight: ["200", "300", "400", "500", "600", "700", "800", "900"],
 })
@@ -53,7 +49,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className={`font-sans antialiased`}>
+      <body className="font-sans antialiased">
         <SkipLink />
         {children}
         <Analytics />
