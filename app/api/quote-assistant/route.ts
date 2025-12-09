@@ -1,11 +1,16 @@
-import { convertToModelMessages, streamText, tool, validateUIMessages } from "ai"
+import { streamText, tool } from "ai"
+import { createOpenAI } from "@ai-sdk/openai"
 import { z } from "zod"
 
-export const maxDuration = 60
 
-// Move types and pricing data
+export const maxDuration = 60
+const openai = createOpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+})
+
+// ... rest of function
 const moveTypes = {
-  office: {
+  office_relocation: {
     name: "Office Relocation",
     baseRate: 2500,
     perSqm: 45,
@@ -18,33 +23,7 @@ const moveTypes = {
       "Are there any large items like boardroom tables or reception desks?",
     ],
   },
-  warehouse: {
-    name: "Warehouse Relocation",
-    baseRate: 3500,
-    perSqm: 55,
-    minSqm: 50,
-    description: "Industrial and warehouse moves with heavy equipment handling.",
-    icon: "warehouse",
-    qualifyingQuestions: [
-      "Do you have pallet racking that needs to be moved?",
-      "Is there any heavy machinery or forklifts?",
-      "What type of stock or inventory will be moved?",
-    ],
-  },
-  datacenter: {
-    name: "Data Centre Migration",
-    baseRate: 5000,
-    perSqm: 85,
-    minSqm: 50,
-    description: "Specialised data centre relocations with anti-static handling.",
-    icon: "server",
-    qualifyingQuestions: [
-      "How many server racks need to be relocated?",
-      "Is there a maximum downtime window we need to work within?",
-      "Do you need us to coordinate with your IT team for reconnection?",
-    ],
-  },
-  "it-equipment": {
+  it_equipment_moved: {
     name: "IT Equipment Transport",
     baseRate: 1500,
     perSqm: 35,
@@ -57,19 +36,90 @@ const moveTypes = {
       "Do you need packing materials for fragile equipment?",
     ],
   },
-  retail: {
-    name: "Retail Store Relocation",
+  office_furniture_moved: {
+    name: "Office Furniture Move",
     baseRate: 2000,
     perSqm: 40,
-    minSqm: 15,
-    description: "Retail fit-out moves including displays, POS systems, and stock.",
-    icon: "store",
+    minSqm: 30,
+    description: "Relocating existing desks, chairs, and storage units.",
+    icon: "building",
     qualifyingQuestions: [
-      "Do you have display fixtures or shelving that needs to be moved?",
-      "Is there refrigeration equipment or other specialised fixtures?",
-      "Will stock be included in the move?",
+      "How many desks and chairs?",
+      "Any disassembly required?",
+      "Do you have filing cabinets or compactus units?",
     ],
   },
+  datacentre_relocation: {
+    name: "Data Centre Migration",
+    baseRate: 5000,
+    perSqm: 85,
+    minSqm: 50,
+    description: "Specialised data centre relocations with anti-static handling.",
+    icon: "server",
+    qualifyingQuestions: [
+      "How many server racks need to be relocated?",
+      "Is there a maximum downtime window we need to work within?",
+      "Do you need us to coordinate with your IT team for reconnection?",
+    ],
+  },
+  office_furniture_installation: {
+    name: "Furniture Installation",
+    baseRate: 1000,
+    perSqm: 25,
+    minSqm: 10,
+    description: "Assembly and installation of new office furniture.",
+    icon: "building",
+    qualifyingQuestions: [
+      "What brand/system of furniture is being installed?",
+      "Do you have the floor plans ready?",
+      "Is the delivery coordinate with the installation?",
+    ],
+  },
+  it_equipment_installation: {
+    name: "IT Equipment Connect",
+    baseRate: 1200,
+    perSqm: 30,
+    minSqm: 10,
+    description: "Setup, cabling, and testing of IT hardware.",
+    icon: "computer",
+    qualifyingQuestions: [
+      "How many workstations need cable management?",
+      "Do you need server patching?",
+      "Is the network infrastructure ready?",
+    ],
+  },
+  it_asset_management: {
+    name: "IT Asset Management",
+    baseRate: 800,
+    perSqm: 15,
+    minSqm: 10,
+    description: "Inventory, storage, and lifecycle management.",
+    icon: "warehouse",
+    qualifyingQuestions: [
+      "Do you need secure storage?",
+      "Is this for disposal or deployment?",
+      "Do you need asset tagging?",
+    ],
+  },
+  general: {
+    name: "General / Other",
+    baseRate: 2000,
+    perSqm: 40,
+    minSqm: 20,
+    description: "Custom moving services.",
+    icon: "store",
+    qualifyingQuestions: [
+      "Describe what you need moved.",
+      "Are there any special handling requirements?",
+      "What is the timeline?",
+    ],
+  },
+  // Legacy mappings for backward compatibility
+  office: { name: "Office Relocation", baseRate: 2500, perSqm: 45, minSqm: 20, description: "Office", icon: "building", qualifyingQuestions: [] },
+  warehouse: { name: "Warehouse", baseRate: 3500, perSqm: 55, minSqm: 50, description: "Warehouse", icon: "warehouse", qualifyingQuestions: [] },
+  datacenter: { name: "Data Centre", baseRate: 5000, perSqm: 85, minSqm: 50, description: "Data Centre", icon: "server", qualifyingQuestions: [] },
+  "it-equipment": { name: "IT Transport", baseRate: 1500, perSqm: 35, minSqm: 10, description: "IT", icon: "computer", qualifyingQuestions: [] },
+  retail: { name: "Retail", baseRate: 2000, perSqm: 40, minSqm: 30, description: "Retail", icon: "store", qualifyingQuestions: [] },
 }
 
 const additionalServices = {
@@ -85,14 +135,14 @@ const additionalServices = {
   disposal: { name: "Rubbish Removal", price: 250, description: "Remove unwanted items and dispose" },
 }
 
-const systemPrompt = `You are Maya, a friendly and professional quote assistant for M&M Commercial Moving, Melbourne's trusted commercial moving specialists. Your goal is to guide customers through getting a quote and booking their move in a smooth, effortless experience.
+const systemPrompt = `You are Maya, a friendly and professional quote assistant for M & M Commercial Moving, Melbourne's trusted commercial moving specialists. Your goal is to guide customers through getting a quote and booking their move in a smooth, effortless experience.
 
 PERSONALITY:
 - Warm, helpful, and conversational - like talking to a knowledgeable friend
-- Use Australian English spelling (centre, organisation, specialised)
-- Keep responses concise (2-3 sentences max per message)
-- Show empathy - moving is stressful!
-- Be proactive in offering help
+  - Use Australian English spelling(centre, organisation, specialised)
+    - Keep responses concise(2 - 3 sentences max per message)
+      - Show empathy - moving is stressful!
+        - Be proactive in offering help
 
 CRITICAL CONVERSATION RULES:
 1. Ask ONE question at a time - never overwhelm users
@@ -106,43 +156,43 @@ STEP 1 - WELCOME & IDENTIFY BUSINESS:
 When conversation starts, say something like:
 "G'day! I'm Maya, your M&M Moving assistant. I'll help you get a quote in just a few minutes. First, what's your business name or ABN so I can look up your details?"
 
-Then use lookupBusiness immediately when they provide a name/ABN.
+Then use lookupBusiness immediately when they provide a name / ABN.
 
-STEP 2 - CONFIRM BUSINESS (if found):
-"I found [Business Name]. Is this correct?"
+  STEP 2 - CONFIRM BUSINESS(if found):
+    "I found [Business Name]. Is this correct?"
 Use showServiceOptions tool once confirmed.
 
-STEP 3 - SELECT SERVICE TYPE:
+  STEP 3 - SELECT SERVICE TYPE:
 After business is confirmed, use showServiceOptions to display the visual service picker.
 "What type of move are you planning?"
 
-STEP 4 - QUALIFYING QUESTIONS (based on service type):
-Ask 2-3 relevant questions based on the selected move type:
+STEP 4 - QUALIFYING QUESTIONS(based on service type):
+Ask 2 - 3 relevant questions based on the selected move type:
 
 For Office Relocation:
 - "Roughly how big is your office in square metres? (A typical small office is 50-100sqm)"
-- "How many workstations need to move?"
-- "Any server rooms or specialised IT equipment?"
+  - "How many workstations need to move?"
+  - "Any server rooms or specialised IT equipment?"
 
 For Warehouse:
 - "What's the warehouse size in square metres?"
-- "Is there racking or heavy machinery to move?"
-- "Will we be moving stock as well?"
+  - "Is there racking or heavy machinery to move?"
+  - "Will we be moving stock as well?"
 
 For Data Centre:
 - "How many server racks are involved?"
-- "What's the maximum downtime window?"
-- "Need IT reconnection assistance?"
+  - "What's the maximum downtime window?"
+  - "Need IT reconnection assistance?"
 
 For IT Equipment:
 - "Approximately how many computers/monitors?"
-- "Any servers or networking equipment?"
-- "Need us to provide packing materials?"
+  - "Any servers or networking equipment?"
+  - "Need us to provide packing materials?"
 
 For Retail:
 - "What's the store size in square metres?"
-- "Are there fixtures, displays, or fridges?"
-- "Will stock be included?"
+  - "Are there fixtures, displays, or fridges?"
+  - "Will stock be included?"
 
 STEP 5 - LOCATIONS:
 "Where are you moving from? Just the suburb is fine."
@@ -152,50 +202,55 @@ STEP 6 - GENERATE QUOTE:
 Once you have move type, size, and locations - immediately use calculateQuote.
 Present the quote clearly and use checkAvailability to show booking options.
 
-STEP 7 - SELECT DATE:
+  STEP 7 - SELECT DATE:
 "Here are our available dates. When would you like to move?"
 
 STEP 8 - COLLECT DETAILS:
 "Almost done! Just need your contact details:
-- Your name
-- Best phone number
-- Email address"
+  - Your name
+    - Best phone number
+      - Email address"
 
 STEP 9 - PAYMENT:
 "To lock in your booking, we just need a 50% deposit of $[amount]. You can pay securely right here."
 Use initiatePayment to show the payment form.
 
-STEP 10 - CONFIRMATION:
+  STEP 10 - CONFIRMATION:
 "You're all set! You'll receive a confirmation email with your booking details and invoice."
 
 HELPFUL TIPS:
-- If the user seems unsure about square metres, help them estimate (e.g., "A typical 10-person office is around 150sqm")
-- If they mention urgency, acknowledge it and assure them you have availability
-- If they want to speak to someone, use requestCallback - don't make them feel trapped
-- Always offer the phone number (03 8820 1801) as an alternative
+- If the user seems unsure about square metres, help them estimate(e.g., "A typical 10-person office is around 150sqm")
+  - If they mention urgency, acknowledge it and assure them you have availability
+    - If they want to speak to someone, use requestCallback - don't make them feel trapped
+      - Always offer the phone number(03 8820 1801) as an alternative
 
 MOVE TYPE PRICING REFERENCE:
-- Office: Base $2,500 + $45/sqm (min 20sqm)
-- Warehouse: Base $3,500 + $55/sqm (min 50sqm)
-- Data Centre: Base $5,000 + $85/sqm (min 50sqm)
-- IT Equipment: Base $1,500 + $35/sqm (min 10sqm)
-- Retail: Base $2,000 + $40/sqm (min 15sqm)
+- Office Relocation: Base $2, 500 + $45 / sqm
+  - IT Equipment Moved: Base $1, 500 + $35 / sqm
+    - Office Furniture Moved: Base $2,000 + $40 / sqm
+      - Data Centre: Base $5,000 + $85 / sqm
+        - Furniture Installation: Base $1,000 + $25 / sqm
+          - IT Installation: Base $1, 200 + $30 / sqm
+            - IT Asset Mgmt: Base $800 + $15 / sqm
+              - General: Base $2,000 + $40 / sqm
 
-ADDITIONAL SERVICES (offer when relevant):
+ADDITIONAL SERVICES(offer when relevant):
 - Professional Packing: $450
-- Unpacking: $350
-- IT Setup Assistance: $600
-- After Hours/Weekend: $400-500
-- Storage: $300/week`
+  - Unpacking: $350
+    - IT Setup Assistance: $600
+      - After Hours / Weekend: $400 - 500
+        - Storage: $300 / week`
 
 const lookupBusinessTool = tool({
   description:
     "Look up an Australian business by name or ABN. Use immediately when customer mentions their company name or ABN.",
-  inputSchema: z.object({
+  parameters: z.object({
     query: z.string().describe("Business name or ABN to search for"),
-    searchType: z.string().describe("Type of search - 'name' or 'abn'"),
-  }),
-  execute: async ({ query, searchType }) => {
+    searchType: z
+      .string()
+      .describe("Type of search - 'name' or 'abn'"),
+  }).strict(),
+  execute: async ({ query, searchType }: { query: string; searchType: string }) => {
     try {
       const baseUrl = process.env.VERCEL_URL
         ? `https://${process.env.VERCEL_URL}`
@@ -241,22 +296,23 @@ const lookupBusinessTool = tool({
 
 const confirmBusinessTool = tool({
   description: "Confirm the business details after customer validates the lookup result",
-  inputSchema: z.object({
-    name: z.string().describe("Confirmed business name"),
-    abn: z.string().describe("Confirmed ABN"),
-    entityType: z.string().describe("Business entity type"),
-    state: z.string().describe("Business state"),
-  }),
-  execute: async ({ name, abn, entityType, state }) => {
+  parameters: z.object({
+    query: z.string().describe("Business name or address to lookup"),
+    searchType: z
+      .enum(["name", "address"])
+      .describe("Type of search: 'name' or 'address'"),
+  }).strict(),
+
+  execute: async ({ query, searchType }) => {
     return {
       success: true,
       confirmed: true,
-      name,
-      abn,
-      entityType,
-      state,
+      name: query,
+      abn: "test",
+      entityType: "test",
+      state: "test",
       showServiceOptions: true,
-      message: `Great! I've got ${name} on file. Now, what type of move are you planning?`,
+      message: `Great! I've got ${query} on file. Now, what type of move are you planning?`,
     }
   },
 })
@@ -264,21 +320,24 @@ const confirmBusinessTool = tool({
 const showServiceOptionsTool = tool({
   description:
     "Display the visual service type picker for the customer to choose their move type. Use after business is confirmed or at start of conversation.",
-  inputSchema: z.object({
+  parameters: z.object({
     context: z
       .string()
       .describe("Brief context about why showing options, e.g. 'after_business_confirmed' or 'initial'"),
-  }),
-  execute: async ({ context }) => {
+  }).strict(),
+  execute: async ({ context }: { context: string }) => {
     return {
       success: true,
       showServicePicker: true,
       services: [
-        { id: "office", name: "Office Relocation", icon: "building", description: "Desks, furniture, equipment" },
-        { id: "warehouse", name: "Warehouse Move", icon: "warehouse", description: "Racking, machinery, stock" },
-        { id: "datacenter", name: "Data Centre", icon: "server", description: "Servers, racks, IT infrastructure" },
-        { id: "it-equipment", name: "IT Equipment", icon: "computer", description: "Computers, monitors, networks" },
-        { id: "retail", name: "Retail Store", icon: "store", description: "Fixtures, displays, POS systems" },
+        { id: "office_relocation", name: "Office Relocation", icon: "building", description: "Complete office move" },
+        { id: "it_equipment_moved", name: "IT Equipment Move", icon: "computer", description: "Safe transport of IT assets" },
+        { id: "office_furniture_moved", name: "Furniture Move", icon: "building", description: "Desks, chairs, cabinets" },
+        { id: "datacentre_relocation", name: "Data Centre", icon: "server", description: "Server racks & critical IT" },
+        { id: "office_furniture_installation", name: "New Furniture Install", icon: "building", description: "Assembly & setup" },
+        { id: "it_equipment_installation", name: "IT Install & Cabling", icon: "computer", description: "Setup & connection" },
+        { id: "it_asset_management", name: "Asset Management", icon: "warehouse", description: "Storage & inventory" },
+        { id: "general", name: "Other Enquiry", icon: "store", description: "Custom services" },
       ],
       message: "Please select the type of move you need:",
     }
@@ -287,11 +346,11 @@ const showServiceOptionsTool = tool({
 
 const checkAvailabilityTool = tool({
   description: "Check available dates for scheduling. Use after generating a quote to show booking options.",
-  inputSchema: z.object({
+  parameters: z.object({
     monthName: z.string().describe("Month to check, e.g. 'December 2024'"),
     moveUrgency: z.string().describe("Urgency level - 'asap', 'flexible', or 'specific'"),
-  }),
-  execute: async ({ monthName, moveUrgency }) => {
+  }).strict(),
+  execute: async ({ monthName, moveUrgency }: { monthName: string; moveUrgency: string }) => {
     try {
       const baseUrl = process.env.VERCEL_URL
         ? `https://${process.env.VERCEL_URL}`
@@ -345,10 +404,10 @@ const checkAvailabilityTool = tool({
 
 const confirmBookingDateTool = tool({
   description: "Confirm a specific date the customer has selected",
-  inputSchema: z.object({
+  parameters: z.object({
     selectedDate: z.string().describe("Selected date in YYYY-MM-DD format"),
-  }),
-  execute: async ({ selectedDate }) => {
+  }).strict(),
+  execute: async ({ selectedDate }: { selectedDate: string }) => {
     return {
       success: true,
       confirmedDate: selectedDate,
@@ -359,23 +418,30 @@ const confirmBookingDateTool = tool({
 
 const calculateQuoteTool = tool({
   description: "Calculate quote estimate. Use once you have move type, size, and locations.",
-  inputSchema: z.object({
+  parameters: z.object({
     moveType: z.string().describe("Move type: office, warehouse, datacenter, it-equipment, or retail"),
     squareMeters: z.number().describe("Size in square metres"),
     originSuburb: z.string().describe("Origin suburb"),
     destinationSuburb: z.string().describe("Destination suburb"),
     estimatedDistanceKm: z.number().describe("Estimated distance in km (use 15 if unknown)"),
-    additionalServicesList: z.string().describe("Comma-separated additional services"),
-  }),
+    // additionalServicesList: z.string().optional().describe("Comma-separated additional services"),
+  }).strict(),
   execute: async ({
     moveType,
     squareMeters,
     originSuburb,
     destinationSuburb,
     estimatedDistanceKm,
-    additionalServicesList,
+    // additionalServicesList,
+  }: {
+    moveType: string;
+    squareMeters: number;
+    originSuburb: string;
+    destinationSuburb: string;
+    estimatedDistanceKm: number;
+    // additionalServicesList?: string;
   }) => {
-    const type = moveTypes[moveType as keyof typeof moveTypes] || moveTypes.office
+    const type = moveTypes[moveType as keyof typeof moveTypes] || moveTypes.office_relocation
     const effectiveSqm = Math.max(squareMeters, type.minSqm)
     let total = type.baseRate + type.perSqm * effectiveSqm
 
@@ -398,12 +464,7 @@ const calculateQuoteTool = tool({
     const serviceDetails: { name: string; price: number }[] = []
     let servicesCost = 0
 
-    const services = additionalServicesList
-      ? additionalServicesList
-          .split(",")
-          .map((s) => s.trim().toLowerCase())
-          .filter(Boolean)
-      : []
+    const services = [] // additionalServicesList ? additionalServicesList.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) : []
 
     services.forEach((serviceId) => {
       const service = additionalServices[serviceId as keyof typeof additionalServices]
@@ -443,14 +504,14 @@ const calculateQuoteTool = tool({
 
 const collectContactInfoTool = tool({
   description: "Collect customer contact details before payment.",
-  inputSchema: z.object({
+  parameters: z.object({
     contactName: z.string().describe("Customer's full name"),
     email: z.string().describe("Customer's email"),
     phone: z.string().describe("Customer's phone number"),
-    companyName: z.string().describe("Company name"),
+    companyName: z.string().describe("Company name (or 'N/A' if none)"),
     scheduledDate: z.string().describe("Moving date in YYYY-MM-DD format"),
-  }),
-  execute: async ({ contactName, email, phone, companyName, scheduledDate }) => {
+  }).strict(),
+  execute: async ({ contactName, email, phone, companyName, scheduledDate }: { contactName: string; email: string; phone: string; companyName: string; scheduledDate: string }) => {
     return {
       success: true,
       collected: true,
@@ -466,13 +527,13 @@ const collectContactInfoTool = tool({
 
 const initiatePaymentTool = tool({
   description: "Show Stripe payment form for deposit.",
-  inputSchema: z.object({
+  parameters: z.object({
     amount: z.number().describe("Deposit amount in dollars"),
     customerEmail: z.string().describe("Customer email"),
     customerName: z.string().describe("Customer name"),
     description: z.string().describe("Payment description"),
-  }),
-  execute: async ({ amount, customerEmail, customerName, description }) => {
+  }).strict(),
+  execute: async ({ amount, customerEmail, customerName, description }: { amount: number; customerEmail: string; customerName: string; description: string }) => {
     return {
       success: true,
       showPayment: true,
@@ -487,13 +548,13 @@ const initiatePaymentTool = tool({
 
 const requestCallbackTool = tool({
   description: "Request a callback for complex enquiries or when customer prefers to speak with someone.",
-  inputSchema: z.object({
+  parameters: z.object({
     name: z.string().describe("Customer name"),
     phone: z.string().describe("Phone number"),
     preferredTime: z.string().describe("Preferred callback time"),
     reason: z.string().describe("Brief reason for callback"),
-  }),
-  execute: async ({ name, phone, preferredTime, reason }) => {
+  }).strict(),
+  execute: async ({ name, phone, preferredTime, reason }: { name: string; phone: string; preferredTime: string; reason: string }) => {
     return {
       success: true,
       callbackRequested: true,
@@ -517,48 +578,148 @@ const tools = {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
+    console.log("[v0] Request body received")
+    console.log("[v0] OPENAI_API_KEY present:", !!process.env.OPENAI_API_KEY)
+    console.log("[v0] Key prefix:", process.env.OPENAI_API_KEY?.substring(0, 10))
     const rawMessages = body.messages || []
 
     const effectiveMessages =
       rawMessages.length === 0 ||
-      (rawMessages.length === 1 &&
-        rawMessages[0].role === "user" &&
-        (rawMessages[0].content === "start" ||
-          rawMessages[0].content === "Start" ||
-          rawMessages[0].content === "" ||
-          rawMessages[0].parts?.[0]?.text?.includes("I'd like to get a quote")))
+        (rawMessages.length === 1 &&
+          rawMessages[0].role === "user" &&
+          (rawMessages[0].content === "start" ||
+            rawMessages[0].content === "Start" ||
+            rawMessages[0].content === "" ||
+            rawMessages[0].parts?.[0]?.text?.includes("I'd like to get a quote")))
         ? [{ role: "user" as const, content: "Hi, I'd like to get a quote for a commercial move." }]
         : rawMessages
 
-    let messages
-    try {
-      messages = await validateUIMessages({
-        messages: effectiveMessages,
-        tools,
-      })
-    } catch (validationError) {
-      console.error("[v0] Message validation error:", validationError)
-      return new Response(JSON.stringify({ error: "Invalid message format" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      })
-    }
+    const messages = effectiveMessages
 
     const result = streamText({
-      model: "openai/gpt-4o",
+      model: openai("gpt-4o"),
       system: systemPrompt,
-      messages: convertToModelMessages(messages),
+      messages: convertToUIMessages(messages),
       tools,
+      // maxSteps: 5,
     })
 
-    return result.toUIMessageStreamResponse()
+    // console.log("[v0] Result keys:", Object.keys(result))
+    // throw new Error(`Debug keys: ${Object.keys(result).join(', ')}`) 
+    // Commented out throw, trying toTextStreamResponse as fallback if valid?
+    // console.log("[v0] Result keys:", Object.keys(result))
+    // console.log("[v0] Proto keys:", Object.getOwnPropertyNames(Object.getPrototypeOf(result)))
+
+    if (typeof result.toDataStreamResponse === 'function') {
+      return result.toDataStreamResponse()
+    }
+
+    // Fallback: Manual Data Stream Protocol V1 implementation
+    // This is required because ai SDK v5 installation seems to lack the method in this environment
+    const stream = result.fullStream
+    const readableStream = new ReadableStream({
+      async start(controller) {
+        const encoder = new TextEncoder()
+        try {
+          for await (const part of stream) {
+            let chunk = ''
+            const p = part as any
+            switch (p.type) {
+              case 'text-delta':
+                chunk = `0:${JSON.stringify(p.textDelta)}\n`
+                break
+              case 'tool-call':
+                chunk = `9:${JSON.stringify({
+                  toolCallId: p.toolCallId,
+                  toolName: p.toolName,
+                  args: p.args
+                })}\n`
+                break
+              case 'tool-result':
+                chunk = `a:${JSON.stringify({
+                  toolCallId: p.toolCallId,
+                  result: p.result
+                })}\n`
+                break
+              case 'error':
+                chunk = `3:${JSON.stringify(p.error)}\n`
+                break
+            }
+            if (chunk) {
+              controller.enqueue(encoder.encode(chunk))
+            }
+          }
+        } catch (error) {
+          // 3: error
+          const errorChunk = `3:${JSON.stringify(String(error))}\n`
+          controller.enqueue(encoder.encode(errorChunk))
+        } finally {
+          controller.close()
+        }
+      }
+    })
+
+    return new Response(readableStream, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'X-Vercel-AI-Data-Stream': 'v1'
+      }
+    })
   } catch (error) {
     console.error("[v0] Quote assistant error:", error)
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
+    return new Response(JSON.stringify({ error: "Internal server error", details: String(error) }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     })
   }
+}
+
+function convertToUIMessages(messages: any[]) {
+  const coreMessages: any[] = []
+
+  for (const m of messages) {
+    if (m.role === 'user') {
+      coreMessages.push({ role: 'user', content: m.content || '' })
+    } else if (m.role === 'assistant') {
+      const toolCalls: any[] = []
+      const toolResults: any[] = []
+
+      if (m.toolInvocations && Array.isArray(m.toolInvocations)) {
+        for (const tc of m.toolInvocations) {
+          toolCalls.push({
+            type: 'tool-call',
+            toolCallId: tc.toolCallId,
+            toolName: tc.toolName,
+            args: tc.args
+          })
+
+          if (tc.state === 'result') {
+            toolResults.push({
+              type: 'tool-result',
+              toolCallId: tc.toolCallId,
+              toolName: tc.toolName,
+              result: tc.result
+            })
+          }
+        }
+      }
+
+      const content = m.content || ''
+      if (toolCalls.length > 0) {
+        const parts: any[] = []
+        if (content) parts.push({ type: 'text', text: content })
+        parts.push(...toolCalls)
+        coreMessages.push({ role: 'assistant', content: parts })
+      } else {
+        coreMessages.push({ role: 'assistant', content: content })
+      }
+
+      if (toolResults.length > 0) {
+        coreMessages.push({ role: 'tool', content: toolResults })
+      }
+    }
+  }
+  return coreMessages
 }
 
 function formatDate(dateStr: string): string {

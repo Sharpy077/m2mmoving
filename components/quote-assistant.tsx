@@ -3,7 +3,7 @@
 import type React from "react"
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
 import { useChat } from "@ai-sdk/react"
-import { DefaultChatTransport } from "ai"
+
 import {
   MessageSquare,
   X,
@@ -206,13 +206,12 @@ const BookingProgress = ({
       {steps.map((s, i) => (
         <div key={s.id} className="flex items-center">
           <div
-            className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium transition-colors ${
-              i < currentIndex
-                ? "bg-primary text-primary-foreground"
-                : i === currentIndex
-                  ? "bg-primary text-primary-foreground ring-2 ring-primary/30"
-                  : "bg-muted text-muted-foreground"
-            }`}
+            className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium transition-colors ${i < currentIndex
+              ? "bg-primary text-primary-foreground"
+              : i === currentIndex
+                ? "bg-primary text-primary-foreground ring-2 ring-primary/30"
+                : "bg-muted text-muted-foreground"
+              }`}
           >
             {i < currentIndex ? <CheckCircle className="h-3 w-3" /> : i + 1}
           </div>
@@ -273,7 +272,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     }))
 
     const { messages, sendMessage, status, error } = useChat({
-      transport: new DefaultChatTransport({ api: "/api/quote-assistant" }),
+      api: "/api/quote-assistant",
       onError: (err) => {
         console.log("[v0] Chat error:", err.message)
         setHasError(true)
@@ -730,6 +729,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     }
 
     const renderMessageContent = (message: any) => {
+      // Debug log
+      console.log("[v0] Rendering:", message.role, "Content:", message.content, "Parts:", message.parts)
+
       if (message.parts) {
         return message.parts
           .map((part: any, index: number) => {
@@ -768,13 +770,12 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             key={day}
             disabled={!isAvailable || isPast}
             onClick={() => isAvailable && !isPast && handleSelectDate(dateStr)}
-            className={`h-8 w-8 rounded-full text-sm flex items-center justify-center transition-colors relative ${
-              isSelected
-                ? "bg-primary text-primary-foreground"
-                : isAvailable && !isPast
-                  ? "hover:bg-primary/20 text-foreground cursor-pointer"
-                  : "text-muted-foreground/40 cursor-not-allowed opacity-50"
-            } ${dateInfo?.slots === 1 ? "ring-1 ring-amber-500" : ""} ${isPast ? "line-through" : ""}`}
+            className={`h-8 w-8 rounded-full text-sm flex items-center justify-center transition-colors relative ${isSelected
+              ? "bg-primary text-primary-foreground"
+              : isAvailable && !isPast
+                ? "hover:bg-primary/20 text-foreground cursor-pointer"
+                : "text-muted-foreground/40 cursor-not-allowed opacity-50"
+              } ${dateInfo?.slots === 1 ? "ring-1 ring-amber-500" : ""} ${isPast ? "line-through" : ""}`}
             aria-disabled={!isAvailable || isPast}
             title={
               isPast
@@ -1212,9 +1213,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
                       className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                     >
                       <div
-                        className={`max-w-[85%] rounded-lg px-3 py-2 ${
-                          message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
-                        }`}
+                        className={`max-w-[85%] rounded-lg px-3 py-2 ${message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
+                          }`}
                       >
                         <div className="flex items-start gap-2">
                           {message.role === "assistant" && (
