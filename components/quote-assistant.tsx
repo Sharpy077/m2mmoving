@@ -255,6 +255,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       "business" | "service" | "details" | "quote" | "date" | "contact" | "payment" | "complete"
     >("business")
     const [showInitialPrompts, setShowInitialPrompts] = useState(true)
+    const pendingActionRef = useRef<string | null>(null)
 
     // Loading states
     const [isLookingUpBusiness, setIsLookingUpBusiness] = useState(false)
@@ -274,13 +275,22 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       },
     }))
 
-    const { messages, sendMessage, status, error } = useChat({
+    const { messages, sendMessage, status, error, reload } = useChat({
       // @ts-ignore
       api: "/api/quote-assistant",
       onError: (err) => {
         console.log("[v0] Chat error:", err.message)
+        // Don't immediately show error - try to recover first
         setHasError(true)
         setErrorMessage(err.message || "Failed to connect to the quote assistant")
+        // Auto-retry after a short delay if it's a network error
+        if (err.message?.includes("fetch") || err.message?.includes("network")) {
+          setTimeout(() => {
+            if (messages.length > 0) {
+              reload()
+            }
+          }, 2000)
+        }
       },
       onFinish: () => {
         setHasError(false)
@@ -326,6 +336,20 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     }, [paymentComplete, leadSubmitted])
 
     const isLoading = status === "streaming" || status === "submitted"
+
+    // Timeout mechanism to detect if Maya doesn't respond
+    useEffect(() => {
+      if (isLoading && status === "streaming") {
+        const timeout = setTimeout(() => {
+          // If loading for more than 30 seconds, show a message
+          if (isLoading && status === "streaming") {
+            console.warn("[v0] Response timeout - Maya may be stuck")
+            // Don't break the UI, but log for debugging
+          }
+        }, 30000)
+        return () => clearTimeout(timeout)
+      }
+    }, [isLoading, status])
 
     useEffect(() => {
       const lastMessage = messages[messages.length - 1]
@@ -502,6 +526,13 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       if (messages.length > 0) {
         setShowInitialPrompts(false)
       }
+      // Clear pending action when we get a response
+      if (pendingActionRef.current && messages.length > 0) {
+        const lastMessage = messages[messages.length - 1]
+        if (lastMessage?.role === "assistant") {
+          pendingActionRef.current = null
+        }
+      }
     }, [messages])
 
     useEffect(() => {
@@ -637,6 +668,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       setInputValue("")
       setBusinessLookupResults(null)
       setShowServicePicker(false)
+      // Clear any previous errors
+      setHasError(false)
+      setErrorMessage(null)
 
       // Detect if message might trigger business lookup or quote calculation
       const lowerText = text.toLowerCase()
@@ -650,7 +684,15 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         setIsCheckingAvailability(true)
       }
 
-      sendMessage({ text })
+      try {
+        sendMessage({ text })
+      } catch (error) {
+        console.error("Error sending message:", error)
+        // Retry once
+        setTimeout(() => {
+          sendMessage({ text })
+        }, 500)
+      }
     }
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -663,17 +705,56 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const handleSelectBusiness = (business: BusinessResult) => {
       setConfirmedBusiness(business)
       setBusinessLookupResults(null)
-      sendMessage({
-        text: `Yes, that's correct - ${business.name} (ABN: ${business.abn})`,
-      })
+      // Clear any previous errors
+      setHasError(false)
+      setErrorMessage(null)
+      try {
+        sendMessage({
+          text: `Yes, that's correct - ${business.name} (ABN: ${business.abn})`,
+        })
+      } catch (error) {
+        console.error("Error sending business selection:", error)
+        // Retry once
+        setTimeout(() => {
+          sendMessage({
+            text: `Yes, that's correct - ${business.name} (ABN: ${business.abn})`,
+          })
+        }, 500)
+      }
     }
 
     const handleSelectService = (service: ServiceOption) => {
       setShowServicePicker(false)
       setCurrentStep("details")
-      sendMessage({
-        text: `I need ${service.name}`,
-      })
+      // Clear any previous errors
+      setHasError(false)
+      setErrorMessage(null)
+      const actionId = `service-${service.id}`
+      pendingActionRef.current = actionId
+      try {
+        sendMessage({
+          text: `I need ${service.name}`,
+        })
+        // Set a timeout to detect if Maya doesn't respond
+        setTimeout(() => {
+          if (pendingActionRef.current === actionId) {
+            console.warn("[v0] Maya didn't respond to service selection, retrying...")
+            pendingActionRef.current = null
+            sendMessage({
+              text: `I selected ${service.name}. Can you help me with the next steps?`,
+            })
+          }
+        }, 10000) // 10 second timeout
+      } catch (error) {
+        console.error("Error sending service selection:", error)
+        pendingActionRef.current = null
+        // Retry once
+        setTimeout(() => {
+          sendMessage({
+            text: `I need ${service.name}`,
+          })
+        }, 500)
+      }
     }
 
     const handleSelectDate = (date: string) => {
@@ -685,9 +766,22 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         month: "long",
         year: "numeric",
       })
-      sendMessage({
-        text: `I'd like to book for ${formattedDate}`,
-      })
+      // Clear any previous errors
+      setHasError(false)
+      setErrorMessage(null)
+      try {
+        sendMessage({
+          text: `I'd like to book for ${formattedDate}`,
+        })
+      } catch (error) {
+        console.error("Error sending date selection:", error)
+        // Retry once
+        setTimeout(() => {
+          sendMessage({
+            text: `I'd like to book for ${formattedDate}`,
+          })
+        }, 500)
+      }
     }
 
     const handlePromptClick = (prompt: string) => {

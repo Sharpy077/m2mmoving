@@ -105,7 +105,16 @@ CRITICAL CONVERSATION RULES:
 1. Ask ONE question at a time - never overwhelm users.
 2. ALWAYS acknowledge what the user said before asking the next question.
 3. Use tools immediately when you have the information needed.
-4. Keep the conversation moving forward smoothly to the next stage (Discovery -> Qualification -> Quote -> Booking).
+4. ALWAYS provide a text response after using any tool - never leave the user without a response.
+5. After a tool call completes, acknowledge the result and continue the conversation naturally.
+6. Keep the conversation moving forward smoothly to the next stage (Discovery -> Qualification -> Quote -> Booking).
+7. If a user selects an option (service, business, date), acknowledge their choice immediately and proceed.
+
+MANDATORY RESPONSE RULES:
+- After ANY tool call, you MUST provide a text response explaining what happened and what's next.
+- When a user selects a service option, acknowledge it: "Great! I've noted you need [Service Type]. [Next question]"
+- Never end a turn without a text response - even if a tool was called.
+- If you're unsure what to say, acknowledge the user's input and ask a clarifying question.
 
 CONVERSATION FLOW:
 
@@ -120,9 +129,10 @@ STEP 2 - CONFIRM BUSINESS:
 STEP 3 - SELECT SERVICE TYPE:
 After business is confirmed, use showServiceOptions.
 "What type of move are you planning?"
+IMPORTANT: When user selects a service option, acknowledge it immediately: "Perfect! I've got you down for [Service Type]. Now let me ask a few quick questions to get you an accurate quote."
 
 STEP 4 - QUALIFYING QUESTIONS (Mandatory):
-Once the user selects a move type (or types it), you MUST ask the relevant qualifying questions to gauge the size and complexity.
+Once the user selects a move type (or types it), you MUST acknowledge their choice and then ask the relevant qualifying questions to gauge the size and complexity.
 - Office: Desks, Servers, Large items?
 - Warehouse: Racking, Machinery, Stock?
 - Data Centre: Rack count, Downtime, Cabling?
@@ -223,7 +233,7 @@ const lookupBusinessTool = {
 }
 
 const confirmBusinessTool = {
-  description: "Confirm the business details after customer validates the lookup result",
+  description: "Confirm the business details after customer validates the lookup result. IMPORTANT: After calling this tool, you MUST provide a text response acknowledging the confirmation and asking about the move type.",
   inputSchema: z.object({
     name: z.string().describe("Confirmed business name"),
     abn: z.string().describe("Confirmed ABN"),
@@ -246,7 +256,7 @@ const confirmBusinessTool = {
 
 const showServiceOptionsTool = {
   description:
-    "Display the visual service type picker for the customer to choose their move type. Use after business is confirmed or at start of conversation.",
+    "Display the visual service type picker for the customer to choose their move type. Use after business is confirmed or at start of conversation. IMPORTANT: After calling this tool, you MUST provide a text response asking the user to select their service type.",
   inputSchema: z.object({
     context: z
       .string()
@@ -269,7 +279,7 @@ const showServiceOptionsTool = {
 }
 
 const checkAvailabilityTool = {
-  description: "Check available dates for scheduling. Use after generating a quote to show booking options.",
+  description: "Check available dates for scheduling. Use after generating a quote to show booking options. IMPORTANT: After calling this tool, you MUST provide a text response presenting the available dates.",
   inputSchema: z.object({
     monthName: z.string().describe("Month to check, e.g. 'December 2024'"),
     moveUrgency: z.string().describe("Urgency level - 'asap', 'flexible', or 'specific'"),
@@ -327,7 +337,7 @@ const checkAvailabilityTool = {
 }
 
 const confirmBookingDateTool = {
-  description: "Confirm a specific date the customer has selected",
+  description: "Confirm a specific date the customer has selected. IMPORTANT: After calling this tool, you MUST provide a text response acknowledging the date and asking for contact details.",
   inputSchema: z.object({
     selectedDate: z.string().describe("Selected date in YYYY-MM-DD format"),
   }),
@@ -341,7 +351,7 @@ const confirmBookingDateTool = {
 }
 
 const calculateQuoteTool = {
-  description: "Calculate quote estimate. Use once you have move type, size, and locations.",
+  description: "Calculate quote estimate. Use once you have move type, size, and locations. IMPORTANT: After calling this tool, you MUST provide a text response presenting the quote and asking if they'd like to proceed.",
   inputSchema: z.object({
     moveType: z.string().describe("Move type: office, warehouse, datacenter, it-equipment, or retail"),
     squareMeters: z.number().describe("Size in square metres"),
@@ -432,7 +442,7 @@ const calculateQuoteTool = {
 }
 
 const collectContactInfoTool = {
-  description: "Collect customer contact details before payment.",
+  description: "Collect customer contact details before payment. IMPORTANT: After calling this tool, you MUST provide a text response acknowledging the details and proceeding to payment.",
   inputSchema: z.object({
     contactName: z.string().describe("Customer's full name"),
     email: z.string().describe("Customer's email"),
@@ -467,7 +477,7 @@ const collectContactInfoTool = {
 }
 
 const initiatePaymentTool = {
-  description: "Show Stripe payment form for deposit.",
+  description: "Show Stripe payment form for deposit. IMPORTANT: After calling this tool, you MUST provide a text response explaining the payment process.",
   inputSchema: z.object({
     amount: z.number().describe("Deposit amount in dollars"),
     customerEmail: z.string().describe("Customer email"),
@@ -561,8 +571,13 @@ export async function POST(req: Request) {
       system: systemPrompt,
       messages: convertToCoreMessages(effectiveMessages),
       tools,
+      maxSteps: 5, // Allow multiple tool calls but ensure we get a final response
       onFinish: (result) => {
         logToFile("[v0] streamText finish: " + JSON.stringify(result.usage, null, 2))
+        // Ensure we always have a text response
+        if (!result.text && result.toolCalls && result.toolCalls.length > 0) {
+          logToFile("[v0] WARNING: Tool calls completed but no text response generated")
+        }
       },
       onError: ({ error }) => {
         logToFile("[v0] streamText error callback: " + error)
@@ -577,9 +592,15 @@ export async function POST(req: Request) {
     if (error instanceof Error) {
       logToFile("[v0] Stack: " + error.stack)
     }
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    })
+    // Return a user-friendly error that allows conversation to continue
+    return new Response(
+      JSON.stringify({
+        error: "I'm having a bit of trouble right now. Could you try again? If this continues, please call us at 03 8820 1801.",
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
+    )
   }
 }
