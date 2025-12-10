@@ -54,7 +54,7 @@
     "@vitest/browser-preview": "latest",
     "@vitest/browser-webdriverio": "latest",
     "@vitest/ui": "latest",
-    "ai": "^4.1.45",
+    "ai": "^5.0.52",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -99,6 +99,6 @@
     "tailwindcss": "^4.1.9",
     "tw-animate-css": "1.3.3",
     "typescript": "^5",
-    "vitest": "^2.1.9"
+    "vitest": "^4.0.15"
   }
 }
