@@ -160,7 +160,7 @@ Then use lookupBusiness immediately when they provide a name / ABN.
 
   STEP 2 - CONFIRM BUSINESS(if found):
     "I found [Business Name]. Is this correct?"
-    IMMEDIATELY call showServiceOptions tool once confirmed in the same turn.
+Use showServiceOptions tool once confirmed.
 
   STEP 3 - SELECT SERVICE TYPE:
 After business is confirmed, use showServiceOptions to display the visual service picker.
@@ -249,7 +249,7 @@ const lookupBusinessTool = tool({
     searchType: z
       .string()
       .describe("Type of search - 'name' or 'abn'"),
-  }),
+  }).strict(),
   execute: async ({ query, searchType }: { query: string; searchType: string }) => {
     try {
       const baseUrl = process.env.VERCEL_URL
@@ -311,8 +311,8 @@ const confirmBusinessTool = tool({
       abn: "test",
       entityType: "test",
       state: "test",
-      // showServiceOptions: true, // Removed to force agent to call the tool separately
-      message: `Business confirmed: ${query}. Now displaying service options...`,
+      showServiceOptions: true,
+      message: `Great! I've got ${query} on file. Now, what type of move are you planning?`,
     }
   },
 })
@@ -464,7 +464,7 @@ const calculateQuoteTool = tool({
     const serviceDetails: { name: string; price: number }[] = []
     let servicesCost = 0
 
-    const services: string[] = [] // additionalServicesList ? additionalServicesList.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) : []
+    const services = [] // additionalServicesList ? additionalServicesList.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) : []
 
     services.forEach((serviceId) => {
       const service = additionalServices[serviceId as keyof typeof additionalServices]
@@ -510,7 +510,7 @@ const collectContactInfoTool = tool({
     phone: z.string().describe("Customer's phone number"),
     companyName: z.string().describe("Company name (or 'N/A' if none)"),
     scheduledDate: z.string().describe("Moving date in YYYY-MM-DD format"),
-  }),
+  }).strict(),
   execute: async ({ contactName, email, phone, companyName, scheduledDate }: { contactName: string; email: string; phone: string; companyName: string; scheduledDate: string }) => {
     return {
       success: true,
@@ -564,8 +564,8 @@ const requestCallbackTool = tool({
 })
 
 const tools = {
-  confirmBusiness: confirmBusinessTool,
   lookupBusiness: lookupBusinessTool,
+  confirmBusiness: confirmBusinessTool,
   showServiceOptions: showServiceOptionsTool,
   checkAvailability: checkAvailabilityTool,
   confirmBookingDate: confirmBookingDateTool,
@@ -601,7 +601,7 @@ export async function POST(req: Request) {
       system: systemPrompt,
       messages: convertToUIMessages(messages),
       tools,
-      maxSteps: 5,
+      // maxSteps: 5,
     })
 
     // console.log("[v0] Result keys:", Object.keys(result))

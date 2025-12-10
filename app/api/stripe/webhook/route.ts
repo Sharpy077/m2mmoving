@@ -45,55 +45,6 @@ export async function POST(request: NextRequest) {
             })
             .eq("id", session.metadata.lead_id)
         }
-
-        // Trigger Notifications
-        try {
-          const {
-            customer_name,
-            customer_email,
-            customer_phone,
-            scheduled_date,
-            deposit_amount,
-            move_type,
-            origin,
-            destination,
-          } = session.metadata || {}
-
-          if (customer_email && customer_name) {
-            const { sendClientConfirmation, sendStaffNotification, formatCurrency } = await import("@/lib/email")
-            const { sendBookingConfirmationSMS } = await import("@/lib/sms")
-
-            // 1. Send Client Email
-            await sendClientConfirmation(
-              customer_email,
-              customer_name,
-              scheduled_date || "TBD",
-              parseInt(deposit_amount || "0"),
-              "Calculated on completion", // Total estimate wasn't in metadata, using placeholder
-              move_type || "Commercial Move"
-            )
-
-            // 2. Send SMS (if phone available)
-            if (customer_phone) {
-              await sendBookingConfirmationSMS(customer_phone, customer_name, scheduled_date || "TBD")
-            }
-
-            // 3. Send Staff Alert
-            await sendStaffNotification({
-              name: customer_name,
-              email: customer_email,
-              phone: customer_phone || "Not provided",
-              date: scheduled_date || "TBD",
-              type: move_type || "N/A",
-              origin: origin || "N/A",
-              destination: destination || "N/A",
-              amount: parseInt(deposit_amount || "0"),
-            })
-          }
-        } catch (notifyError) {
-          console.error("[v0] Notification trigger failed:", notifyError)
-        }
-
         break
       }
 

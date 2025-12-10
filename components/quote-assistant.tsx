@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
-import { useChat } from "ai/react"
+import { useChat } from "@ai-sdk/react"
 
 import {
   MessageSquare,
@@ -271,7 +271,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       },
     }))
 
-    const { messages, append, isLoading: isChatLoading, error } = useChat({
+    const { messages, sendMessage, status, error } = useChat({
       api: "/api/quote-assistant",
       onError: (err) => {
         console.log("[v0] Chat error:", err.message)
@@ -283,17 +283,6 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         setErrorMessage(null)
       },
     })
-
-    // Adapter for ai v4 compatibility
-    const sendMessage = (message: { text: string }) => {
-      append({
-        role: "user",
-        content: message.text,
-      })
-    }
-
-    // Map status usage to boolean
-    const status = isChatLoading ? "in_progress" : "ready"
 
     // Form persistence
     const formState = {
@@ -332,8 +321,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       }
     }, [paymentComplete, leadSubmitted])
 
-    // const isLoading = isChatLoading // status === "in_progress" || status === "streaming" || status === "submitted"
-    const isLoading = isChatLoading
+    const isLoading = status === "in_progress" || status === "streaming" || status === "submitted"
 
     useEffect(() => {
       const lastMessage = messages[messages.length - 1]
@@ -709,8 +697,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             move_type: currentQuote.moveTypeKey || "office",
             origin_suburb: currentQuote.origin,
             destination_suburb: currentQuote.destination,
-            estimated_total: currentQuote.estimatedTotal,
-            status: "won",
+            estimated_value: currentQuote.estimatedTotal,
+            status: "confirmed",
             notes: `Deposit paid. Move scheduled for ${selectedDate}. ABN: ${confirmedBusiness?.abn || "N/A"}`,
             scheduled_date: selectedDate,
             deposit_amount: currentQuote.depositRequired,
