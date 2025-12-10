@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react"
 import { useChat } from "@ai-sdk/react"
 
 import {
@@ -274,7 +274,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       },
     }))
 
-    const { messages, sendMessage, status, error } = useChat({
+    const { messages, sendMessage, status, error, stop } = useChat({
       // @ts-ignore
       api: "/api/quote-assistant",
       onError: (err) => {
@@ -287,6 +287,27 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         setErrorMessage(null)
       },
     })
+
+    const latestStatusRef = useRef(status)
+
+    useEffect(() => {
+      latestStatusRef.current = status
+    }, [status])
+
+    const sendMessageWithFlow = useCallback(
+      async (payload?: Parameters<typeof sendMessage>[0]) => {
+        try {
+          if (latestStatusRef.current === "streaming" || latestStatusRef.current === "submitted") {
+            await stop()
+            await new Promise((resolve) => setTimeout(resolve, 50))
+          }
+          await sendMessage(payload)
+        } catch (err) {
+          console.error("[QuoteAssistant] Failed to send message", err)
+        }
+      },
+      [sendMessage, stop],
+    )
 
     // Form persistence
     const formState = {
@@ -508,11 +529,11 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       if ((isOpen || embedded) && !hasStarted && messages.length === 0) {
         setHasStarted(true)
         const timer = setTimeout(() => {
-          sendMessage({ text: "Hi, I'd like to get a quote for a commercial move." })
+          void sendMessageWithFlow({ text: "Hi, I'd like to get a quote for a commercial move." })
         }, 800)
         return () => clearTimeout(timer)
       }
-    }, [isOpen, embedded, hasStarted, messages.length, sendMessage])
+    }, [isOpen, embedded, hasStarted, messages.length, sendMessageWithFlow])
 
     const [userHasScrolledUp, setUserHasScrolledUp] = useState(false)
     const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
@@ -608,7 +629,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             setInputValue(transcript)
             setIsListening(false)
             setTimeout(() => {
-              sendMessage({ text: transcript })
+              void sendMessageWithFlow({ text: transcript })
               setInputValue("")
             }, 300)
           }
@@ -617,7 +638,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           recognitionRef.current = recognition
         }
       }
-    }, [sendMessage])
+    }, [sendMessageWithFlow])
 
     const toggleListening = () => {
       if (!recognitionRef.current) return
@@ -650,7 +671,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         setIsCheckingAvailability(true)
       }
 
-      sendMessage({ text })
+      void sendMessageWithFlow({ text })
     }
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -663,7 +684,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const handleSelectBusiness = (business: BusinessResult) => {
       setConfirmedBusiness(business)
       setBusinessLookupResults(null)
-      sendMessage({
+      void sendMessageWithFlow({
         text: `Yes, that's correct - ${business.name} (ABN: ${business.abn})`,
       })
     }
@@ -671,7 +692,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const handleSelectService = (service: ServiceOption) => {
       setShowServicePicker(false)
       setCurrentStep("details")
-      sendMessage({
+      void sendMessageWithFlow({
         text: `I need ${service.name}`,
       })
     }
@@ -685,14 +706,14 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         month: "long",
         year: "numeric",
       })
-      sendMessage({
+      void sendMessageWithFlow({
         text: `I'd like to book for ${formattedDate}`,
       })
     }
 
     const handlePromptClick = (prompt: string) => {
       setShowInitialPrompts(false)
-      sendMessage({ text: prompt })
+      void sendMessageWithFlow({ text: prompt })
     }
 
     const handlePaymentComplete = async () => {
@@ -727,7 +748,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           setIsSubmittingLead(false)
         }
       }
-      sendMessage({
+      void sendMessageWithFlow({
         text: "I've completed the payment.",
       })
     }
@@ -912,7 +933,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           <Button
             className="w-full mt-2"
             onClick={() => {
-              sendMessage({ text: "The quote looks good. What dates are available?" })
+              void sendMessageWithFlow({ text: "The quote looks good. What dates are available?" })
               setIsCheckingAvailability(true)
             }}
           >
@@ -949,7 +970,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           <button
             onClick={() => {
               setBusinessLookupResults(null)
-              sendMessage({
+              void sendMessageWithFlow({
                 text: "None of these match my business. I'll enter the details manually."
               })
             }}
