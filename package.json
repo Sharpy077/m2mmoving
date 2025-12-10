@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^2.0.80",
     "@ai-sdk/react": "latest",
     "@edge-runtime/vm": "latest",
     "@emotion/is-prop-valid": "latest",
