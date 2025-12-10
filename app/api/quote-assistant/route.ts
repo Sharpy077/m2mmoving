@@ -104,8 +104,10 @@ const operationalPrompt = `
 CRITICAL CONVERSATION RULES:
 1. Ask ONE question at a time - never overwhelm users.
 2. ALWAYS acknowledge what the user said before asking the next question.
-3. Use tools immediately when you have the information needed.
-4. Keep the conversation moving forward smoothly to the next stage (Discovery -> Qualification -> Quote -> Booking).
+3. ALWAYS respond after a user selects an option - never leave them hanging.
+4. Use tools immediately when you have the information needed.
+5. Keep the conversation moving forward smoothly to the next stage (Discovery -> Qualification -> Quote -> Booking).
+6. If a user selects a service option, acknowledge it immediately and ask the next qualifying question.
 
 CONVERSATION FLOW:
 
@@ -120,14 +122,18 @@ STEP 2 - CONFIRM BUSINESS:
 STEP 3 - SELECT SERVICE TYPE:
 After business is confirmed, use showServiceOptions.
 "What type of move are you planning?"
+CRITICAL: When user selects a service (e.g., "I need Office Relocation"), you MUST:
+- Acknowledge their selection: "Great! Office relocation is one of our specialties."
+- Immediately ask the first qualifying question for that service type.
+- Do NOT just say "okay" or remain silent.
 
 STEP 4 - QUALIFYING QUESTIONS (Mandatory):
 Once the user selects a move type (or types it), you MUST ask the relevant qualifying questions to gauge the size and complexity.
-- Office: Desks, Servers, Large items?
-- Warehouse: Racking, Machinery, Stock?
-- Data Centre: Rack count, Downtime, Cabling?
-- IT: Monitor count, Packing needs?
-- Retail: Fixtures, Stock?
+- Office: "How many workstations or desks need to be moved?"
+- Warehouse: "Do you have pallet racking that needs to be moved?"
+- Data Centre: "How many server racks need to be relocated?"
+- IT: "Approximately how many computers and monitors are being moved?"
+- Retail: "Do you have display fixtures or shelving that needs to be moved?"
 
 STEP 5 - LOCATIONS:
 "Where are you moving from? (Suburb)"
@@ -147,6 +153,14 @@ Use initiatePayment.
 
 HANDLING QUICK STARTS:
 If user starts with "I need to move my office", immediately Confirm "Office Relocation" and ask for Business Name.
+
+RESPONSE REQUIREMENTS:
+- After ANY option selection, you MUST respond with acknowledgment AND continue the conversation.
+- Never leave a user message unanswered.
+- If you're unsure what to say, ask a clarifying question rather than staying silent.
+- After calling ANY tool, you MUST provide a text response to the user explaining what happened and what's next.
+- Tool calls alone are not sufficient - always follow up with a conversational text response.
+- Example: After calling showServiceOptions, say "Great! I've shown you our service options. Which type of move are you planning?"
 `
 
 const systemPrompt = `${MAYA_SYSTEM_PROMPT}\n\n${operationalPrompt}`
@@ -561,8 +575,13 @@ export async function POST(req: Request) {
       system: systemPrompt,
       messages: convertToCoreMessages(effectiveMessages),
       tools,
+      maxSteps: 5, // Allow multiple tool calls in sequence
       onFinish: (result) => {
         logToFile("[v0] streamText finish: " + JSON.stringify(result.usage, null, 2))
+        // Ensure we always log if there was an error
+        if (result.error) {
+          logToFile("[v0] streamText finished with error: " + JSON.stringify(result.error))
+        }
       },
       onError: ({ error }) => {
         logToFile("[v0] streamText error callback: " + error)
@@ -577,9 +596,31 @@ export async function POST(req: Request) {
     if (error instanceof Error) {
       logToFile("[v0] Stack: " + error.stack)
     }
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    })
+    // Return a proper stream response even on error
+    try {
+      const errorResult = streamText({
+        model: openai("gpt-4o"),
+        system: systemPrompt,
+        messages: [
+          {
+            role: "user",
+            content: "I encountered an error. Please acknowledge and continue helping me.",
+          },
+        ],
+        maxSteps: 1,
+      })
+      return errorResult.toTextStreamResponse()
+    } catch (fallbackError) {
+      // Last resort: return a simple text response
+      return new Response(
+        JSON.stringify({
+          error: "I'm having trouble connecting right now. Please try again in a moment.",
+        }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }
+      )
+    }
   }
 }
