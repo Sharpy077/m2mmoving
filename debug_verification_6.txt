@@ -1,0 +1,147 @@
+FOUND ERROR CHUNK:
+{
+  "name": "AI_APICallError",
+  "url": "https://api.openai.com/v1/responses",
+  "requestBodyValues": {
+    "model": "gpt-4o",
+    "input": [
+      {
+        "role": "system",
+        "content": "You are Maya, a friendly and professional quote assistant for M & M Commercial Moving, Melbourne's trusted commercial moving specialists. Your goal is to guide customers through getting a quote and booking their move in a smooth, effortless experience.\n\nPERSONALITY:\n- Warm, helpful, and conversational - like talking to a knowledgeable friend\n  - Use Australian English spelling(centre, organisation, specialised)\n    - Keep responses concise(2 - 3 sentences max per message)\n      - Show empathy - moving is stressful!\n        - Be proactive in offering help\n\nCRITICAL CONVERSATION RULES:\n1. Ask ONE question at a time - never overwhelm users\n2. ALWAYS acknowledge what the user said before asking the next question\n3. Use tools immediately when you have the information needed\n4. Keep the conversation moving forward smoothly\n\nCONVERSATION FLOW:\n\nSTEP 1 - WELCOME & IDENTIFY BUSINESS:\nWhen conversation starts, say something like:\n\"G'day! I'm Maya, your M&M Moving assistant. I'll help you get a quote in just a few minutes. First, what's your business name or ABN so I can look up your details?\"\n\nThen use lookupBusiness immediately when they provide a name / ABN.\n\n  STEP 2 - CONFIRM BUSINESS(if found):\n    \"I found [Business Name]. Is this correct?\"\nUse showServiceOptions tool once confirmed.\n\n  STEP 3 - SELECT SERVICE TYPE:\nAfter business is confirmed, use showServiceOptions to display the visual service picker.\n\"What type of move are you planning?\"\n\nSTEP 4 - QUALIFYING QUESTIONS(based on service type):\nAsk 2 - 3 relevant questions based on the selected move type:\n\nFor Office Relocation:\n- \"Roughly how big is your office in square metres? (A typical small office is 50-100sqm)\"\n  - \"How many workstations need to move?\"\n  - \"Any server rooms or specialised IT equipment?\"\n\nFor Warehouse:\n- \"What's the warehouse size in square metres?\"\n  - \"Is there racking or heavy machinery to move?\"\n  - \"Will we be moving stock as well?\"\n\nFor Data Centre:\n- \"How many server racks are involved?\"\n  - \"What's the maximum downtime window?\"\n  - \"Need IT reconnection assistance?\"\n\nFor IT Equipment:\n- \"Approximately how many computers/monitors?\"\n  - \"Any servers or networking equipment?\"\n  - \"Need us to provide packing materials?\"\n\nFor Retail:\n- \"What's the store size in square metres?\"\n  - \"Are there fixtures, displays, or fridges?\"\n  - \"Will stock be included?\"\n\nSTEP 5 - LOCATIONS:\n\"Where are you moving from? Just the suburb is fine.\"\n\"And where are you moving to?\"\n\nSTEP 6 - GENERATE QUOTE:\nOnce you have move type, size, and locations - immediately use calculateQuote.\nPresent the quote clearly and use checkAvailability to show booking options.\n\n  STEP 7 - SELECT DATE:\n\"Here are our available dates. When would you like to move?\"\n\nSTEP 8 - COLLECT DETAILS:\n\"Almost done! Just need your contact details:\n  - Your name\n    - Best phone number\n      - Email address\"\n\nSTEP 9 - PAYMENT:\n\"To lock in your booking, we just need a 50% deposit of $[amount]. You can pay securely right here.\"\nUse initiatePayment to show the payment form.\n\n  STEP 10 - CONFIRMATION:\n\"You're all set! You'll receive a confirmation email with your booking details and invoice.\"\n\nHELPFUL TIPS:\n- If the user seems unsure about square metres, help them estimate(e.g., \"A typical 10-person office is around 150sqm\")\n  - If they mention urgency, acknowledge it and assure them you have availability\n    - If they want to speak to someone, use requestCallback - don't make them feel trapped\n      - Always offer the phone number(03 8820 1801) as an alternative\n\nMOVE TYPE PRICING REFERENCE:\n- Office Relocation: Base $2, 500 + $45 / sqm\n  - IT Equipment Moved: Base $1, 500 + $35 / sqm\n    - Office Furniture Moved: Base $2,000 + $40 / sqm\n      - Data Centre: Base $5,000 + $85 / sqm\n        - Furniture Installation: Base $1,000 + $25 / sqm\n          - IT Installation: Base $1, 200 + $30 / sqm\n            - IT Asset Mgmt: Base $800 + $15 / sqm\n              - General: Base $2,000 + $40 / sqm\n\nADDITIONAL SERVICES(offer when relevant):\n- Professional Packing: $450\n  - Unpacking: $350\n    - IT Setup Assistance: $600\n      - After Hours / Weekend: $400 - 500\n        - Storage: $300 / week"
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "Please lookup business Tesla in Sydney."
+          }
+        ]
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "name": "confirmBusiness",
+        "description": "Confirm the business details after customer validates the lookup result",
+        "parameters": {
+          "properties": {},
+          "additionalProperties": false
+        },
+        "strict": false
+      },
+      {
+        "type": "function",
+        "name": "lookupBusiness",
+        "description": "Look up an Australian business by name or ABN. Use immediately when customer mentions their company name or ABN.",
+        "parameters": {
+          "properties": {},
+          "additionalProperties": false
+        },
+        "strict": false
+      },
+      {
+        "type": "function",
+        "name": "showServiceOptions",
+        "description": "Display the visual service type picker for the customer to choose their move type. Use after business is confirmed or at start of conversation.",
+        "parameters": {
+          "properties": {},
+          "additionalProperties": false
+        },
+        "strict": false
+      },
+      {
+        "type": "function",
+        "name": "checkAvailability",
+        "description": "Check available dates for scheduling. Use after generating a quote to show booking options.",
+        "parameters": {
+          "properties": {},
+          "additionalProperties": false
+        },
+        "strict": false
+      },
+      {
+        "type": "function",
+        "name": "confirmBookingDate",
+        "description": "Confirm a specific date the customer has selected",
+        "parameters": {
+          "properties": {},
+          "additionalProperties": false
+        },
+        "strict": false
+      },
+      {
+        "type": "function",
+        "name": "calculateQuote",
+        "description": "Calculate quote estimate. Use once you have move type, size, and locations.",
+        "parameters": {
+          "properties": {},
+          "additionalProperties": false
+        },
+        "strict": false
+      },
+      {
+        "type": "function",
+        "name": "collectContactInfo",
+        "description": "Collect customer contact details before payment.",
+        "parameters": {
+          "properties": {},
+          "additionalProperties": false
+        },
+        "strict": false
+      },
+      {
+        "type": "function",
+        "name": "initiatePayment",
+        "description": "Show Stripe payment form for deposit.",
+        "parameters": {
+          "properties": {},
+          "additionalProperties": false
+        },
+        "strict": false
+      },
+      {
+        "type": "function",
+        "name": "requestCallback",
+        "description": "Request a callback for complex enquiries or when customer prefers to speak with someone.",
+        "parameters": {
+          "properties": {},
+          "additionalProperties": false
+        },
+        "strict": false
+      }
+    ],
+    "tool_choice": "auto",
+    "stream": true
+  },
+  "statusCode": 400,
+  "responseHeaders": {
+    "alt-svc": "h3=\":443\"; ma=86400",
+    "cf-cache-status": "DYNAMIC",
+    "cf-ray": "9ab8eda7cc7bf0ca-MEL",
+    "connection": "keep-alive",
+    "content-length": "274",
+    "content-type": "application/json",
+    "date": "Wed, 10 Dec 2025 01:21:57 GMT",
+    "openai-organization": "sharp-horizons-technology",
+    "openai-processing-ms": "19",
+    "openai-project": "proj_nUXxiV2alDtuhpuuG8QpUOn4",
+    "openai-version": "2020-10-01",
+    "server": "cloudflare",
+    "set-cookie": "_cfuvid=TjiSfgYDk3zn58eFSEmW6hT3o.yhV4VabLkIPAsjllQ-1765329717214-0.0.1.1-604800000; path=/; domain=.api.openai.com; HttpOnly; Secure; SameSite=None",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "x-content-type-options": "nosniff",
+    "x-envoy-upstream-service-time": "25",
+    "x-request-id": "req_f6070a6d31054340bf6a3cb23de15c1f"
+  },
+  "responseBody": "{\n  \"error\": {\n    \"message\": \"Invalid schema for function 'confirmBusiness': schema must be a JSON Schema of 'type: \\\"object\\\"', got 'type: \\\"None\\\"'.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": \"tools[0].parameters\",\n    \"code\": \"invalid_function_parameters\"\n  }\n}",
+  "isRetryable": false,
+  "data": {
+    "error": {
+      "message": "Invalid schema for function 'confirmBusiness': schema must be a JSON Schema of 'type: \"object\"', got 'type: \"None\"'.",
+      "type": "invalid_request_error",
+      "param": "tools[0].parameters",
+      "code": "invalid_function_parameters"
+    }
+  }
+}

@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
-import { useChat } from "@ai-sdk/react"
+import { useChat } from "ai/react"
 
 import {
   MessageSquare,
@@ -271,7 +271,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       },
     }))
 
-    const { messages, sendMessage, status, error } = useChat({
+    const { messages, append, isLoading: isChatLoading, error } = useChat({
       api: "/api/quote-assistant",
       onError: (err) => {
         console.log("[v0] Chat error:", err.message)
@@ -283,6 +283,17 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         setErrorMessage(null)
       },
     })
+
+    // Adapter for ai v4 compatibility
+    const sendMessage = (message: { text: string }) => {
+      append({
+        role: "user",
+        content: message.text,
+      })
+    }
+
+    // Map status usage to boolean
+    const status = isChatLoading ? "in_progress" : "ready"
 
     // Form persistence
     const formState = {
