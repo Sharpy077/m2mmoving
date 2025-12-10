@@ -2,6 +2,7 @@ import { convertToCoreMessages, streamText, tool } from "ai"
 import { openai } from "@ai-sdk/openai"
 import { z } from "zod"
 import { MAYA_SYSTEM_PROMPT, PRICING_CONFIG, DEFAULT_SALES_PLAYBOOK } from "@/lib/agents/maya/playbook"
+import { ErrorClassifier } from "@/lib/conversation/error-classifier"
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -550,25 +551,86 @@ const tools = {
   requestCallback: requestCallbackTool,
 } as const
 
+/**
+ * Create error stream response
+ */
+function createErrorStreamResponse(error: unknown, userMessage?: string): Response {
+  const classified = ErrorClassifier.classify(error)
+  logToFile(`[v0] Error classified as: ${classified.type}, message: ${classified.message}`)
+
+  // Try to create a helpful error response via AI
+  try {
+    const errorPrompt = userMessage
+      ? `The user said: "${userMessage}". I encountered a ${classified.type} error. Please acknowledge this gracefully and offer to help them continue. Be brief and helpful.`
+      : `I encountered a ${classified.type} error. Please acknowledge this gracefully and offer to help the user continue. Be brief and helpful.`
+
+    const errorResult = streamText({
+      model: openai("gpt-4o"),
+      system: systemPrompt,
+      messages: [
+        {
+          role: "user",
+          content: errorPrompt,
+        },
+      ],
+      maxSteps: 1,
+      maxTokens: 200, // Keep error responses short
+    })
+
+    return errorResult.toTextStreamResponse()
+  } catch (fallbackError) {
+    // Last resort: return a simple JSON error that client can handle
+    const errorMessage = classified.message || "I'm having trouble connecting right now. Please try again in a moment."
+    
+    // Create a text stream response manually
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: errorMessage })}\n\n`))
+        controller.close()
+      },
+    })
+
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      },
+    })
+  }
+}
+
 export async function POST(req: Request) {
   logToFile("[v0] Quote Assistant POST called")
+  
+  let userMessage: string | undefined
+  
   try {
     const body = await req.json()
     logToFile("[v0] Request body parsed: " + JSON.stringify(body).slice(0, 100))
     const rawMessages = body.messages || []
 
-    const effectiveMessages =
-      rawMessages.length === 0 ||
-        (rawMessages.length === 1 &&
-          rawMessages[0].role === "user" &&
-          (rawMessages[0].content === "start" ||
-            rawMessages[0].content === "Start" ||
-            rawMessages[0].content === "" ||
-            rawMessages[0].parts?.[0]?.text?.includes("I'd like to get a quote")))
-        ? [{ role: "user" as const, content: "Hi, I'd like to get a quote for a commercial move." }]
-        : rawMessages
+    // Extract last user message for error context
+    const lastUserMsg = rawMessages.findLast((m: any) => m.role === "user")
+    userMessage = lastUserMsg?.content || lastUserMsg?.parts?.[0]?.text
 
-    logToFile("[v0] Effective messages prepared, calling streamText with model gpt-4o")
+    // Detect if this is an initial message
+    const isInitialMessage =
+      rawMessages.length === 0 ||
+      (rawMessages.length === 1 &&
+        rawMessages[0].role === "user" &&
+        (rawMessages[0].content === "start" ||
+          rawMessages[0].content === "Start" ||
+          rawMessages[0].content === "" ||
+          rawMessages[0].parts?.[0]?.text?.includes("I'd like to get a quote")))
+
+    const effectiveMessages = isInitialMessage
+      ? [{ role: "user" as const, content: "Hi, I'd like to get a quote for a commercial move." }]
+      : rawMessages
+
+    logToFile(`[v0] Effective messages prepared (initial: ${isInitialMessage}), calling streamText with model gpt-4o`)
 
     const result = streamText({
       model: openai("gpt-4o"),
@@ -578,7 +640,6 @@ export async function POST(req: Request) {
       maxSteps: 5, // Allow multiple tool calls in sequence
       onFinish: (result) => {
         logToFile("[v0] streamText finish: " + JSON.stringify(result.usage, null, 2))
-        // Ensure we always log if there was an error
         if (result.error) {
           logToFile("[v0] streamText finished with error: " + JSON.stringify(result.error))
         }
@@ -596,31 +657,65 @@ export async function POST(req: Request) {
     if (error instanceof Error) {
       logToFile("[v0] Stack: " + error.stack)
     }
-    // Return a proper stream response even on error
-    try {
-      const errorResult = streamText({
-        model: openai("gpt-4o"),
-        system: systemPrompt,
-        messages: [
-          {
-            role: "user",
-            content: "I encountered an error. Please acknowledge and continue helping me.",
-          },
-        ],
-        maxSteps: 1,
-      })
-      return errorResult.toTextStreamResponse()
-    } catch (fallbackError) {
-      // Last resort: return a simple text response
-      return new Response(
-        JSON.stringify({
-          error: "I'm having trouble connecting right now. Please try again in a moment.",
-        }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        }
-      )
+    
+    // Always return a valid stream response
+    return createErrorStreamResponse(error, userMessage)
+  }
+}
+
+/**
+ * Health check endpoint
+ */
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url)
+  const detailed = searchParams.get("detailed") === "true"
+
+  try {
+    // Basic health check
+    const health = {
+      status: "healthy" as const,
+      timestamp: new Date().toISOString(),
     }
+
+    if (detailed) {
+      // Detailed health check with OpenAI connectivity test
+      try {
+        // Quick test to see if OpenAI is accessible
+        const testResult = await fetch("https://api.openai.com/v1/models", {
+          method: "HEAD",
+          headers: {
+            Authorization: `Bearer ${process.env.OPENAI_API_KEY || ""}`,
+          },
+        })
+
+        return Response.json({
+          ...health,
+          checks: {
+            openai: testResult.ok ? "healthy" : "degraded",
+            api: "healthy",
+          },
+        })
+      } catch (checkError) {
+        return Response.json({
+          ...health,
+          status: "degraded" as const,
+          checks: {
+            openai: "unhealthy",
+            api: "healthy",
+          },
+        })
+      }
+    }
+
+    return Response.json(health)
+  } catch (error) {
+    return Response.json(
+      {
+        status: "unhealthy" as const,
+        timestamp: new Date().toISOString(),
+        error: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 }
+    )
   }
 }
