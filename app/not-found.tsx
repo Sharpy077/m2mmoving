@@ -1,8 +1,9 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Home, ArrowLeft, AlertTriangle } from "lucide-react"
+import { Home, AlertTriangle } from "lucide-react"
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
+import { GoBackButton } from "@/components/go-back-button"
 
 export default function NotFound() {
   return (
@@ -14,9 +15,7 @@ export default function NotFound() {
             <AlertTriangle className="h-10 w-10 text-destructive" aria-hidden="true" />
           </div>
           <h1 className="text-4xl font-bold mb-4">404 - Page Not Found</h1>
-          <p className="text-muted-foreground mb-8">
-            The page you're looking for doesn't exist or has been moved.
-          </p>
+          <p className="text-muted-foreground mb-8">The page you're looking for doesn't exist or has been moved.</p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button asChild>
               <Link href="/">
@@ -25,21 +24,9 @@ export default function NotFound() {
               </Link>
             </Button>
             <Button variant="outline" asChild>
-              <Link href="/quote">
-                Get Quote
-              </Link>
+              <Link href="/quote">Get Quote</Link>
             </Button>
-            <Button 
-              variant="ghost" 
-              onClick={() => {
-                if (typeof window !== 'undefined') {
-                  window.history.back()
-                }
-              }}
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" aria-hidden="true" />
-              Go Back
-            </Button>
+            <GoBackButton />
           </div>
         </div>
       </div>
