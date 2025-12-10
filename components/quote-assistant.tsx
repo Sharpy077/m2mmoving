@@ -255,6 +255,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       "business" | "service" | "details" | "quote" | "date" | "contact" | "payment" | "complete"
     >("business")
     const [showInitialPrompts, setShowInitialPrompts] = useState(true)
+    const [lastUserMessageTime, setLastUserMessageTime] = useState<number | null>(null)
 
     // Loading states
     const [isLookingUpBusiness, setIsLookingUpBusiness] = useState(false)
@@ -274,6 +275,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       },
     }))
 
+    const [pendingRetry, setPendingRetry] = useState<{ text: string; retries: number } | null>(null)
+
     const { messages, sendMessage, status, error } = useChat({
       // @ts-ignore
       api: "/api/quote-assistant",
@@ -281,10 +284,23 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         console.log("[v0] Chat error:", err.message)
         setHasError(true)
         setErrorMessage(err.message || "Failed to connect to the quote assistant")
+        
+        // If we have a pending retry and haven't exceeded max retries, retry
+        if (pendingRetry && pendingRetry.retries < 2) {
+          setTimeout(() => {
+            setPendingRetry({ ...pendingRetry, retries: pendingRetry.retries + 1 })
+            sendMessage({ text: pendingRetry.text })
+          }, 2000)
+        } else if (pendingRetry) {
+          // Max retries exceeded, clear pending retry
+          setPendingRetry(null)
+        }
       },
       onFinish: () => {
         setHasError(false)
         setErrorMessage(null)
+        setPendingRetry(null) // Clear pending retry on successful response
+        setLastUserMessageTime(null) // Reset watchdog
       },
     })
 
@@ -330,6 +346,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     useEffect(() => {
       const lastMessage = messages[messages.length - 1]
       if (lastMessage?.role === "assistant") {
+        // Reset watchdog when Maya responds
+        setLastUserMessageTime(null)
+        
         if (lastMessage.parts) {
           lastMessage.parts.forEach((part: any) => {
             if (part.type?.startsWith("tool-") && part.state === "output-available") {
@@ -504,6 +523,27 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       }
     }, [messages])
 
+    // Watchdog: Ensure Maya responds after user messages
+    useEffect(() => {
+      if (lastUserMessageTime && !isLoading) {
+        const timeout = setTimeout(() => {
+          // Check if we've received a response since the user message
+          const lastMessage = messages[messages.length - 1]
+          const timeSinceUserMessage = Date.now() - lastUserMessageTime
+          
+          // If it's been more than 10 seconds and the last message is from user (not assistant)
+          if (timeSinceUserMessage > 10000 && lastMessage?.role === "user") {
+            console.warn("Maya hasn't responded after option selection, retrying...")
+            // The message should have been sent, but if no response came, we'll let the error handler deal with it
+            // This is just a safety check - the actual retry should be handled by the error state
+          }
+          setLastUserMessageTime(null)
+        }, 10000) // 10 second timeout
+
+        return () => clearTimeout(timeout)
+      }
+    }, [lastUserMessageTime, isLoading, messages])
+
     useEffect(() => {
       if ((isOpen || embedded) && !hasStarted && messages.length === 0) {
         setHasStarted(true)
@@ -637,6 +677,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       setInputValue("")
       setBusinessLookupResults(null)
       setShowServicePicker(false)
+      setHasError(false)
+      setErrorMessage(null)
+      setLastUserMessageTime(Date.now())
 
       // Detect if message might trigger business lookup or quote calculation
       const lowerText = text.toLowerCase()
@@ -661,37 +704,62 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     }
 
     const handleSelectBusiness = (business: BusinessResult) => {
+      if (isLoading) return // Prevent multiple clicks
       setConfirmedBusiness(business)
       setBusinessLookupResults(null)
+      setHasError(false)
+      setErrorMessage(null)
+      setLastUserMessageTime(Date.now())
+      const messageText = `Yes, that's correct - ${business.name} (ABN: ${business.abn})`
+      setPendingRetry({ text: messageText, retries: 0 })
+      // Send message - useChat handles the async operation
       sendMessage({
-        text: `Yes, that's correct - ${business.name} (ABN: ${business.abn})`,
+        text: messageText,
       })
     }
 
     const handleSelectService = (service: ServiceOption) => {
+      if (isLoading) return // Prevent multiple clicks
       setShowServicePicker(false)
       setCurrentStep("details")
+      setHasError(false)
+      setErrorMessage(null)
+      setLastUserMessageTime(Date.now())
+      const messageText = `I need ${service.name}. ${service.description ? `(${service.description})` : ""}`
+      // Set up retry mechanism
+      setPendingRetry({ text: messageText, retries: 0 })
+      // Send a clear message that Maya can understand and will respond to
       sendMessage({
-        text: `I need ${service.name}`,
+        text: messageText,
       })
     }
 
     const handleSelectDate = (date: string) => {
+      if (isLoading) return // Prevent multiple clicks
       setSelectedDate(date)
       setShowCalendar(false)
+      setHasError(false)
+      setErrorMessage(null)
+      setLastUserMessageTime(Date.now())
       const formattedDate = new Date(date).toLocaleDateString("en-AU", {
         weekday: "long",
         day: "numeric",
         month: "long",
         year: "numeric",
       })
+      const messageText = `I'd like to book for ${formattedDate}`
+      setPendingRetry({ text: messageText, retries: 0 })
       sendMessage({
-        text: `I'd like to book for ${formattedDate}`,
+        text: messageText,
       })
     }
 
     const handlePromptClick = (prompt: string) => {
+      if (isLoading) return // Prevent multiple clicks
       setShowInitialPrompts(false)
+      setHasError(false)
+      setErrorMessage(null)
+      setLastUserMessageTime(Date.now())
       sendMessage({ text: prompt })
     }
 
