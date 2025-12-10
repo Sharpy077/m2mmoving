@@ -70,13 +70,13 @@ Implement comprehensive error handling, response monitoring, automatic retry mec
 - Log timeout events for monitoring
 
 **Implementation**:
-```typescript
+\`\`\`typescript
 interface ResponseMonitor {
   startTimer(messageId: string, timeoutMs: number): void
   cancelTimer(messageId: string): void
   onTimeout(callback: (messageId: string) => void): void
 }
-```
+\`\`\`
 
 #### 3.1.2 Initial Message Handling
 
@@ -144,7 +144,7 @@ interface ResponseMonitor {
 - Success metrics tracked per retry attempt
 
 **Implementation**:
-```typescript
+\`\`\`typescript
 interface RetryConfig {
   maxAttempts: number
   backoffStrategy: 'exponential' | 'linear' | 'fixed'
@@ -158,7 +158,7 @@ class RetryHandler {
     config: RetryConfig
   ): Promise<T>
 }
-```
+\`\`\`
 
 #### 3.2.3 Fallback Responses
 
@@ -208,7 +208,7 @@ class RetryHandler {
 - State includes timestamp for expiration (24 hours)
 
 **Implementation**:
-```typescript
+\`\`\`typescript
 interface ConversationState {
   id: string
   messages: Message[]
@@ -224,7 +224,7 @@ class ConversationPersistence {
   load(conversationId: string): ConversationState | null
   clear(conversationId: string): void
 }
-```
+\`\`\`
 
 #### 3.3.2 State Recovery
 
@@ -321,7 +321,7 @@ class ConversationPersistence {
 - No unhandled exceptions reach client
 
 **Implementation**:
-```typescript
+\`\`\`typescript
 async function POST(req: Request): Promise<Response> {
   try {
     // Normal processing
@@ -331,7 +331,7 @@ async function POST(req: Request): Promise<Response> {
     return createErrorStreamResponse(error)
   }
 }
-```
+\`\`\`
 
 #### 3.5.3 Health Checks
 
@@ -342,7 +342,7 @@ async function POST(req: Request): Promise<Response> {
 - `GET /api/quote-assistant/health/detailed` - Detailed status
 
 **Health Check Response**:
-```json
+\`\`\`json
 {
   "status": "healthy" | "degraded" | "unhealthy",
   "checks": {
@@ -352,7 +352,7 @@ async function POST(req: Request): Promise<Response> {
   },
   "timestamp": "2024-12-01T12:00:00Z"
 }
-```
+\`\`\`
 
 **Acceptance Criteria**:
 - Health check responds in <100ms
@@ -425,7 +425,7 @@ async function POST(req: Request): Promise<Response> {
 
 ### 4.1 Component Architecture
 
-```
+\`\`\`
 QuoteAssistant Component
 ├── ConversationManager
 │   ├── MessageQueue (handles message sending with retries)
@@ -439,11 +439,11 @@ QuoteAssistant Component
     ├── LoadingStates (various loading indicators)
     ├── ErrorDisplay (error messages and recovery)
     └── RecoveryOptions (retry, callback, etc.)
-```
+\`\`\`
 
 ### 4.2 API Architecture
 
-```
+\`\`\`
 /api/quote-assistant
 ├── POST / (main chat endpoint)
 │   ├── RequestValidator
@@ -453,11 +453,11 @@ QuoteAssistant Component
 │   └── ResponseFormatter (formats all responses)
 ├── GET /health (health check)
 └── GET /conversation/:id (load conversation state)
-```
+\`\`\`
 
 ### 4.3 Data Flow
 
-```
+\`\`\`
 User Action
   ↓
 UI Component (immediate feedback)
@@ -475,11 +475,11 @@ Error → ErrorHandler
 RetryManager → Retry or Fallback
   ↓
 StateManager → Persist state
-```
+\`\`\`
 
 ### 4.4 Error Flow
 
-```
+\`\`\`
 Error Detected
   ↓
 ErrorClassifier → Classify error type
@@ -495,7 +495,7 @@ Failure? → FallbackProvider
 Fallback Response → User
   ↓
 StateManager → Save for recovery
-```
+\`\`\`
 
 ---
 
@@ -742,7 +742,7 @@ StateManager → Save for recovery
 - User recovery actions
 
 **Log Format**:
-```json
+\`\`\`json
 {
   "timestamp": "2024-12-01T12:00:00Z",
   "event": "error" | "retry" | "timeout" | "fallback",
@@ -751,7 +751,7 @@ StateManager → Save for recovery
   "retryAttempt": 1,
   "context": {...}
 }
-```
+\`\`\`
 
 ---
 
@@ -880,7 +880,7 @@ StateManager → Save for recovery
 
 ### B. State Schema
 
-```typescript
+\`\`\`typescript
 interface ConversationState {
   id: string
   messages: Array<{
@@ -908,11 +908,11 @@ interface ConversationState {
   lastUpdated: Date
   expiresAt: Date
 }
-```
+\`\`\`
 
 ### C. Retry Configuration
 
-```typescript
+\`\`\`typescript
 const RETRY_CONFIGS = {
   network: {
     maxAttempts: 3,
@@ -933,7 +933,7 @@ const RETRY_CONFIGS = {
     maxDelay: 30000
   }
 }
-```
+\`\`\`
 
 ---
 

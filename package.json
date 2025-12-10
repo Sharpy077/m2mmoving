@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^2.0.80",
+    "@ai-sdk/openai": "latest",
     "@ai-sdk/react": "latest",
     "@edge-runtime/vm": "latest",
     "@emotion/is-prop-valid": "latest",
@@ -54,7 +54,7 @@
     "@vitest/browser-preview": "latest",
     "@vitest/browser-webdriverio": "latest",
     "@vitest/ui": "latest",
-    "ai": "^5.0.108",
+    "ai": "latest",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -68,6 +68,7 @@
     "lucide-react": "^0.454.0",
     "next": "16.0.7",
     "next-themes": "latest",
+    "openai": "latest",
     "react": "19.2.0",
     "react-day-picker": "latest",
     "react-dom": "19.2.0",
@@ -84,6 +85,7 @@
     "twilio": "latest",
     "uuid": "latest",
     "vaul": "latest",
+    "ws": "latest",
     "zod": "3.25.76"
   },
   "devDependencies": {
