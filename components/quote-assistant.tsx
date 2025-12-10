@@ -3,7 +3,7 @@
 import type React from "react"
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
 import { useChat } from "@ai-sdk/react"
-import { DefaultChatTransport } from "ai"
+
 import {
   MessageSquare,
   X,
@@ -29,6 +29,7 @@ import {
   Monitor,
   Store,
   ArrowRight,
+  AlertCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -205,13 +206,12 @@ const BookingProgress = ({
       {steps.map((s, i) => (
         <div key={s.id} className="flex items-center">
           <div
-            className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium transition-colors ${
-              i < currentIndex
-                ? "bg-primary text-primary-foreground"
-                : i === currentIndex
-                  ? "bg-primary text-primary-foreground ring-2 ring-primary/30"
-                  : "bg-muted text-muted-foreground"
-            }`}
+            className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium transition-colors ${i < currentIndex
+              ? "bg-primary text-primary-foreground"
+              : i === currentIndex
+                ? "bg-primary text-primary-foreground ring-2 ring-primary/30"
+                : "bg-muted text-muted-foreground"
+              }`}
           >
             {i < currentIndex ? <CheckCircle className="h-3 w-3" /> : i + 1}
           </div>
@@ -233,6 +233,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const [currentQuote, setCurrentQuote] = useState<QuoteEstimate | null>(null)
     const [isSubmittingLead, setIsSubmittingLead] = useState(false)
     const [leadSubmitted, setLeadSubmitted] = useState(false)
+    const [submittedLeadData, setSubmittedLeadData] = useState<any>(null)
     const [businessLookupResults, setBusinessLookupResults] = useState<BusinessResult[] | null>(null)
     const [confirmedBusiness, setConfirmedBusiness] = useState<BusinessResult | null>(null)
     const [showCalendar, setShowCalendar] = useState(false)
@@ -252,7 +253,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       "business" | "service" | "details" | "quote" | "date" | "contact" | "payment" | "complete"
     >("business")
     const [showInitialPrompts, setShowInitialPrompts] = useState(true)
-    
+
     // Loading states
     const [isLookingUpBusiness, setIsLookingUpBusiness] = useState(false)
     const [isCheckingAvailability, setIsCheckingAvailability] = useState(false)
@@ -272,7 +273,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     }))
 
     const { messages, sendMessage, status, error } = useChat({
-      transport: new DefaultChatTransport({ api: "/api/quote-assistant" }),
+      api: "/api/quote-assistant",
       onError: (err) => {
         console.log("[v0] Chat error:", err.message)
         setHasError(true)
@@ -321,7 +322,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       }
     }, [paymentComplete, leadSubmitted])
 
-    const isLoading = status === "in_progress" || status === "streaming" || status === "submitted"
+    const isLoading = status === "streaming" || status === "submitted"
 
     useEffect(() => {
       const lastMessage = messages[messages.length - 1]
@@ -362,8 +363,26 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
 
               if (toolName === "calculateQuote") {
                 setIsCalculatingQuote(false)
-                if (result?.estimatedTotal) {
-                  setCurrentQuote(result)
+                // Handle both direct result (flat object) and nested data structure from agent
+                const quoteData = result?.quote || result
+
+                if (quoteData?.estimatedTotal) {
+                  // Transform breakdown object to array if needed
+                  let breakdownArray = quoteData.breakdown
+                  if (quoteData.breakdown && typeof quoteData.breakdown === 'object' && !Array.isArray(quoteData.breakdown)) {
+                    breakdownArray = [
+                      { label: "Base Rate", amount: quoteData.breakdown.baseRate },
+                      { label: "Distance Charge", amount: quoteData.breakdown.distanceCharge },
+                      { label: "Square Meters Charge", amount: quoteData.breakdown.sqmCharge },
+                      { label: "Additional Services", amount: quoteData.breakdown.additionalServices },
+                      { label: "GST", amount: quoteData.breakdown.gst },
+                    ].filter(item => item.amount > 0)
+                  }
+
+                  setCurrentQuote({
+                    ...quoteData,
+                    breakdown: breakdownArray || []
+                  })
                   setCurrentStep("quote")
                   if (result.showAvailability) {
                     setShowCalendar(true)
@@ -408,8 +427,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         }
 
         // Backwards compatibility with toolInvocations
-        if (lastMessage.toolInvocations) {
-          lastMessage.toolInvocations.forEach((toolCall: any) => {
+        if ((lastMessage as any).toolInvocations) {
+          (lastMessage as any).toolInvocations.forEach((toolCall: any) => {
             if (toolCall.state === "result") {
               const result = toolCall.result
 
@@ -500,11 +519,11 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       if (typeof window !== 'undefined') {
         const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
         setPrefersReducedMotion(mediaQuery.matches)
-        
+
         const handleChange = (e: MediaQueryListEvent) => {
           setPrefersReducedMotion(e.matches)
         }
-        
+
         mediaQuery.addEventListener('change', handleChange)
         return () => mediaQuery.removeEventListener('change', handleChange)
       }
@@ -520,7 +539,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             const isNearBottom = scrollHeight - scrollTop - clientHeight < 100
             setUserHasScrolledUp(!isNearBottom)
           }
-          
+
           container.addEventListener('scroll', handleScroll)
           return () => container.removeEventListener('scroll', handleScroll)
         }
@@ -558,8 +577,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
               textContent += part.text
             }
           })
-        } else if (typeof lastMessage.content === "string") {
-          textContent = lastMessage.content
+        } else if (typeof (lastMessage as any).content === "string") {
+          textContent = (lastMessage as any).content
         }
 
         if (textContent && textContent.length < 500) {
@@ -615,7 +634,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       setInputValue("")
       setBusinessLookupResults(null)
       setShowServicePicker(false)
-      
+
       // Detect if message might trigger business lookup or quote calculation
       const lowerText = text.toLowerCase()
       if (lowerText.includes('abn') || lowerText.includes('business') || lowerText.includes('company')) {
@@ -627,7 +646,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       if (lowerText.includes('available') || lowerText.includes('date') || lowerText.includes('when')) {
         setIsCheckingAvailability(true)
       }
-      
+
       sendMessage({ text })
     }
 
@@ -688,11 +707,15 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             origin_suburb: currentQuote.origin,
             destination_suburb: currentQuote.destination,
             estimated_value: currentQuote.estimatedTotal,
-            status: "confirmed",
+            status: "won",
             notes: `Deposit paid. Move scheduled for ${selectedDate}. ABN: ${confirmedBusiness?.abn || "N/A"}`,
             scheduled_date: selectedDate,
             deposit_amount: currentQuote.depositRequired,
             deposit_paid: true,
+          }).then(res => {
+            if (res.success && res.lead) {
+              setSubmittedLeadData(res.lead)
+            }
           })
           setLeadSubmitted(true)
         } catch (error) {
@@ -755,15 +778,13 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             key={day}
             disabled={!isAvailable || isPast}
             onClick={() => isAvailable && !isPast && handleSelectDate(dateStr)}
-            className={`h-8 w-8 rounded-full text-sm flex items-center justify-center transition-colors relative ${
-              isSelected
-                ? "bg-primary text-primary-foreground"
-                : isAvailable && !isPast
-                  ? "hover:bg-primary/20 text-foreground cursor-pointer"
-                  : "text-muted-foreground/40 cursor-not-allowed opacity-50"
-            } ${dateInfo?.slots === 1 ? "ring-1 ring-amber-500" : ""} ${
-              isPast ? "line-through" : ""
-            }`}
+            className={`h-8 w-8 rounded-full text-sm flex items-center justify-center transition-colors relative ${isSelected
+              ? "bg-primary text-primary-foreground"
+              : isAvailable && !isPast
+                ? "hover:bg-primary/20 text-foreground cursor-pointer"
+                : "text-muted-foreground/40 cursor-not-allowed opacity-50"
+              } ${dateInfo?.slots === 1 ? "ring-1 ring-amber-500" : ""} ${isPast ? "line-through" : ""
+              }`}
             aria-disabled={!isAvailable || isPast}
             title={
               isPast
@@ -780,8 +801,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         )
       }
 
-      const isCurrentMonth = calendarMonth.getMonth() === new Date().getMonth() && 
-                            calendarMonth.getFullYear() === new Date().getFullYear()
+      const isCurrentMonth = calendarMonth.getMonth() === new Date().getMonth() &&
+        calendarMonth.getFullYear() === new Date().getFullYear()
 
       return (
         <div className="bg-card border border-border rounded-lg p-3 my-3">
@@ -850,40 +871,52 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       if (!currentQuote) return null
 
       return (
-        <div className="bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 rounded-lg p-4 my-3">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-semibold text-foreground">Your Quote</h4>
-            <Badge variant="secondary">{currentQuote.moveType}</Badge>
-          </div>
+        <>
+          <div className="bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 rounded-lg p-4 my-3">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-semibold text-foreground">Your Quote</h4>
+              <Badge variant="secondary">{currentQuote.moveType}</Badge>
+            </div>
 
-          <div className="space-y-2 mb-4">
-            {currentQuote.breakdown.map((item, i) => (
-              <div key={i} className="flex justify-between text-sm">
-                <span className="text-muted-foreground">{item.label}</span>
-                <span className="font-medium">${item.amount.toLocaleString()}</span>
+            <div className="space-y-2 mb-4">
+              {currentQuote.breakdown.map((item, i) => (
+                <div key={i} className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">{item.label}</span>
+                  <span className="font-medium">${item.amount.toLocaleString()}</span>
+                </div>
+              ))}
+              <div className="border-t border-border pt-2 flex justify-between">
+                <span className="font-semibold">Total Estimate</span>
+                <span className="font-bold text-lg text-primary">${currentQuote.estimatedTotal.toLocaleString()}</span>
               </div>
-            ))}
-            <div className="border-t border-border pt-2 flex justify-between">
-              <span className="font-semibold">Total Estimate</span>
-              <span className="font-bold text-lg text-primary">${currentQuote.estimatedTotal.toLocaleString()}</span>
             </div>
-          </div>
 
-          <div className="grid grid-cols-3 gap-2 text-center text-xs bg-background/50 rounded-lg p-2">
-            <div>
-              <div className="font-semibold text-foreground">{currentQuote.crewSize}</div>
-              <div className="text-muted-foreground">Crew</div>
-            </div>
-            <div>
-              <div className="font-semibold text-foreground">{currentQuote.estimatedHours}h</div>
-              <div className="text-muted-foreground">Est. Time</div>
-            </div>
-            <div>
-              <div className="font-semibold text-foreground">${currentQuote.depositRequired.toLocaleString()}</div>
-              <div className="text-muted-foreground">Deposit</div>
+            <div className="grid grid-cols-3 gap-2 text-center text-xs bg-background/50 rounded-lg p-2">
+              <div>
+                <div className="font-semibold text-foreground">{currentQuote.crewSize}</div>
+                <div className="text-muted-foreground">Crew</div>
+              </div>
+              <div>
+                <div className="font-semibold text-foreground">{currentQuote.estimatedHours}h</div>
+                <div className="text-muted-foreground">Est. Time</div>
+              </div>
+              <div>
+                <div className="font-semibold text-foreground">${currentQuote.depositRequired.toLocaleString()}</div>
+                <div className="text-muted-foreground">Deposit</div>
+              </div>
             </div>
           </div>
-        </div>
+          <Button
+            className="w-full mt-2"
+            onClick={() => {
+              sendMessage({ text: "The quote looks good. What dates are available?" })
+              setIsCheckingAvailability(true)
+            }}
+          >
+            Proceed with Booking
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        </>
       )
     }
 
@@ -933,7 +966,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       if (paymentComplete && currentQuote && contactInfo) {
         return (
           <PaymentConfirmation
-            referenceId={submittedLead?.id?.slice(0, 8).toUpperCase() || "PENDING"}
+            referenceId={submittedLeadData?.id?.slice(0, 8).toUpperCase() || "PENDING"}
             depositAmount={currentQuote.depositRequired}
             estimatedTotal={currentQuote.estimatedTotal}
             scheduledDate={selectedDate || undefined}
@@ -1033,10 +1066,10 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       }
 
       if (creationError || !clientSecret || !stripePromise) {
-        const userFriendlyError = creationError 
+        const userFriendlyError = creationError
           ? getStripeErrorMessage(creationError)
           : "Unable to load payment form."
-          
+
         return (
           <div className="text-center py-4 space-y-2">
             <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
@@ -1047,9 +1080,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
                 Call to complete booking
               </Button>
               {creationError && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
                     setCreationError(null)
                     setLoading(true)
@@ -1080,7 +1113,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       const handleRetryWithBackoff = async () => {
         setIsRetrying(true)
         setRetryCount(prev => prev + 1)
-        
+
         try {
           // Wait with exponential backoff
           await new Promise(resolve => setTimeout(resolve, Math.min(1000 * Math.pow(2, retryCount), 5000)))
@@ -1105,9 +1138,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             </p>
           )}
           <div className="flex flex-col sm:flex-row gap-2 w-full max-w-xs">
-            <Button 
-              onClick={handleRetryWithBackoff} 
-              variant="default" 
+            <Button
+              onClick={handleRetryWithBackoff}
+              variant="default"
               size="sm"
               disabled={isRetrying || retryCount >= 3}
               className="flex-1"
@@ -1209,9 +1242,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
                       className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                     >
                       <div
-                        className={`max-w-[85%] rounded-lg px-3 py-2 ${
-                          message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
-                        }`}
+                        className={`max-w-[85%] rounded-lg px-3 py-2 ${message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
+                          }`}
                       >
                         <div className="flex items-start gap-2">
                           {message.role === "assistant" && (

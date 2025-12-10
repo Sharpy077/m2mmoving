@@ -24,7 +24,7 @@ import type {
 export class MayaAgent extends BaseAgent {
   // Sales playbook configuration
   private playbook: SalesPlaybook
-  
+
   constructor(config?: Partial<AgentConfig>) {
     super({
       codename: "MAYA_SALES",
@@ -58,14 +58,14 @@ export class MayaAgent extends BaseAgent {
       },
       ...config,
     })
-    
+
     this.playbook = DEFAULT_SALES_PLAYBOOK
   }
-  
+
   // =============================================================================
   // IDENTITY
   // =============================================================================
-  
+
   protected getIdentity(): AgentIdentity {
     return {
       codename: "MAYA_SALES",
@@ -85,11 +85,11 @@ export class MayaAgent extends BaseAgent {
       status: "idle",
     }
   }
-  
+
   // =============================================================================
   // TOOLS REGISTRATION
   // =============================================================================
-  
+
   protected registerTools(): void {
     // Business Lookup
     this.registerTool({
@@ -105,7 +105,7 @@ export class MayaAgent extends BaseAgent {
       },
       handler: async (params) => this.lookupBusiness(params as { query: string; searchType?: string }),
     })
-    
+
     // Calculate Quote
     this.registerTool({
       name: "calculateQuote",
@@ -124,7 +124,7 @@ export class MayaAgent extends BaseAgent {
       },
       handler: async (params) => this.calculateQuote(params as QuoteParams),
     })
-    
+
     // Qualify Lead
     this.registerTool({
       name: "qualifyLead",
@@ -143,7 +143,7 @@ export class MayaAgent extends BaseAgent {
       },
       handler: async (params) => this.qualifyLead(params as QualifyParams),
     })
-    
+
     // Generate Proposal
     this.registerTool({
       name: "generateProposal",
@@ -159,7 +159,7 @@ export class MayaAgent extends BaseAgent {
       },
       handler: async (params) => this.generateProposal(params as { leadId: string; quoteId: string; customizations?: Record<string, unknown> }),
     })
-    
+
     // Handle Objection
     this.registerTool({
       name: "handleObjection",
@@ -174,7 +174,7 @@ export class MayaAgent extends BaseAgent {
       },
       handler: async (params) => this.handleObjection(params as { objection: string; context?: string }),
     })
-    
+
     // Schedule Callback
     this.registerTool({
       name: "scheduleCallback",
@@ -191,7 +191,7 @@ export class MayaAgent extends BaseAgent {
       },
       handler: async (params) => this.scheduleCallback(params as { leadId: string; preferredTime?: string; reason?: string; notes?: string }),
     })
-    
+
     // Check Availability
     this.registerTool({
       name: "checkAvailability",
@@ -207,7 +207,7 @@ export class MayaAgent extends BaseAgent {
       },
       handler: async (params) => this.checkAvailability(params as { month?: number; year?: number; moveType?: string }),
     })
-    
+
     // Negotiate Price
     this.registerTool({
       name: "negotiatePrice",
@@ -225,14 +225,14 @@ export class MayaAgent extends BaseAgent {
       handler: async (params) => this.negotiatePrice(params as NegotiateParams),
     })
   }
-  
+
   // =============================================================================
   // MAIN PROCESSING
   // =============================================================================
-  
+
   public async process(input: AgentInput): Promise<AgentOutput> {
     this.log("info", "process", `Processing input type: ${input.type}`)
-    
+
     try {
       switch (input.type) {
         case "message":
@@ -252,14 +252,14 @@ export class MayaAgent extends BaseAgent {
       }
     }
   }
-  
+
   /**
    * Handle incoming message
    */
   private async handleMessage(input: AgentInput): Promise<AgentOutput> {
     const messages = input.messages || []
     const content = input.content || ""
-    
+
     // Add user message if provided
     if (content) {
       messages.push({
@@ -269,36 +269,36 @@ export class MayaAgent extends BaseAgent {
         timestamp: new Date(),
       })
     }
-    
+
     // Check for escalation triggers
     const escalationCheck = this.shouldEscalate({
       content,
       sentiment: await this.analyzeSentiment(content),
       ...input.metadata,
     })
-    
+
     if (escalationCheck.should) {
       const escalation = await this.escalateToHuman(
         escalationCheck.reason!,
         `Customer message: ${content}`,
         { messages, ...input.metadata },
-        escalationCheck.priority
+        escalationCheck.priority || "medium"
       )
-      
+
       return {
         success: true,
         response: "I'd like to connect you with one of our specialists who can better assist you. Someone will reach out shortly.",
         escalation,
       }
     }
-    
+
     // Determine conversation stage
     const stage = await this.determineStage(messages)
-    
+
     // Process based on stage
     let response: string
     const actions: AgentAction[] = []
-    
+
     switch (stage) {
       case "discovery":
         response = await this.handleDiscovery(messages, input.metadata)
@@ -318,7 +318,7 @@ export class MayaAgent extends BaseAgent {
       default:
         response = await this.generateResponse(messages)
     }
-    
+
     return {
       success: true,
       response,
@@ -326,7 +326,7 @@ export class MayaAgent extends BaseAgent {
       data: { stage },
     }
   }
-  
+
   /**
    * Handle events
    */
@@ -335,7 +335,7 @@ export class MayaAgent extends BaseAgent {
     if (!event) {
       return { success: false, error: "No event provided" }
     }
-    
+
     switch (event.name) {
       case "new_quote_request":
         return await this.initiateQuoteConversation(event.data)
@@ -347,7 +347,7 @@ export class MayaAgent extends BaseAgent {
         return { success: false, error: `Unknown event: ${event.name}` }
     }
   }
-  
+
   /**
    * Handle handoff from another agent
    */
@@ -356,12 +356,12 @@ export class MayaAgent extends BaseAgent {
     if (!handoff) {
       return { success: false, error: "No handoff data provided" }
     }
-    
+
     this.log("info", "handleHandoff", `Received handoff from ${handoff.fromAgent}`)
-    
+
     // Build context from handoff
     const context = handoff.context
-    
+
     // Generate appropriate response based on handoff reason
     const response = await this.generateResponse(
       [
@@ -374,20 +374,20 @@ export class MayaAgent extends BaseAgent {
       ],
       context
     )
-    
+
     return {
       success: true,
       response,
       data: { handoffId: handoff.id },
     }
   }
-  
+
   /**
    * Handle inter-agent messages
    */
   public async handleInterAgentMessage(message: InterAgentMessage): Promise<void> {
     this.log("info", "handleInterAgentMessage", `Message from ${message.from}: ${message.type}`)
-    
+
     switch (message.type) {
       case "request":
         // Handle request from another agent
@@ -400,20 +400,20 @@ export class MayaAgent extends BaseAgent {
         break
     }
   }
-  
+
   // =============================================================================
   // CONVERSATION STAGES
   // =============================================================================
-  
+
   private async determineStage(messages: AgentMessage[]): Promise<SalesStage> {
     if (messages.length < 3) return "discovery"
-    
+
     const recentContent = messages
       .slice(-5)
       .map(m => m.content)
       .join(" ")
       .toLowerCase()
-    
+
     if (recentContent.includes("deposit") || recentContent.includes("book") || recentContent.includes("confirm")) {
       return "closing"
     }
@@ -426,68 +426,68 @@ export class MayaAgent extends BaseAgent {
     if (recentContent.includes("budget") || recentContent.includes("when") || recentContent.includes("timeline")) {
       return "qualification"
     }
-    
+
     return "discovery"
   }
-  
+
   private async handleDiscovery(messages: AgentMessage[], metadata?: Record<string, unknown>): Promise<string> {
     const context = {
       stage: "discovery",
       questions: this.playbook.discovery.questions,
       ...metadata,
     }
-    
+
     return await this.generateResponse(messages, context)
   }
-  
+
   private async handleQualification(messages: AgentMessage[], metadata?: Record<string, unknown>): Promise<string> {
     const context = {
       stage: "qualification",
       criteria: this.playbook.qualification,
       ...metadata,
     }
-    
+
     return await this.generateResponse(messages, context)
   }
-  
+
   private async handleProposal(messages: AgentMessage[], metadata?: Record<string, unknown>): Promise<string> {
     const context = {
       stage: "proposal",
       template: this.playbook.proposal,
       ...metadata,
     }
-    
+
     return await this.generateResponse(messages, context)
   }
-  
+
   private async handleNegotiation(messages: AgentMessage[], metadata?: Record<string, unknown>): Promise<string> {
     const context = {
       stage: "negotiation",
       rules: this.playbook.negotiation,
       ...metadata,
     }
-    
+
     return await this.generateResponse(messages, context)
   }
-  
+
   private async handleClosing(messages: AgentMessage[], metadata?: Record<string, unknown>): Promise<string> {
     const context = {
       stage: "closing",
       requirements: this.playbook.closing,
       ...metadata,
     }
-    
+
     return await this.generateResponse(messages, context)
   }
-  
+
   // =============================================================================
   // TOOL IMPLEMENTATIONS
   // =============================================================================
-  
+
   private async lookupBusiness(params: { query: string; searchType?: string }) {
     // In production, call ABR API
     this.log("info", "lookupBusiness", `Looking up: ${params.query}`)
-    
+
     return {
       success: true,
       data: {
@@ -501,37 +501,58 @@ export class MayaAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async calculateQuote(params: QuoteParams) {
     const pricing = PRICING_CONFIG
-    
-    const moveTypeConfig = pricing.baseRates[params.moveType] || pricing.baseRates.office
+
+    const moveTypeConfig = pricing.baseRates[params.moveType as keyof typeof pricing.baseRates] || pricing.baseRates.office
     const sqm = Math.max(params.squareMeters, moveTypeConfig.minSqm)
-    
+
     // Base calculation
     const baseAmount = moveTypeConfig.base + (sqm * moveTypeConfig.perSqm)
-    
+
     // Additional services
     let additionalAmount = 0
     const additionalServices = params.additionalServices || []
     for (const service of additionalServices) {
-      const serviceConfig = pricing.additionalServices[service]
+      const serviceConfig = pricing.additionalServices[service as keyof typeof pricing.additionalServices]
       if (serviceConfig) {
         additionalAmount += serviceConfig.price
       }
     }
-    
+
     // Distance estimate (simplified)
-    const distanceCharge = 50 // Flat rate for Melbourne metro
-    
+    // Distance estimate
+    const origin = (params.originSuburb || "").toLowerCase()
+    const dest = (params.destinationSuburb || "").toLowerCase()
+
+    // Mock simulation: Interstate vs Local
+    let estKm = 15 // Default local
+    if (origin === dest && origin.length > 0) {
+      estKm = 5
+    } else if (origin.includes("sydney") || dest.includes("sydney")) {
+      estKm = 880
+    } else if (origin.includes("brisbane") || dest.includes("brisbane")) {
+      estKm = 1700
+    } else if (origin.includes("perth") || dest.includes("perth")) {
+      estKm = 3400
+    } else if (origin.includes("adelaide") || dest.includes("adelaide")) {
+      estKm = 730
+    } else {
+      // Local variation based on suburb names
+      estKm = 10 + Math.abs(origin.length - dest.length) * 4
+    }
+
+    const distanceCharge = Math.round(estKm * 3.0) // $3 per km
+
     // Urgency multiplier
     const urgencyMultiplier = params.urgency === "urgent" ? 1.25 : params.urgency === "flexible" ? 0.95 : 1
-    
+
     const subtotal = (baseAmount + additionalAmount + distanceCharge) * urgencyMultiplier
     const gst = subtotal * 0.1
     const total = subtotal + gst
     const deposit = total * 0.5
-    
+
     const breakdown: PriceBreakdown = {
       baseRate: moveTypeConfig.base,
       sqmCharge: sqm * moveTypeConfig.perSqm,
@@ -543,7 +564,7 @@ export class MayaAgent extends BaseAgent {
       gst,
       total,
     }
-    
+
     const quote: PriceQuote = {
       id: this.generateId(),
       leadId: "",
@@ -555,7 +576,7 @@ export class MayaAgent extends BaseAgent {
       breakdown,
       createdAt: new Date(),
     }
-    
+
     return {
       success: true,
       data: {
@@ -568,7 +589,7 @@ export class MayaAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async qualifyLead(params: QualifyParams) {
     const scores: LeadScore = {
       overall: 0,
@@ -579,13 +600,13 @@ export class MayaAgent extends BaseAgent {
       engagement: params.engagement || 5,
       fit: 7, // Default fit score
     }
-    
+
     scores.overall = Math.round(
       (scores.budget + scores.authority + scores.need + scores.timeline + scores.engagement + scores.fit) / 6
     )
-    
+
     const qualified = scores.overall >= 6
-    
+
     return {
       success: true,
       data: {
@@ -598,7 +619,7 @@ export class MayaAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async generateProposal(params: { leadId: string; quoteId: string; customizations?: Record<string, unknown> }) {
     // In production, generate PDF proposal
     return {
@@ -612,12 +633,12 @@ export class MayaAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async handleObjection(params: { objection: string; context?: string }) {
     const objectionLower = params.objection.toLowerCase()
-    
+
     let response = OBJECTION_HANDLERS.default
-    
+
     if (objectionLower.includes("price") || objectionLower.includes("expensive") || objectionLower.includes("cost")) {
       response = OBJECTION_HANDLERS.price
     } else if (objectionLower.includes("competitor") || objectionLower.includes("other quote")) {
@@ -627,13 +648,13 @@ export class MayaAgent extends BaseAgent {
     } else if (objectionLower.includes("think") || objectionLower.includes("decide")) {
       response = OBJECTION_HANDLERS.decision
     }
-    
+
     return {
       success: true,
       data: { response, objection: params.objection },
     }
   }
-  
+
   private async scheduleCallback(params: { leadId: string; preferredTime?: string; reason?: string; notes?: string }) {
     return {
       success: true,
@@ -645,16 +666,16 @@ export class MayaAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async checkAvailability(params: { month?: number; year?: number; moveType?: string }) {
     const now = new Date()
     const month = params.month || now.getMonth() + 1
     const year = params.year || now.getFullYear()
-    
+
     // Generate available dates (simplified)
     const availableDates: string[] = []
     const daysInMonth = new Date(year, month, 0).getDate()
-    
+
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, month - 1, day)
       // Skip weekends and past dates
@@ -662,7 +683,7 @@ export class MayaAgent extends BaseAgent {
         availableDates.push(date.toISOString().split("T")[0])
       }
     }
-    
+
     return {
       success: true,
       data: {
@@ -672,11 +693,11 @@ export class MayaAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async negotiatePrice(params: NegotiateParams) {
     const maxDiscount = this.playbook.negotiation.maxDiscount
     const requestedDiscount = params.discountPercent || 0
-    
+
     if (requestedDiscount > this.playbook.negotiation.approvalRequired) {
       // Needs human approval
       await this.escalateToHuman(
@@ -685,7 +706,7 @@ export class MayaAgent extends BaseAgent {
         params,
         "medium"
       )
-      
+
       return {
         success: true,
         data: {
@@ -695,9 +716,9 @@ export class MayaAgent extends BaseAgent {
         },
       }
     }
-    
+
     const approvedDiscount = Math.min(requestedDiscount, maxDiscount)
-    
+
     return {
       success: true,
       data: {
@@ -708,43 +729,43 @@ export class MayaAgent extends BaseAgent {
       },
     }
   }
-  
+
   // =============================================================================
   // HELPER METHODS
   // =============================================================================
-  
+
   private async initiateQuoteConversation(data: Record<string, unknown>): Promise<AgentOutput> {
     return {
       success: true,
       response: "Hi! I'm Maya, your commercial moving specialist. I'd love to help you get a quote for your business relocation. What type of move are you planning?",
     }
   }
-  
+
   private async followUpLead(data: Record<string, unknown>): Promise<AgentOutput> {
     return {
       success: true,
       response: "Hi! I wanted to follow up on the quote we discussed. Have you had a chance to review it? I'm happy to answer any questions.",
     }
   }
-  
+
   private async handlePaymentCompleted(data: Record<string, unknown>): Promise<AgentOutput> {
     return {
       success: true,
       response: "Excellent! Your deposit has been received and your move is now confirmed. You'll receive a confirmation email shortly with all the details.",
     }
   }
-  
+
   private async analyzeSentiment(text: string): Promise<"positive" | "neutral" | "negative"> {
     const negativeTriggers = ["angry", "frustrated", "terrible", "awful", "worst", "scam", "rip off", "complaint", "sue"]
     const positiveTriggers = ["great", "excellent", "amazing", "wonderful", "perfect", "love", "fantastic"]
-    
+
     const textLower = text.toLowerCase()
-    
+
     if (negativeTriggers.some(t => textLower.includes(t))) return "negative"
     if (positiveTriggers.some(t => textLower.includes(t))) return "positive"
     return "neutral"
   }
-  
+
   private scoreBudget(budget?: string): number {
     if (!budget) return 5
     const budgetLower = budget.toLowerCase()
@@ -753,7 +774,7 @@ export class MayaAgent extends BaseAgent {
     if (budgetLower.includes("limited") || budgetLower.includes("tight")) return 4
     return 6
   }
-  
+
   private scoreAuthority(authority?: string): number {
     if (!authority) return 5
     const authLower = authority.toLowerCase()
@@ -762,7 +783,7 @@ export class MayaAgent extends BaseAgent {
     if (authLower.includes("assistant") || authLower.includes("researching")) return 4
     return 6
   }
-  
+
   private scoreNeed(need?: string): number {
     if (!need) return 5
     const needLower = need.toLowerCase()
@@ -771,7 +792,7 @@ export class MayaAgent extends BaseAgent {
     if (needLower.includes("maybe") || needLower.includes("exploring")) return 4
     return 6
   }
-  
+
   private scoreTimeline(timeline?: string): number {
     if (!timeline) return 5
     const timelineLower = timeline.toLowerCase()
