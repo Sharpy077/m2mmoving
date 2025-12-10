@@ -160,8 +160,10 @@ const ServicePicker = ({
 const InitialPrompts = ({ onSelect }: { onSelect: (prompt: string) => void }) => {
   const prompts = [
     { text: "I need to move my office", icon: Building2 },
-    { text: "Data centre relocation", icon: Server },
-    { text: "Just need IT equipment moved", icon: Monitor },
+    { text: "Warehouse relocation", icon: Warehouse },
+    { text: "Data centre migration", icon: Server },
+    { text: "Retail store move", icon: Store },
+    { text: "IT equipment transport", icon: Monitor },
     { text: "I'd like to speak to someone", icon: Phone },
   ]
 
@@ -273,6 +275,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     }))
 
     const { messages, sendMessage, status, error } = useChat({
+      // @ts-ignore
       api: "/api/quote-assistant",
       onError: (err) => {
         console.log("[v0] Chat error:", err.message)
@@ -706,7 +709,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             move_type: currentQuote.moveTypeKey || "office",
             origin_suburb: currentQuote.origin,
             destination_suburb: currentQuote.destination,
-            estimated_value: currentQuote.estimatedTotal,
+            estimated_total: currentQuote.estimatedTotal,
             status: "won",
             notes: `Deposit paid. Move scheduled for ${selectedDate}. ABN: ${confirmedBusiness?.abn || "N/A"}`,
             scheduled_date: selectedDate,

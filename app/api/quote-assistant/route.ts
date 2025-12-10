@@ -1,4 +1,5 @@
-import { convertToModelMessages, streamText, tool, validateUIMessages } from "ai"
+import { convertToCoreMessages, streamText, tool } from "ai"
+import { openai } from "@ai-sdk/openai"
 import { z } from "zod"
 
 export const maxDuration = 60
@@ -191,7 +192,7 @@ ADDITIONAL SERVICES (offer when relevant):
 const lookupBusinessTool = tool({
   description:
     "Look up an Australian business by name or ABN. Use immediately when customer mentions their company name or ABN.",
-  inputSchema: z.object({
+  parameters: z.object({
     query: z.string().describe("Business name or ABN to search for"),
     searchType: z.string().describe("Type of search - 'name' or 'abn'"),
   }),
@@ -241,7 +242,7 @@ const lookupBusinessTool = tool({
 
 const confirmBusinessTool = tool({
   description: "Confirm the business details after customer validates the lookup result",
-  inputSchema: z.object({
+  parameters: z.object({
     name: z.string().describe("Confirmed business name"),
     abn: z.string().describe("Confirmed ABN"),
     entityType: z.string().describe("Business entity type"),
@@ -264,7 +265,7 @@ const confirmBusinessTool = tool({
 const showServiceOptionsTool = tool({
   description:
     "Display the visual service type picker for the customer to choose their move type. Use after business is confirmed or at start of conversation.",
-  inputSchema: z.object({
+  parameters: z.object({
     context: z
       .string()
       .describe("Brief context about why showing options, e.g. 'after_business_confirmed' or 'initial'"),
@@ -287,7 +288,7 @@ const showServiceOptionsTool = tool({
 
 const checkAvailabilityTool = tool({
   description: "Check available dates for scheduling. Use after generating a quote to show booking options.",
-  inputSchema: z.object({
+  parameters: z.object({
     monthName: z.string().describe("Month to check, e.g. 'December 2024'"),
     moveUrgency: z.string().describe("Urgency level - 'asap', 'flexible', or 'specific'"),
   }),
@@ -345,7 +346,7 @@ const checkAvailabilityTool = tool({
 
 const confirmBookingDateTool = tool({
   description: "Confirm a specific date the customer has selected",
-  inputSchema: z.object({
+  parameters: z.object({
     selectedDate: z.string().describe("Selected date in YYYY-MM-DD format"),
   }),
   execute: async ({ selectedDate }) => {
@@ -359,7 +360,7 @@ const confirmBookingDateTool = tool({
 
 const calculateQuoteTool = tool({
   description: "Calculate quote estimate. Use once you have move type, size, and locations.",
-  inputSchema: z.object({
+  parameters: z.object({
     moveType: z.string().describe("Move type: office, warehouse, datacenter, it-equipment, or retail"),
     squareMeters: z.number().describe("Size in square metres"),
     originSuburb: z.string().describe("Origin suburb"),
@@ -400,12 +401,12 @@ const calculateQuoteTool = tool({
 
     const services = additionalServicesList
       ? additionalServicesList
-          .split(",")
-          .map((s) => s.trim().toLowerCase())
-          .filter(Boolean)
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean)
       : []
 
-    services.forEach((serviceId) => {
+    services.forEach((serviceId: string) => {
       const service = additionalServices[serviceId as keyof typeof additionalServices]
       if (service) {
         total += service.price
@@ -443,7 +444,7 @@ const calculateQuoteTool = tool({
 
 const collectContactInfoTool = tool({
   description: "Collect customer contact details before payment.",
-  inputSchema: z.object({
+  parameters: z.object({
     contactName: z.string().describe("Customer's full name"),
     email: z.string().describe("Customer's email"),
     phone: z.string().describe("Customer's phone number"),
@@ -466,7 +467,7 @@ const collectContactInfoTool = tool({
 
 const initiatePaymentTool = tool({
   description: "Show Stripe payment form for deposit.",
-  inputSchema: z.object({
+  parameters: z.object({
     amount: z.number().describe("Deposit amount in dollars"),
     customerEmail: z.string().describe("Customer email"),
     customerName: z.string().describe("Customer name"),
@@ -487,7 +488,7 @@ const initiatePaymentTool = tool({
 
 const requestCallbackTool = tool({
   description: "Request a callback for complex enquiries or when customer prefers to speak with someone.",
-  inputSchema: z.object({
+  parameters: z.object({
     name: z.string().describe("Customer name"),
     phone: z.string().describe("Phone number"),
     preferredTime: z.string().describe("Preferred callback time"),
@@ -521,37 +522,24 @@ export async function POST(req: Request) {
 
     const effectiveMessages =
       rawMessages.length === 0 ||
-      (rawMessages.length === 1 &&
-        rawMessages[0].role === "user" &&
-        (rawMessages[0].content === "start" ||
-          rawMessages[0].content === "Start" ||
-          rawMessages[0].content === "" ||
-          rawMessages[0].parts?.[0]?.text?.includes("I'd like to get a quote")))
+        (rawMessages.length === 1 &&
+          rawMessages[0].role === "user" &&
+          (rawMessages[0].content === "start" ||
+            rawMessages[0].content === "Start" ||
+            rawMessages[0].content === "" ||
+            rawMessages[0].parts?.[0]?.text?.includes("I'd like to get a quote")))
         ? [{ role: "user" as const, content: "Hi, I'd like to get a quote for a commercial move." }]
         : rawMessages
 
-    let messages
-    try {
-      messages = await validateUIMessages({
-        messages: effectiveMessages,
-        tools,
-      })
-    } catch (validationError) {
-      console.error("[v0] Message validation error:", validationError)
-      return new Response(JSON.stringify({ error: "Invalid message format" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      })
-    }
-
     const result = streamText({
-      model: "openai/gpt-4o",
+      model: openai("gpt-4o"),
       system: systemPrompt,
-      messages: convertToModelMessages(messages),
+      messages: convertToCoreMessages(effectiveMessages),
       tools,
+      maxSteps: 5,
     })
 
-    return result.toUIMessageStreamResponse()
+    return result.toDataStreamResponse()
   } catch (error) {
     console.error("[v0] Quote assistant error:", error)
     return new Response(JSON.stringify({ error: "Internal server error" }), {
