@@ -332,7 +332,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       }
     }, [paymentComplete, leadSubmitted])
 
-    const isLoading = status === "in_progress" || status === "streaming" || status === "submitted"
+    // const isLoading = isChatLoading // status === "in_progress" || status === "streaming" || status === "submitted"
+    const isLoading = isChatLoading
 
     useEffect(() => {
       const lastMessage = messages[messages.length - 1]
@@ -708,8 +709,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             move_type: currentQuote.moveTypeKey || "office",
             origin_suburb: currentQuote.origin,
             destination_suburb: currentQuote.destination,
-            estimated_value: currentQuote.estimatedTotal,
-            status: "confirmed",
+            estimated_total: currentQuote.estimatedTotal,
+            status: "won",
             notes: `Deposit paid. Move scheduled for ${selectedDate}. ABN: ${confirmedBusiness?.abn || "N/A"}`,
             scheduled_date: selectedDate,
             deposit_amount: currentQuote.depositRequired,

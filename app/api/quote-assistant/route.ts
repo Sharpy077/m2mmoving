@@ -464,7 +464,7 @@ const calculateQuoteTool = tool({
     const serviceDetails: { name: string; price: number }[] = []
     let servicesCost = 0
 
-    const services = [] // additionalServicesList ? additionalServicesList.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) : []
+    const services: string[] = [] // additionalServicesList ? additionalServicesList.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) : []
 
     services.forEach((serviceId) => {
       const service = additionalServices[serviceId as keyof typeof additionalServices]
