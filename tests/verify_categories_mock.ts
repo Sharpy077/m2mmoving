@@ -1,4 +1,3 @@
-
 const moveTypes = {
     office_relocation: {
         name: "Office Relocation",

@@ -1,4 +1,3 @@
-
 // Native fetch is available in Node 22
 
 async function debugApi() {
