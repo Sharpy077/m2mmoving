@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, useCallback } from "react"
 import { useChat } from "@ai-sdk/react"
 
 import {
@@ -41,6 +41,15 @@ import { createDepositCheckout } from "@/app/actions/stripe"
 import { useFormPersistence } from "@/hooks/use-form-persistence"
 import { PaymentConfirmation } from "@/components/payment-confirmation"
 import { getStripeErrorMessage } from "@/lib/stripe-errors"
+import {
+  ResponseMonitor,
+  getResponseMonitor,
+  ErrorClassifier,
+  RetryHandler,
+  ConversationStateManager,
+  FallbackProvider,
+  type ConversationState,
+} from "@/lib/conversation"
 
 const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null
@@ -256,6 +265,10 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     >("business")
     const [showInitialPrompts, setShowInitialPrompts] = useState(true)
     const [lastUserMessageTime, setLastUserMessageTime] = useState<number | null>(null)
+    const [conversationId] = useState(() => `conv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`)
+    const [isInitialMessage, setIsInitialMessage] = useState(true)
+    const [retryCount, setRetryCount] = useState(0)
+    const [fallbackResponse, setFallbackResponse] = useState<ReturnType<typeof FallbackProvider.getFallback> | null>(null)
 
     // Loading states
     const [isLookingUpBusiness, setIsLookingUpBusiness] = useState(false)
@@ -267,6 +280,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const recognitionRef = useRef<any>(null)
     const synthRef = useRef<SpeechSynthesis | null>(null)
     const containerRef = useRef<HTMLDivElement>(null)
+    const responseMonitorRef = useRef<ResponseMonitor>(getResponseMonitor())
+    const retryHandlerRef = useRef<RetryHandler>(new RetryHandler())
 
     useImperativeHandle(ref, () => ({
       open: () => {
@@ -277,30 +292,85 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
 
     const [pendingRetry, setPendingRetry] = useState<{ text: string; retries: number } | null>(null)
 
+    // Enhanced error handling with retry logic
+    const handleErrorWithRetry = useCallback(async (error: unknown, messageText: string) => {
+      const classified = ErrorClassifier.classify(error)
+      const newRetryCount = retryCount + 1
+      setRetryCount(newRetryCount)
+
+      if (classified.retryable && classified.retryConfig) {
+        const retryConfig = classified.retryConfig
+        if (newRetryCount < retryConfig.maxAttempts) {
+          // Retry will be handled by the onError callback
+          // Just update the pending retry state
+          setPendingRetry({ text: messageText, retries: newRetryCount })
+        } else {
+          // Max retries exceeded, use fallback
+          const fallback = FallbackProvider.getFallback({
+            conversationId,
+            lastUserMessage: messageText,
+            conversationStep: currentStep,
+            errorType: classified.type,
+            retryCount: newRetryCount,
+          })
+          setFallbackResponse(fallback)
+          setHasError(true)
+          setErrorMessage(fallback.message)
+          setPendingRetry(null)
+        }
+      } else {
+        // Not retryable, show error immediately
+        const fallback = FallbackProvider.getFallback({
+          conversationId,
+          lastUserMessage: messageText,
+          conversationStep: currentStep,
+          errorType: classified.type,
+          retryCount: newRetryCount,
+        })
+        setFallbackResponse(fallback)
+        setHasError(true)
+        setErrorMessage(classified.message)
+        setPendingRetry(null)
+      }
+    }, [conversationId, currentStep, retryCount])
+
     const { messages, sendMessage, status, error } = useChat({
       // @ts-ignore
       api: "/api/quote-assistant",
+      id: conversationId,
       onError: (err) => {
         console.log("[v0] Chat error:", err.message)
-        setHasError(true)
-        setErrorMessage(err.message || "Failed to connect to the quote assistant")
+        const classified = ErrorClassifier.classify(err)
         
-        // If we have a pending retry and haven't exceeded max retries, retry
-        if (pendingRetry && pendingRetry.retries < 2) {
-          setTimeout(() => {
-            setPendingRetry({ ...pendingRetry, retries: pendingRetry.retries + 1 })
-            sendMessage({ text: pendingRetry.text })
-          }, 2000)
-        } else if (pendingRetry) {
-          // Max retries exceeded, clear pending retry
-          setPendingRetry(null)
+        // Cancel response monitor timer
+        if (lastUserMessageTime) {
+          responseMonitorRef.current.cancelTimer(`msg-${lastUserMessageTime}`)
+        }
+
+        // Handle error with retry logic
+        if (pendingRetry) {
+          handleErrorWithRetry(err, pendingRetry.text)
+        } else {
+          setHasError(true)
+          setErrorMessage(classified.message)
         }
       },
       onFinish: () => {
         setHasError(false)
         setErrorMessage(null)
-        setPendingRetry(null) // Clear pending retry on successful response
-        setLastUserMessageTime(null) // Reset watchdog
+        setPendingRetry(null)
+        setRetryCount(0)
+        setFallbackResponse(null)
+        setLastUserMessageTime(null)
+        setIsInitialMessage(false)
+        
+        // Cancel any monitoring timers
+        if (lastUserMessageTime) {
+          responseMonitorRef.current.cancelTimer(`msg-${lastUserMessageTime}`)
+        }
+
+        // Save conversation state
+        saveConversationState()
       },
     })
 
@@ -321,25 +391,84 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       !paymentComplete && !leadSubmitted
     )
 
+    // Save conversation state
+    const saveConversationState = () => {
+      const state: ConversationState = {
+        id: conversationId,
+        messages: messages.map((msg) => ({
+          id: msg.id || `msg-${Date.now()}`,
+          role: msg.role,
+          content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+          timestamp: new Date(),
+        })),
+        step: currentStep,
+        selectedOptions: {
+          business: confirmedBusiness || undefined,
+          service: serviceOptions.find(s => true) || undefined,
+          date: selectedDate || undefined,
+        },
+        formData: {
+          contactInfo: contactInfo || undefined,
+          quote: currentQuote || undefined,
+        },
+        errorState: hasError
+          ? {
+              lastError: errorMessage || 'Unknown error',
+              retryCount,
+              lastRetryTime: new Date(),
+            }
+          : undefined,
+        createdAt: new Date(),
+        lastUpdated: new Date(),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      }
+      ConversationStateManager.save(state)
+    }
+
     // Load saved state on mount
     useEffect(() => {
       if (embedded && messages.length === 0) {
-        const saved = loadSavedData()
-        if (saved) {
-          if (saved.currentQuote) setCurrentQuote(saved.currentQuote)
-          if (saved.contactInfo) setContactInfo(saved.contactInfo)
-          if (saved.selectedDate) setSelectedDate(saved.selectedDate)
-          if (saved.confirmedBusiness) setConfirmedBusiness(saved.confirmedBusiness)
+        // Try to load from new state manager first
+        const savedState = ConversationStateManager.load(conversationId)
+        if (savedState) {
+          // Restore from saved state
+          if (savedState.formData.quote) setCurrentQuote(savedState.formData.quote)
+          if (savedState.formData.contactInfo) setContactInfo(savedState.formData.contactInfo)
+          if (savedState.selectedOptions.date) setSelectedDate(savedState.selectedOptions.date)
+          if (savedState.selectedOptions.business) setConfirmedBusiness(savedState.selectedOptions.business)
+          if (savedState.step) setCurrentStep(savedState.step)
+          setIsInitialMessage(false)
+        } else {
+          // Fallback to old persistence
+          const saved = loadSavedData()
+          if (saved) {
+            if (saved.currentQuote) setCurrentQuote(saved.currentQuote)
+            if (saved.contactInfo) setContactInfo(saved.contactInfo)
+            if (saved.selectedDate) setSelectedDate(saved.selectedDate)
+            if (saved.confirmedBusiness) setConfirmedBusiness(saved.confirmedBusiness)
+          }
         }
       }
-    }, [embedded])
+    }, [embedded, conversationId])
 
     // Clear on successful completion
     useEffect(() => {
       if (paymentComplete || leadSubmitted) {
         clearSavedData()
+        ConversationStateManager.clear(conversationId)
       }
-    }, [paymentComplete, leadSubmitted])
+    }, [paymentComplete, leadSubmitted, conversationId])
+
+    // Periodically save conversation state
+    useEffect(() => {
+      const interval = setInterval(() => {
+        if (messages.length > 0 && !paymentComplete && !leadSubmitted) {
+          saveConversationState()
+        }
+      }, 30000) // Save every 30 seconds
+
+      return () => clearInterval(interval)
+    }, [messages, currentStep, confirmedBusiness, selectedDate, contactInfo, currentQuote, paymentComplete, leadSubmitted])
 
     const isLoading = status === "streaming" || status === "submitted"
 
@@ -523,34 +652,72 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       }
     }, [messages])
 
-    // Watchdog: Ensure Maya responds after user messages
+    // Enhanced watchdog with ResponseMonitor
+    useEffect(() => {
+      const monitor = responseMonitorRef.current
+      
+      // Set up timeout callback
+      const unsubscribe = monitor.onTimeout((messageId) => {
+        console.warn(`[ResponseMonitor] Timeout detected for message: ${messageId}`)
+        
+        // Check if we still haven't received a response
+        const lastMessage = messages[messages.length - 1]
+        if (lastMessage?.role === "user" && pendingRetry && !isLoading) {
+          // Trigger retry
+          console.log("[ResponseMonitor] Triggering retry due to timeout")
+          handleErrorWithRetry(new Error("Response timeout"), pendingRetry.text)
+        }
+      })
+
+      return () => {
+        unsubscribe()
+      }
+    }, [messages, pendingRetry, isLoading, handleErrorWithRetry])
+
+    // Monitor response times
     useEffect(() => {
       if (lastUserMessageTime && !isLoading) {
-        const timeout = setTimeout(() => {
-          // Check if we've received a response since the user message
-          const lastMessage = messages[messages.length - 1]
-          const timeSinceUserMessage = Date.now() - lastUserMessageTime
-          
-          // If it's been more than 10 seconds and the last message is from user (not assistant)
-          if (timeSinceUserMessage > 10000 && lastMessage?.role === "user") {
-            console.warn("Maya hasn't responded after option selection, retrying...")
-            // The message should have been sent, but if no response came, we'll let the error handler deal with it
-            // This is just a safety check - the actual retry should be handled by the error state
-          }
-          setLastUserMessageTime(null)
-        }, 10000) // 10 second timeout
-
-        return () => clearTimeout(timeout)
+        const messageId = `msg-${lastUserMessageTime}`
+        const timeoutType = isInitialMessage ? 'initial' : 'normal'
+        responseMonitorRef.current.startTimer(messageId, timeoutType)
+        
+        return () => {
+          responseMonitorRef.current.cancelTimer(messageId)
+        }
       }
-    }, [lastUserMessageTime, isLoading, messages])
+    }, [lastUserMessageTime, isLoading, isInitialMessage])
 
+    // Initial message handling with health check
     useEffect(() => {
       if ((isOpen || embedded) && !hasStarted && messages.length === 0) {
         setHasStarted(true)
-        const timer = setTimeout(() => {
-          sendMessage({ text: "Hi, I'd like to get a quote for a commercial move." })
-        }, 800)
-        return () => clearTimeout(timer)
+        setIsInitialMessage(true)
+        
+        // Pre-flight health check
+        const checkHealth = async () => {
+          try {
+            const response = await fetch('/api/quote-assistant/health')
+            if (response.ok) {
+              // Health check passed, send initial message
+              const timer = setTimeout(() => {
+                setLastUserMessageTime(Date.now())
+                sendMessage({ text: "Hi, I'd like to get a quote for a commercial move." })
+              }, 800)
+              return () => clearTimeout(timer)
+            }
+          } catch (error) {
+            console.warn("[InitialMessage] Health check failed, proceeding anyway:", error)
+          }
+          
+          // Send message even if health check fails (graceful degradation)
+          const timer = setTimeout(() => {
+            setLastUserMessageTime(Date.now())
+            sendMessage({ text: "Hi, I'd like to get a quote for a commercial move." })
+          }, 800)
+          return () => clearTimeout(timer)
+        }
+        
+        checkHealth()
       }
     }, [isOpen, embedded, hasStarted, messages.length, sendMessage])
 
@@ -648,6 +815,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             setInputValue(transcript)
             setIsListening(false)
             setTimeout(() => {
+              setLastUserMessageTime(Date.now())
+              setPendingRetry({ text: transcript, retries: 0 })
+              saveConversationState()
               sendMessage({ text: transcript })
               setInputValue("")
             }, 300)
@@ -679,7 +849,12 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       setShowServicePicker(false)
       setHasError(false)
       setErrorMessage(null)
+      setFallbackResponse(null)
+      setRetryCount(0)
       setLastUserMessageTime(Date.now())
+      setIsInitialMessage(false)
+      
+      setPendingRetry({ text, retries: 0 })
 
       // Detect if message might trigger business lookup or quote calculation
       const lowerText = text.toLowerCase()
@@ -692,6 +867,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       if (lowerText.includes('available') || lowerText.includes('date') || lowerText.includes('when')) {
         setIsCheckingAvailability(true)
       }
+
+      // Save state before sending
+      saveConversationState()
 
       sendMessage({ text })
     }
@@ -1176,18 +1354,18 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       )
     }
 
-    // Error display with enhanced recovery
+    // Error display with enhanced recovery and fallback support
     const ErrorDisplay = () => {
-      const [retryCount, setRetryCount] = useState(0)
+      const [localRetryCount, setLocalRetryCount] = useState(0)
       const [isRetrying, setIsRetrying] = useState(false)
 
       const handleRetryWithBackoff = async () => {
         setIsRetrying(true)
-        setRetryCount(prev => prev + 1)
+        setLocalRetryCount(prev => prev + 1)
 
         try {
           // Wait with exponential backoff
-          await new Promise(resolve => setTimeout(resolve, Math.min(1000 * Math.pow(2, retryCount), 5000)))
+          await new Promise(resolve => setTimeout(resolve, Math.min(1000 * Math.pow(2, localRetryCount), 5000)))
           handleRetry()
         } catch (error) {
           console.error("Retry failed:", error)
@@ -1196,35 +1374,60 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         }
       }
 
+      const handleFallbackAction = (action: string, phone?: string) => {
+        if (action === 'retry') {
+          handleRetryWithBackoff()
+        } else if (action === 'phone' || action === 'callback') {
+          if (phone) {
+            window.location.href = `tel:+61${phone.replace(/\s/g, '')}`
+          } else {
+            handleCall()
+          }
+        } else if (action === 'email') {
+          window.location.href = 'mailto:sales@m2mmoving.au?subject=Quote Request'
+        }
+      }
+
+      // Use fallback response if available, otherwise use default error message
+      const displayMessage = fallbackResponse?.message || errorMessage || "Unable to connect to the assistant."
+      const actions = fallbackResponse?.actions || [
+        { label: 'Try Again', action: 'retry' },
+        { label: 'Call Us', action: 'phone', phone: '0388201801' },
+      ]
+
       return (
         <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
           <AlertTriangle className="h-12 w-12 text-amber-500 mb-3" />
           <h4 className="font-semibold text-foreground mb-1">Connection Issue</h4>
           <p className="text-sm text-muted-foreground mb-2">
-            {errorMessage || "Unable to connect to the assistant."}
+            {displayMessage}
           </p>
-          {retryCount > 0 && (
+          {(localRetryCount > 0 || retryCount > 0) && (
             <p className="text-xs text-muted-foreground mb-4">
-              Attempt {retryCount} of 3
+              Attempt {localRetryCount + retryCount} of 3
             </p>
           )}
           <div className="flex flex-col sm:flex-row gap-2 w-full max-w-xs">
-            <Button
-              onClick={handleRetryWithBackoff}
-              variant="default"
-              size="sm"
-              disabled={isRetrying || retryCount >= 3}
-              className="flex-1"
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isRetrying ? 'animate-spin' : ''}`} />
-              {isRetrying ? 'Retrying...' : 'Try Again'}
-            </Button>
-            <Button onClick={handleCall} variant="outline" size="sm" className="flex-1">
-              <Phone className="h-4 w-4 mr-2" />
-              Call Us
-            </Button>
+            {actions.map((action, index) => (
+              <Button
+                key={index}
+                onClick={() => handleFallbackAction(action.action, action.phone)}
+                variant={index === 0 ? "default" : "outline"}
+                size="sm"
+                disabled={isRetrying && index === 0}
+                className="flex-1"
+              >
+                {action.action === 'retry' && (
+                  <RefreshCw className={`h-4 w-4 mr-2 ${isRetrying ? 'animate-spin' : ''}`} />
+                )}
+                {(action.action === 'phone' || action.action === 'callback') && (
+                  <Phone className="h-4 w-4 mr-2" />
+                )}
+                {action.label}
+              </Button>
+            ))}
           </div>
-          {retryCount >= 3 && (
+          {(localRetryCount + retryCount >= 3) && (
             <p className="text-xs text-muted-foreground mt-4">
               Still having issues? Please call us directly at{" "}
               <a href="tel:+61388201801" className="text-primary hover:underline">
