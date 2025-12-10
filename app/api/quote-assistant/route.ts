@@ -205,14 +205,14 @@ ADDITIONAL SERVICES (offer when relevant):
 - After Hours/Weekend: $400-500
 - Storage: $300/week`
 
-const lookupBusinessTool = tool({
+const lookupBusinessTool = {
   description:
     "Look up an Australian business by name or ABN. Use immediately when customer mentions their company name or ABN.",
-  parameters: z.object({
+  inputSchema: z.object({
     query: z.string().describe("Business name or ABN to search for"),
     searchType: z.string().describe("Type of search - 'name' or 'abn'"),
   }),
-  execute: async ({ query, searchType }) => {
+  execute: async ({ query, searchType }: { query: string; searchType: string }) => {
     try {
       const baseUrl = process.env.VERCEL_URL
         ? `https://${process.env.VERCEL_URL}`
@@ -254,17 +254,17 @@ const lookupBusinessTool = tool({
       return { success: false, error: "Lookup service unavailable", results: [] }
     }
   },
-})
+}
 
-const confirmBusinessTool = tool({
+const confirmBusinessTool = {
   description: "Confirm the business details after customer validates the lookup result",
-  parameters: z.object({
+  inputSchema: z.object({
     name: z.string().describe("Confirmed business name"),
     abn: z.string().describe("Confirmed ABN"),
     entityType: z.string().describe("Business entity type"),
     state: z.string().describe("Business state"),
   }),
-  execute: async ({ name, abn, entityType, state }) => {
+  execute: async ({ name, abn, entityType, state }: { name: string; abn: string; entityType: string; state: string }) => {
     return {
       success: true,
       confirmed: true,
@@ -276,17 +276,17 @@ const confirmBusinessTool = tool({
       message: `Great! I've got ${name} on file. Now, what type of move are you planning?`,
     }
   },
-})
+}
 
-const showServiceOptionsTool = tool({
+const showServiceOptionsTool = {
   description:
     "Display the visual service type picker for the customer to choose their move type. Use after business is confirmed or at start of conversation.",
-  parameters: z.object({
+  inputSchema: z.object({
     context: z
       .string()
       .describe("Brief context about why showing options, e.g. 'after_business_confirmed' or 'initial'"),
   }),
-  execute: async ({ context }) => {
+  execute: async ({ context }: { context: string }) => {
     return {
       success: true,
       showServicePicker: true,
@@ -300,15 +300,15 @@ const showServiceOptionsTool = tool({
       message: "Please select the type of move you need:",
     }
   },
-})
+}
 
-const checkAvailabilityTool = tool({
+const checkAvailabilityTool = {
   description: "Check available dates for scheduling. Use after generating a quote to show booking options.",
-  parameters: z.object({
+  inputSchema: z.object({
     monthName: z.string().describe("Month to check, e.g. 'December 2024'"),
     moveUrgency: z.string().describe("Urgency level - 'asap', 'flexible', or 'specific'"),
   }),
-  execute: async ({ monthName, moveUrgency }) => {
+  execute: async ({ monthName, moveUrgency }: { monthName: string; moveUrgency: string }) => {
     try {
       const baseUrl = process.env.VERCEL_URL
         ? `https://${process.env.VERCEL_URL}`
@@ -358,25 +358,25 @@ const checkAvailabilityTool = tool({
       }
     }
   },
-})
+}
 
-const confirmBookingDateTool = tool({
+const confirmBookingDateTool = {
   description: "Confirm a specific date the customer has selected",
-  parameters: z.object({
+  inputSchema: z.object({
     selectedDate: z.string().describe("Selected date in YYYY-MM-DD format"),
   }),
-  execute: async ({ selectedDate }) => {
+  execute: async ({ selectedDate }: { selectedDate: string }) => {
     return {
       success: true,
       confirmedDate: selectedDate,
       message: `Perfect! ${formatDate(selectedDate)} is locked in. Now I just need your contact details to finalise the booking.`,
     }
   },
-})
+}
 
-const calculateQuoteTool = tool({
+const calculateQuoteTool = {
   description: "Calculate quote estimate. Use once you have move type, size, and locations.",
-  parameters: z.object({
+  inputSchema: z.object({
     moveType: z.string().describe("Move type: office, warehouse, datacenter, it-equipment, or retail"),
     squareMeters: z.number().describe("Size in square metres"),
     originSuburb: z.string().describe("Origin suburb"),
@@ -391,6 +391,13 @@ const calculateQuoteTool = tool({
     destinationSuburb,
     estimatedDistanceKm,
     additionalServicesList,
+  }: {
+    moveType: string
+    squareMeters: number
+    originSuburb: string
+    destinationSuburb: string
+    estimatedDistanceKm: number
+    additionalServicesList: string
   }) => {
     const type = moveTypes[moveType as keyof typeof moveTypes] || moveTypes.office
     const effectiveSqm = Math.max(squareMeters, type.minSqm)
@@ -456,18 +463,30 @@ const calculateQuoteTool = tool({
       ],
     }
   },
-})
+}
 
-const collectContactInfoTool = tool({
+const collectContactInfoTool = {
   description: "Collect customer contact details before payment.",
-  parameters: z.object({
+  inputSchema: z.object({
     contactName: z.string().describe("Customer's full name"),
     email: z.string().describe("Customer's email"),
     phone: z.string().describe("Customer's phone number"),
     companyName: z.string().describe("Company name"),
     scheduledDate: z.string().describe("Moving date in YYYY-MM-DD format"),
   }),
-  execute: async ({ contactName, email, phone, companyName, scheduledDate }) => {
+  execute: async ({
+    contactName,
+    email,
+    phone,
+    companyName,
+    scheduledDate,
+  }: {
+    contactName: string
+    email: string
+    phone: string
+    companyName: string
+    scheduledDate: string
+  }) => {
     return {
       success: true,
       collected: true,
@@ -479,17 +498,27 @@ const collectContactInfoTool = tool({
       message: `Thanks ${contactName.split(" ")[0]}! To secure your booking for ${formatDate(scheduledDate)}, we just need the 50% deposit.`,
     }
   },
-})
+}
 
-const initiatePaymentTool = tool({
+const initiatePaymentTool = {
   description: "Show Stripe payment form for deposit.",
-  parameters: z.object({
+  inputSchema: z.object({
     amount: z.number().describe("Deposit amount in dollars"),
     customerEmail: z.string().describe("Customer email"),
     customerName: z.string().describe("Customer name"),
     description: z.string().describe("Payment description"),
   }),
-  execute: async ({ amount, customerEmail, customerName, description }) => {
+  execute: async ({
+    amount,
+    customerEmail,
+    customerName,
+    description,
+  }: {
+    amount: number
+    customerEmail: string
+    customerName: string
+    description: string
+  }) => {
     return {
       success: true,
       showPayment: true,
@@ -500,24 +529,34 @@ const initiatePaymentTool = tool({
       message: `Secure your booking with a $${amount.toLocaleString()} deposit. You'll receive a confirmation email and invoice once complete.`,
     }
   },
-})
+}
 
-const requestCallbackTool = tool({
+const requestCallbackTool = {
   description: "Request a callback for complex enquiries or when customer prefers to speak with someone.",
-  parameters: z.object({
+  inputSchema: z.object({
     name: z.string().describe("Customer name"),
     phone: z.string().describe("Phone number"),
     preferredTime: z.string().describe("Preferred callback time"),
     reason: z.string().describe("Brief reason for callback"),
   }),
-  execute: async ({ name, phone, preferredTime, reason }) => {
+  execute: async ({
+    name,
+    phone,
+    preferredTime,
+    reason,
+  }: {
+    name: string
+    phone: string
+    preferredTime: string
+    reason: string
+  }) => {
     return {
       success: true,
       callbackRequested: true,
       message: `No worries! I've arranged for our team to call you ${preferredTime}. They'll be in touch at ${phone} shortly.`,
     }
   },
-})
+}
 
 const tools = {
   lookupBusiness: lookupBusinessTool,
@@ -552,10 +591,17 @@ export async function POST(req: Request) {
       system: systemPrompt,
       messages: convertToCoreMessages(effectiveMessages),
       tools,
-      maxSteps: 5,
+      // maxSteps: 5, // Not supported in this version's types, relying on client-side loop or default
+
+      onFinish: (result) => {
+        console.log("[v0] streamText finish:", JSON.stringify(result.usage, null, 2))
+      },
+      onError: ({ error }) => {
+        console.error("[v0] streamText error:", error)
+      },
     })
 
-    return result.toDataStreamResponse()
+    return result.toTextStreamResponse()
   } catch (error) {
     console.error("[v0] Quote assistant error:", error)
     return new Response(JSON.stringify({ error: "Internal server error" }), {
