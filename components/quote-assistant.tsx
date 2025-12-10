@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react"
 import { useChat } from "@ai-sdk/react"
 
 import {
@@ -255,6 +255,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       "business" | "service" | "details" | "quote" | "date" | "contact" | "payment" | "complete"
     >("business")
     const [showInitialPrompts, setShowInitialPrompts] = useState(true)
+    const [messageQueue, setMessageQueue] = useState<string[]>([])
+    const [isFlushingQueue, setIsFlushingQueue] = useState(false)
+    const [optimisticQueue, setOptimisticQueue] = useState<string[]>([])
 
     // Loading states
     const [isLookingUpBusiness, setIsLookingUpBusiness] = useState(false)
@@ -326,6 +329,41 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     }, [paymentComplete, leadSubmitted])
 
     const isLoading = status === "streaming" || status === "submitted"
+    const pendingQueueCount = messageQueue.length + (isFlushingQueue ? 1 : 0)
+
+    const enqueueMessage = useCallback(
+      (rawText: string) => {
+        const text = rawText.trim()
+        if (!text) return
+
+        if (isLoading || isFlushingQueue || messageQueue.length > 0) {
+          setMessageQueue((prev) => [...prev, text])
+          setOptimisticQueue((prev) => [...prev, text])
+        } else {
+          sendMessage({ text })
+        }
+      },
+      [isFlushingQueue, isLoading, messageQueue.length, sendMessage],
+    )
+
+    useEffect(() => {
+      if (!isLoading && !isFlushingQueue && messageQueue.length > 0) {
+        const nextMessage = messageQueue[0]
+        setIsFlushingQueue(true)
+        setMessageQueue((prev) => prev.slice(1))
+        setOptimisticQueue((prev) => prev.slice(1))
+
+        Promise.resolve(sendMessage({ text: nextMessage }))
+          .catch((err) => {
+            console.error("Failed to send queued message:", err)
+            setMessageQueue((prev) => [nextMessage, ...prev])
+            setOptimisticQueue((prev) => [nextMessage, ...prev])
+          })
+          .finally(() => {
+            setIsFlushingQueue(false)
+          })
+      }
+    }, [isFlushingQueue, isLoading, messageQueue, sendMessage])
 
     useEffect(() => {
       const lastMessage = messages[messages.length - 1]
@@ -508,11 +546,11 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       if ((isOpen || embedded) && !hasStarted && messages.length === 0) {
         setHasStarted(true)
         const timer = setTimeout(() => {
-          sendMessage({ text: "Hi, I'd like to get a quote for a commercial move." })
+          enqueueMessage("Hi, I'd like to get a quote for a commercial move.")
         }, 800)
         return () => clearTimeout(timer)
       }
-    }, [isOpen, embedded, hasStarted, messages.length, sendMessage])
+    }, [enqueueMessage, isOpen, embedded, hasStarted, messages.length])
 
     const [userHasScrolledUp, setUserHasScrolledUp] = useState(false)
     const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
@@ -608,7 +646,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             setInputValue(transcript)
             setIsListening(false)
             setTimeout(() => {
-              sendMessage({ text: transcript })
+              enqueueMessage(transcript)
               setInputValue("")
             }, 300)
           }
@@ -617,7 +655,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           recognitionRef.current = recognition
         }
       }
-    }, [sendMessage])
+    }, [enqueueMessage])
 
     const toggleListening = () => {
       if (!recognitionRef.current) return
@@ -632,8 +670,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     }
 
     const handleSendMessage = () => {
-      if (!inputValue.trim() || isLoading) return
-      const text = inputValue
+      const text = inputValue.trim()
+      if (!text) return
       setInputValue("")
       setBusinessLookupResults(null)
       setShowServicePicker(false)
@@ -650,7 +688,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         setIsCheckingAvailability(true)
       }
 
-      sendMessage({ text })
+      enqueueMessage(text)
     }
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -663,17 +701,13 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const handleSelectBusiness = (business: BusinessResult) => {
       setConfirmedBusiness(business)
       setBusinessLookupResults(null)
-      sendMessage({
-        text: `Yes, that's correct - ${business.name} (ABN: ${business.abn})`,
-      })
+      enqueueMessage(`Yes, that's correct - ${business.name} (ABN: ${business.abn})`)
     }
 
     const handleSelectService = (service: ServiceOption) => {
       setShowServicePicker(false)
       setCurrentStep("details")
-      sendMessage({
-        text: `I need ${service.name}`,
-      })
+      enqueueMessage(`I need ${service.name}`)
     }
 
     const handleSelectDate = (date: string) => {
@@ -685,14 +719,12 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         month: "long",
         year: "numeric",
       })
-      sendMessage({
-        text: `I'd like to book for ${formattedDate}`,
-      })
+      enqueueMessage(`I'd like to book for ${formattedDate}`)
     }
 
     const handlePromptClick = (prompt: string) => {
       setShowInitialPrompts(false)
-      sendMessage({ text: prompt })
+      enqueueMessage(prompt)
     }
 
     const handlePaymentComplete = async () => {
@@ -727,15 +759,16 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           setIsSubmittingLead(false)
         }
       }
-      sendMessage({
-        text: "I've completed the payment.",
-      })
+      enqueueMessage("I've completed the payment.")
     }
 
     const handleRetry = () => {
       setHasError(false)
       setErrorMessage(null)
       setHasStarted(false)
+      setMessageQueue([])
+      setOptimisticQueue([])
+      setIsFlushingQueue(false)
     }
 
     const handleCall = () => {
@@ -912,7 +945,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           <Button
             className="w-full mt-2"
             onClick={() => {
-              sendMessage({ text: "The quote looks good. What dates are available?" })
+              enqueueMessage("The quote looks good. What dates are available?")
               setIsCheckingAvailability(true)
             }}
           >
@@ -949,9 +982,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           <button
             onClick={() => {
               setBusinessLookupResults(null)
-              sendMessage({
-                text: "None of these match my business. I'll enter the details manually."
-              })
+              enqueueMessage("None of these match my business. I'll enter the details manually.")
             }}
             className="w-full flex items-center gap-3 p-3 rounded-lg border border-dashed border-muted-foreground/50 bg-transparent hover:bg-muted/50 hover:border-primary/50 transition-all text-left text-sm text-muted-foreground hover:text-foreground"
           >
@@ -1258,6 +1289,15 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
                     </div>
                   ))}
 
+                  {optimisticQueue.map((queuedText, index) => (
+                    <div key={`queued-${index}`} className="flex justify-end opacity-80">
+                      <div className="max-w-[85%] rounded-lg px-3 py-2 bg-primary/70 text-primary-foreground border border-primary/40">
+                        <div className="text-[11px] uppercase tracking-wide text-primary-foreground/80">Queued</div>
+                        <div className="text-sm">{queuedText}</div>
+                      </div>
+                    </div>
+                  ))}
+
                   {/* Show initial prompts at start */}
                   {showInitialPrompts && messages.length <= 1 && !isLoading && (
                     <InitialPrompts onSelect={handlePromptClick} />
@@ -1321,6 +1361,21 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
                     </div>
                   )}
 
+                  {pendingQueueCount > 0 && (
+                    <div className="flex justify-start">
+                      <div className="bg-muted rounded-lg px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                          <span className="text-xs text-muted-foreground">
+                            {pendingQueueCount === 1
+                              ? "We'll send your selection as soon as Maya finishes."
+                              : `We'll send your ${pendingQueueCount} queued messages as soon as Maya finishes.`}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div ref={messagesEndRef} />
                 </>
               )}
@@ -1335,7 +1390,6 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
                     size="icon"
                     className={`h-9 w-9 flex-shrink-0 ${isListening ? "bg-red-500/20 text-red-500" : ""}`}
                     onClick={toggleListening}
-                    disabled={isLoading}
                     aria-label={isListening ? "Stop voice input" : "Start voice input"}
                     title={isListening ? "Stop voice input" : "Start voice input"}
                   >
@@ -1347,14 +1401,14 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder={isListening ? "Listening..." : "Type your message..."}
-                    disabled={isLoading || isListening}
+                    disabled={isListening}
                     className="flex-1"
                   />
                   <Button
                     size="icon"
                     className="h-9 w-9 flex-shrink-0"
                     onClick={handleSendMessage}
-                    disabled={!inputValue.trim() || isLoading}
+                    disabled={!inputValue.trim() || isListening}
                   >
                     <Send className="h-4 w-4" />
                   </Button>
