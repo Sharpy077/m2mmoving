@@ -30,6 +30,8 @@ import {
 import { format } from "date-fns"
 import { loadStripe } from "@stripe/stripe-js"
 import { EmbeddedCheckout, EmbeddedCheckoutProvider } from "@stripe/react-stripe-js"
+import { createCheckoutSession } from "@/app/actions/create-checkout-session"
+import { sendBookingConfirmation } from "@/app/actions/send-confirmation"
 
 const M2M_PHONE = "03 8820 1801"
 const M2M_PHONE_LINK = "tel:0388201801"
@@ -138,6 +140,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
   })
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   // Memoize transport to prevent recreation
   const transport = useMemo(
@@ -161,6 +164,34 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
+
+  useEffect(() => {
+    if (
+      !showServicePicker &&
+      isVisible &&
+      !showABNLookup &&
+      !showAddressInput &&
+      !showDatePicker &&
+      !showTimePicker &&
+      !showPayment &&
+      !showConfirmation
+    ) {
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => {
+        inputRef.current?.focus()
+      }, 300)
+      return () => clearTimeout(timer)
+    }
+  }, [
+    showServicePicker,
+    isVisible,
+    showABNLookup,
+    showAddressInput,
+    showDatePicker,
+    showTimePicker,
+    showPayment,
+    showConfirmation,
+  ])
 
   useImperativeHandle(ref, () => ({
     open: () => setIsVisible(true),
@@ -247,22 +278,24 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
   const initiatePayment = async () => {
     setIsProcessingPayment(true)
     try {
-      const response = await fetch("/app/actions/create-checkout-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount: 20000, // $200 deposit in cents
-          description: `M&M Moving Deposit - ${bookingData.serviceType}`,
-          metadata: {
-            serviceType: bookingData.serviceType,
-            businessName: bookingData.business?.name,
-            contactEmail: bookingData.contactEmail,
-          },
-        }),
+      // Calculate 50% deposit - if quoteAmount is 0, default to minimum $500 quote = $250 deposit
+      const quoteTotal = bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 500
+      const depositAmount = Math.round(quoteTotal * 0.5 * 100) // 50% in cents
+
+      const result = await createCheckoutSession({
+        amount: depositAmount,
+        description: `M&M Moving 50% Deposit - ${bookingData.serviceType} (Total Quote: $${quoteTotal})`,
+        metadata: {
+          serviceType: bookingData.serviceType,
+          businessName: bookingData.business?.name || "",
+          contactEmail: bookingData.contactEmail,
+          quoteTotal: quoteTotal.toString(),
+          depositPercent: "50",
+        },
       })
-      const data = await response.json()
-      if (data.clientSecret) {
-        setPaymentClientSecret(data.clientSecret)
+
+      if (result.clientSecret) {
+        setPaymentClientSecret(result.clientSecret)
         setShowPayment(true)
       }
     } catch (err) {
@@ -272,13 +305,41 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     }
   }
 
-  // Form submission
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (input.trim() && !isLoading) {
-      sendMessage({ text: input.trim() })
-      setInput("")
+  const handlePaymentComplete = async () => {
+    const quoteTotal = bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 500
+    const depositPaid = quoteTotal * 0.5
+
+    // Generate quote reference
+    const quoteRef = `MM-${Date.now().toString(36).toUpperCase()}`
+    setBookingData((prev) => ({ ...prev, quoteReference: quoteRef }))
+
+    // Send confirmation email and SMS
+    try {
+      await sendBookingConfirmation({
+        quoteReference: quoteRef,
+        customerName: bookingData.contactName || "Customer",
+        customerEmail: bookingData.contactEmail,
+        customerPhone: bookingData.contactPhone,
+        businessName: bookingData.business?.name || "",
+        businessABN: bookingData.business?.abn || "",
+        serviceType: bookingData.serviceType,
+        originAddress: bookingData.originAddress
+          ? `${bookingData.originAddress.street}, ${bookingData.originAddress.suburb} ${bookingData.originAddress.state} ${bookingData.originAddress.postcode}`
+          : "",
+        destinationAddress: bookingData.destinationAddress
+          ? `${bookingData.destinationAddress.street}, ${bookingData.destinationAddress.suburb} ${bookingData.destinationAddress.state} ${bookingData.destinationAddress.postcode}`
+          : "",
+        moveDate: bookingData.preferredDate ? format(bookingData.preferredDate, "PPP") : "",
+        moveTime: bookingData.preferredTime,
+        quoteAmount: quoteTotal,
+        depositPaid: depositPaid,
+      })
+    } catch (error) {
+      console.error("Failed to send confirmations:", error)
     }
+
+    setShowPayment(false)
+    setShowConfirmation(true)
   }
 
   // Render service picker
@@ -462,26 +523,51 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
   )
 
   // Render Payment
-  const renderPayment = () => (
-    <Card className="m-4 border-purple-200 bg-purple-50 dark:bg-purple-950/20">
-      <CardContent className="p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <CreditCard className="h-5 w-5 text-purple-500" />
-          <p className="font-medium text-foreground">Secure Payment - $200 Deposit</p>
-        </div>
-        {paymentClientSecret ? (
-          <EmbeddedCheckoutProvider stripe={stripePromise} options={{ clientSecret: paymentClientSecret }}>
-            <EmbeddedCheckout />
-          </EmbeddedCheckoutProvider>
-        ) : (
-          <div className="text-center py-4">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto text-purple-500" />
-            <p className="text-sm text-muted-foreground mt-2">Loading payment form...</p>
+  const renderPayment = () => {
+    const quoteTotal = bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 500
+    const depositAmount = quoteTotal * 0.5
+
+    return (
+      <Card className="m-4 border-purple-200 bg-purple-50 dark:bg-purple-950/20">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <CreditCard className="h-5 w-5 text-purple-500" />
+            <p className="font-medium text-foreground">Secure Payment</p>
           </div>
-        )}
-      </CardContent>
-    </Card>
-  )
+          <div className="bg-white dark:bg-background rounded-lg p-3 mb-4 border">
+            <div className="flex justify-between text-sm mb-1">
+              <span>Quote Total:</span>
+              <span className="font-medium">${quoteTotal.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-sm mb-1">
+              <span>Deposit Required (50%):</span>
+              <span className="font-semibold text-purple-600">${depositAmount.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>Balance Due on Move Day:</span>
+              <span>${depositAmount.toFixed(2)}</span>
+            </div>
+          </div>
+          {paymentClientSecret ? (
+            <EmbeddedCheckoutProvider
+              stripe={stripePromise}
+              options={{
+                clientSecret: paymentClientSecret,
+                onComplete: handlePaymentComplete,
+              }}
+            >
+              <EmbeddedCheckout />
+            </EmbeddedCheckoutProvider>
+          ) : (
+            <div className="text-center py-4">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto text-purple-500" />
+              <p className="text-sm text-muted-foreground mt-2">Loading payment form...</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    )
+  }
 
   // Render Confirmation
   const renderConfirmation = () => (
@@ -510,6 +596,14 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
       </CardContent>
     </Card>
   )
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (input.trim()) {
+      sendMessage({ text: input })
+      setInput("")
+    }
+  }
 
   if (!isVisible) return null
 
@@ -575,16 +669,16 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
         )}
       </div>
 
-      {/* Input */}
+      {/* Input - updated with ref */}
       <div className="p-4 border-t">
         <form onSubmit={handleSubmit} className="flex gap-2">
           <Input
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type your message..."
             disabled={isLoading}
             className="flex-1"
-            autoFocus={false}
             autoComplete="off"
           />
           <Button type="submit" disabled={!input.trim() || isLoading} className="bg-orange-500 hover:bg-orange-600">

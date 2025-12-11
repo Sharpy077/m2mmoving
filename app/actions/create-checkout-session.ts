@@ -15,7 +15,7 @@ export async function createCheckoutSession(data: {
         price_data: {
           currency: "aud",
           product_data: {
-            name: "M&M Moving Deposit",
+            name: "M&M Moving - 50% Deposit",
             description: data.description,
           },
           unit_amount: data.amount,
@@ -25,6 +25,10 @@ export async function createCheckoutSession(data: {
     ],
     mode: "payment",
     metadata: data.metadata,
+    payment_intent_data: {
+      metadata: data.metadata,
+      description: data.description,
+    },
   })
 
   return { clientSecret: session.client_secret }
