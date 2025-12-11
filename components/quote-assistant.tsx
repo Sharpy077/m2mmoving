@@ -399,7 +399,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     // ============================================
     // useChat HOOK - MUST BE DECLARED EARLY
     // ============================================
-    const { messages, append, status, error } = useChat({
+    const chatResult = useChat({
       // @ts-ignore
       api: "/api/quote-assistant",
       id: conversationId,
@@ -432,6 +432,14 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         }
       },
     })
+
+    console.log("[v0] useChat result:", chatResult)
+    console.log("[v0] useChat append:", typeof chatResult?.append)
+
+    const messages = chatResult?.messages || []
+    const append = chatResult?.append
+    const status = chatResult?.status
+    const error = chatResult?.error
 
     // ============================================
     // DERIVED STATE
