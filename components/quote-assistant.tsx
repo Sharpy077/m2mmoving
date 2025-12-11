@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Calendar } from "@/components/ui/calendar"
 import {
   Send,
   Building2,
@@ -26,6 +25,8 @@ import {
   CreditCard,
   CheckCircle2,
   Loader2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 import { loadStripe } from "@stripe/stripe-js"
 import { EmbeddedCheckout, EmbeddedCheckoutProvider } from "@stripe/react-stripe-js"
@@ -153,6 +154,9 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     state: "VIC",
     postcode: "",
   })
+
+  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
+  const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -517,23 +521,109 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
   )
 
   // Render Date Picker
-  const renderDatePicker = () => (
-    <Card className="m-4 border-green-200 bg-green-50 dark:bg-green-950/20">
-      <CardContent className="p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <CalendarIcon className="h-5 w-5 text-green-500" />
-          <p className="font-medium text-foreground">Select Move Date</p>
-        </div>
-        <Calendar
-          mode="single"
-          selected={bookingData.preferredDate || undefined}
-          onSelect={handleDateSelect}
-          disabled={(date) => date < new Date()}
-          className="rounded-md border bg-background"
-        />
-      </CardContent>
-    </Card>
-  )
+  const renderDatePicker = () => {
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate()
+    const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay()
+    const monthNames = [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ]
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+    const days: (number | null)[] = []
+    for (let i = 0; i < firstDayOfMonth; i++) {
+      days.push(null)
+    }
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push(i)
+    }
+
+    const handlePrevMonth = () => {
+      if (currentMonth === 0) {
+        setCurrentMonth(11)
+        setCurrentYear(currentYear - 1)
+      } else {
+        setCurrentMonth(currentMonth - 1)
+      }
+    }
+
+    const handleNextMonth = () => {
+      if (currentMonth === 11) {
+        setCurrentMonth(0)
+        setCurrentYear(currentYear + 1)
+      } else {
+        setCurrentMonth(currentMonth + 1)
+      }
+    }
+
+    const isDateDisabled = (day: number) => {
+      const date = new Date(currentYear, currentMonth, day)
+      return date < new Date()
+    }
+
+    const handleDayClick = (day: number) => {
+      if (!isDateDisabled(day)) {
+        const selectedDate = new Date(currentYear, currentMonth, day)
+        handleDateSelect(selectedDate)
+      }
+    }
+
+    return (
+      <Card className="m-4 border-green-200 bg-green-50 dark:bg-green-950/20">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <CalendarIcon className="h-5 w-5 text-green-500" />
+            <p className="font-medium text-foreground">Select Move Date</p>
+          </div>
+          <div className="bg-background rounded-md border p-3">
+            <div className="flex items-center justify-between mb-4">
+              <Button variant="ghost" size="icon" onClick={handlePrevMonth}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="font-medium">
+                {monthNames[currentMonth]} {currentYear}
+              </span>
+              <Button variant="ghost" size="icon" onClick={handleNextMonth}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-center text-xs text-muted-foreground mb-2">
+              {dayNames.map((day) => (
+                <div key={day}>{day}</div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {days.map((day, index) => (
+                <div key={index} className="aspect-square">
+                  {day && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={`w-full h-full p-0 ${isDateDisabled(day) ? "opacity-30 cursor-not-allowed" : "hover:bg-green-100 dark:hover:bg-green-900/30"}`}
+                      onClick={() => handleDayClick(day)}
+                      disabled={isDateDisabled(day)}
+                    >
+                      {day}
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   // Render Time Picker
   const renderTimePicker = () => (
