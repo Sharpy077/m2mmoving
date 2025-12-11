@@ -27,7 +27,6 @@ import {
   CheckCircle2,
   Loader2,
 } from "lucide-react"
-import { format } from "date-fns"
 import { loadStripe } from "@stripe/stripe-js"
 import { EmbeddedCheckout, EmbeddedCheckoutProvider } from "@stripe/react-stripe-js"
 import { createCheckoutSession } from "@/app/actions/create-checkout-session"
@@ -37,6 +36,22 @@ const M2M_PHONE = "03 8820 1801"
 const M2M_PHONE_LINK = "tel:0388201801"
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
+
+function formatDate(date: Date, style: "full" | "short" = "full"): string {
+  if (style === "full") {
+    return date.toLocaleDateString("en-AU", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })
+  }
+  return date.toLocaleDateString("en-AU", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  })
+}
 
 // Service options for the picker
 const serviceOptions = [
@@ -295,7 +310,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
   const handleTimeSelect = (time: string) => {
     setBookingData((prev) => ({ ...prev, preferredTime: time }))
     setShowTimePicker(false)
-    const dateStr = bookingData.preferredDate ? format(bookingData.preferredDate, "EEEE, MMMM do yyyy") : ""
+    const dateStr = bookingData.preferredDate ? formatDate(bookingData.preferredDate, "full") : ""
     sendMessage({ text: `I'd like to book for ${dateStr} at ${time}` })
   }
 
@@ -354,7 +369,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
         destinationAddress: bookingData.destinationAddress
           ? `${bookingData.destinationAddress.street}, ${bookingData.destinationAddress.suburb} ${bookingData.destinationAddress.state} ${bookingData.destinationAddress.postcode}`
           : "",
-        moveDate: bookingData.preferredDate ? format(bookingData.preferredDate, "PPP") : "",
+        moveDate: bookingData.preferredDate ? formatDate(bookingData.preferredDate, "short") : "",
         moveTime: bookingData.preferredTime,
         quoteAmount: quoteTotal,
         depositPaid: depositPaid,
@@ -529,7 +544,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
           <p className="font-medium text-foreground">Select Time Slot</p>
         </div>
         <p className="text-sm text-muted-foreground mb-3">
-          {bookingData.preferredDate && format(bookingData.preferredDate, "EEEE, MMMM do yyyy")}
+          {bookingData.preferredDate && formatDate(bookingData.preferredDate, "short")}
         </p>
         <div className="grid grid-cols-2 gap-2">
           {["7:00 AM - 12:00 PM", "12:00 PM - 5:00 PM", "Custom Time"].map((time) => (
@@ -609,7 +624,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
             <strong>Business:</strong> {bookingData.business?.name}
           </p>
           <p>
-            <strong>Date:</strong> {bookingData.preferredDate && format(bookingData.preferredDate, "PPP")}
+            <strong>Date:</strong> {bookingData.preferredDate && formatDate(bookingData.preferredDate, "short")}
           </p>
           <p>
             <strong>Time:</strong> {bookingData.preferredTime}
