@@ -1,4 +1,4 @@
--- Create escalation tickets table for human handoff
+-- Create escalation tickets table for human handoff tracking
 CREATE TABLE IF NOT EXISTS escalation_tickets (
   id TEXT PRIMARY KEY,
   conversation_id TEXT NOT NULL,
@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS escalation_tickets (
     'technical_failure'
   )),
   urgency TEXT NOT NULL CHECK (urgency IN ('low', 'medium', 'high', 'critical')),
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'assigned', 'in_progress', 'resolved', 'closed')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'assigned', 'in_progress', 'resolved')),
   customer_data JSONB,
   conversation_summary TEXT,
   error_count INTEGER DEFAULT 0,
@@ -28,108 +28,85 @@ CREATE TABLE IF NOT EXISTS escalation_tickets (
 CREATE TABLE IF NOT EXISTS conversation_analytics (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   conversation_id TEXT NOT NULL,
-  session_id TEXT,
-  started_at TIMESTAMPTZ NOT NULL,
-  ended_at TIMESTAMPTZ,
-  final_stage TEXT,
-  converted BOOLEAN DEFAULT FALSE,
-  quote_amount NUMERIC,
-  deposit_paid BOOLEAN DEFAULT FALSE,
-  error_count INTEGER DEFAULT 0,
+  start_time TIMESTAMPTZ NOT NULL,
+  end_time TIMESTAMPTZ,
+  duration_ms INTEGER,
   message_count INTEGER DEFAULT 0,
-  avg_response_time_ms INTEGER,
-  escalated BOOLEAN DEFAULT FALSE,
-  escalation_reason TEXT,
-  recovery_attempted BOOLEAN DEFAULT FALSE,
-  recovery_successful BOOLEAN,
-  user_agent TEXT,
-  device_type TEXT,
+  user_message_count INTEGER DEFAULT 0,
+  assistant_message_count INTEGER DEFAULT 0,
+  error_count INTEGER DEFAULT 0,
+  retry_count INTEGER DEFAULT 0,
+  stage_progression TEXT[] DEFAULT '{}',
+  completion_status TEXT CHECK (completion_status IN ('in_progress', 'completed', 'abandoned', 'escalated')),
+  -- Conversion funnel
+  started_conversation BOOLEAN DEFAULT true,
+  business_identified BOOLEAN DEFAULT false,
+  service_selected BOOLEAN DEFAULT false,
+  quote_generated BOOLEAN DEFAULT false,
+  date_selected BOOLEAN DEFAULT false,
+  contact_collected BOOLEAN DEFAULT false,
+  payment_initiated BOOLEAN DEFAULT false,
+  payment_completed BOOLEAN DEFAULT false,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Create conversation stage history for funnel analysis
-CREATE TABLE IF NOT EXISTS conversation_stage_history (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  conversation_id TEXT NOT NULL,
-  stage TEXT NOT NULL,
-  entered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  exited_at TIMESTAMPTZ,
-  duration_seconds INTEGER,
-  error_occurred BOOLEAN DEFAULT FALSE,
-  user_messages_in_stage INTEGER DEFAULT 0
+-- Create session recovery table for server-side persistence
+CREATE TABLE IF NOT EXISTS conversation_sessions (
+  conversation_id TEXT PRIMARY KEY,
+  context JSONB NOT NULL,
+  messages JSONB NOT NULL DEFAULT '[]',
+  last_updated TIMESTAMPTZ DEFAULT NOW(),
+  version INTEGER DEFAULT 2,
+  expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '7 days')
 );
 
--- Create re-engagement messages log
-CREATE TABLE IF NOT EXISTS reengagement_messages (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  conversation_id TEXT NOT NULL,
-  message_type TEXT NOT NULL CHECK (message_type IN ('idle_warning', 'idle_final', 'recovery_offer', 'special_offer')),
-  sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  user_responded BOOLEAN DEFAULT FALSE,
-  responded_at TIMESTAMPTZ
-);
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_escalation_status ON escalation_tickets(status);
+CREATE INDEX IF NOT EXISTS idx_escalation_urgency ON escalation_tickets(urgency);
+CREATE INDEX IF NOT EXISTS idx_escalation_created ON escalation_tickets(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_analytics_conversation ON conversation_analytics(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_analytics_status ON conversation_analytics(completion_status);
+CREATE INDEX IF NOT EXISTS idx_analytics_created ON conversation_analytics(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON conversation_sessions(expires_at);
 
--- Create indexes for efficient querying
-CREATE INDEX IF NOT EXISTS idx_escalation_tickets_status ON escalation_tickets(status);
-CREATE INDEX IF NOT EXISTS idx_escalation_tickets_urgency ON escalation_tickets(urgency);
-CREATE INDEX IF NOT EXISTS idx_escalation_tickets_created ON escalation_tickets(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_conversation_analytics_conv_id ON conversation_analytics(conversation_id);
-CREATE INDEX IF NOT EXISTS idx_conversation_analytics_started ON conversation_analytics(started_at DESC);
-CREATE INDEX IF NOT EXISTS idx_conversation_analytics_converted ON conversation_analytics(converted);
-CREATE INDEX IF NOT EXISTS idx_stage_history_conv_id ON conversation_stage_history(conversation_id);
-CREATE INDEX IF NOT EXISTS idx_reengagement_conv_id ON reengagement_messages(conversation_id);
+-- Trigger to update updated_at on escalation tickets
+CREATE OR REPLACE FUNCTION update_escalation_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
--- Enable RLS
+DROP TRIGGER IF EXISTS escalation_updated_at ON escalation_tickets;
+CREATE TRIGGER escalation_updated_at
+  BEFORE UPDATE ON escalation_tickets
+  FOR EACH ROW
+  EXECUTE FUNCTION update_escalation_updated_at();
+
+-- Function to clean up expired sessions
+CREATE OR REPLACE FUNCTION cleanup_expired_sessions()
+RETURNS INTEGER AS $$
+DECLARE
+  deleted_count INTEGER;
+BEGIN
+  DELETE FROM conversation_sessions WHERE expires_at < NOW();
+  GET DIAGNOSTICS deleted_count = ROW_COUNT;
+  RETURN deleted_count;
+END;
+$$ LANGUAGE plpgsql;
+
+-- RLS Policies
 ALTER TABLE escalation_tickets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE conversation_analytics ENABLE ROW LEVEL SECURITY;
-ALTER TABLE conversation_stage_history ENABLE ROW LEVEL SECURITY;
-ALTER TABLE reengagement_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE conversation_sessions ENABLE ROW LEVEL SECURITY;
 
--- RLS policies for escalation_tickets
-CREATE POLICY "Allow service role full access to escalation_tickets"
-  ON escalation_tickets FOR ALL
-  USING (true)
-  WITH CHECK (true);
+-- Allow service role full access
+CREATE POLICY "Service role full access to escalation_tickets" ON escalation_tickets
+  FOR ALL USING (true) WITH CHECK (true);
 
-CREATE POLICY "Allow authenticated read escalation_tickets"
-  ON escalation_tickets FOR SELECT
-  TO authenticated
-  USING (true);
+CREATE POLICY "Service role full access to conversation_analytics" ON conversation_analytics
+  FOR ALL USING (true) WITH CHECK (true);
 
--- RLS policies for conversation_analytics  
-CREATE POLICY "Allow service role full access to conversation_analytics"
-  ON conversation_analytics FOR ALL
-  USING (true)
-  WITH CHECK (true);
-
-CREATE POLICY "Allow public insert conversation_analytics"
-  ON conversation_analytics FOR INSERT
-  TO anon
-  WITH CHECK (true);
-
-CREATE POLICY "Allow authenticated read conversation_analytics"
-  ON conversation_analytics FOR SELECT
-  TO authenticated
-  USING (true);
-
--- RLS policies for conversation_stage_history
-CREATE POLICY "Allow service role full access to stage_history"
-  ON conversation_stage_history FOR ALL
-  USING (true)
-  WITH CHECK (true);
-
-CREATE POLICY "Allow public insert stage_history"
-  ON conversation_stage_history FOR INSERT
-  TO anon
-  WITH CHECK (true);
-
--- RLS policies for reengagement_messages
-CREATE POLICY "Allow service role full access to reengagement"
-  ON reengagement_messages FOR ALL
-  USING (true)
-  WITH CHECK (true);
-
-CREATE POLICY "Allow public insert reengagement"
-  ON reengagement_messages FOR INSERT
-  TO anon
-  WITH CHECK (true);
+CREATE POLICY "Service role full access to conversation_sessions" ON conversation_sessions
+  FOR ALL USING (true) WITH CHECK (true);

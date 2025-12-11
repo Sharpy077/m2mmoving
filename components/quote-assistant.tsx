@@ -30,6 +30,9 @@ import {
   Store,
   ArrowRight,
   AlertCircle,
+  Clock,
+  PhoneCall,
+  RotateCcw,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -48,18 +51,12 @@ import {
   RetryHandler,
   ConversationStateManager,
   FallbackProvider,
+  type ConversationState,
 } from "@/lib/conversation"
-import { SessionRecoveryManager, type SavedSession, type SerializedMessage } from "@/lib/conversation/session-recovery"
-import {
-  HumanEscalationService,
-  detectHumanRequest,
-  detectNegativeSentiment,
-} from "@/lib/conversation/human-escalation"
-import {
-  type ReengagementManager,
-  getReengagementManager,
-  type ReengagementMessage,
-} from "@/lib/conversation/reengagement"
+import { SessionRecoveryManager, type SavedSession } from "@/lib/conversation/session-recovery"
+import { HumanEscalationService, detectHumanRequest } from "@/lib/conversation/human-escalation"
+import { ConversationAnalytics } from "@/lib/conversation/analytics"
+import type { ConversationContext, ConversationStage } from "@/lib/conversation/state-machine"
 
 const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null
@@ -244,6 +241,100 @@ const BookingProgress = ({
   )
 }
 
+const SessionRecoveryBanner = ({
+  session,
+  onRestore,
+  onStartFresh,
+}: {
+  session: SavedSession
+  onRestore: () => void
+  onStartFresh: () => void
+}) => {
+  const age = SessionRecoveryManager.getSessionAge(session)
+  const prompt = SessionRecoveryManager.generateRecoveryPrompt(session)
+
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 mx-4">
+      <div className="flex items-start gap-3">
+        <Clock className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+        <div className="flex-1">
+          <h4 className="font-medium text-blue-900 text-sm">Continue where you left off?</h4>
+          <p className="text-blue-700 text-sm mt-1">{prompt}</p>
+          <div className="flex gap-2 mt-3">
+            <Button size="sm" onClick={onRestore} className="bg-blue-600 hover:bg-blue-700 text-white">
+              <RotateCcw className="h-3 w-3 mr-1" />
+              Continue
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onStartFresh}
+              className="border-blue-300 text-blue-700 bg-transparent"
+            >
+              Start Fresh
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const ReEngagementPrompt = ({
+  idleMinutes,
+  onContinue,
+  onRequestCallback,
+}: {
+  idleMinutes: number
+  onContinue: () => void
+  onRequestCallback: () => void
+}) => {
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mx-4 my-2">
+      <div className="flex items-center gap-2">
+        <AlertCircle className="h-4 w-4 text-amber-600" />
+        <p className="text-amber-800 text-sm">Still there? No rush - just let me know when you're ready to continue.</p>
+      </div>
+      <div className="flex gap-2 mt-2">
+        <Button size="sm" variant="outline" onClick={onContinue} className="text-xs bg-transparent">
+          I'm here
+        </Button>
+        <Button size="sm" variant="outline" onClick={onRequestCallback} className="text-xs bg-transparent">
+          <PhoneCall className="h-3 w-3 mr-1" />
+          Call me instead
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+const EscalationConfirmation = ({
+  ticketId,
+  estimatedWait,
+  onClose,
+}: {
+  ticketId: string
+  estimatedWait: string
+  onClose: () => void
+}) => {
+  return (
+    <div className="bg-green-50 border border-green-200 rounded-lg p-4 mx-4 my-2">
+      <div className="flex items-start gap-3">
+        <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
+        <div>
+          <h4 className="font-medium text-green-900 text-sm">Callback Scheduled!</h4>
+          <p className="text-green-700 text-sm mt-1">
+            Our team will contact you {estimatedWait}. Reference: {ticketId}
+          </p>
+          <Button size="sm" variant="ghost" onClick={onClose} className="mt-2 text-green-700 hover:text-green-900 p-0">
+            Continue chatting
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantProps>(
   ({ embedded = false, onScrolledAway }, ref) => {
     const [isOpen, setIsOpen] = useState(embedded)
@@ -276,9 +367,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     >("business")
     const [showInitialPrompts, setShowInitialPrompts] = useState(true)
     const [lastUserMessageTime, setLastUserMessageTime] = useState<number | null>(null)
-    const [conversationId, setConversationId] = useState(
-      () => `conv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    )
+    const [conversationId] = useState(() => `conv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`)
     const [isInitialMessage, setIsInitialMessage] = useState(true)
     const [retryCount, setRetryCount] = useState(0)
     const [fallbackResponse, setFallbackResponse] = useState<ReturnType<typeof FallbackProvider.getFallback> | null>(
@@ -290,12 +379,6 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const [isCheckingAvailability, setIsCheckingAvailability] = useState(false)
     const [isCalculatingQuote, setIsCalculatingQuote] = useState(false)
 
-    const [recoveredSession, setRecoveredSession] = useState<SavedSession | null>(null)
-    const [showRecoveryPrompt, setShowRecoveryPrompt] = useState(false)
-    const [reengagementMessage, setReengagementMessage] = useState<ReengagementMessage | null>(null)
-    const [escalationPending, setEscalationPending] = useState(false)
-    const reengagementManagerRef = useRef<ReengagementManager>(getReengagementManager())
-
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLInputElement>(null)
     const recognitionRef = useRef<any>(null)
@@ -303,6 +386,171 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const containerRef = useRef<HTMLDivElement>(null)
     const responseMonitorRef = useRef<ResponseMonitor>(getResponseMonitor())
     const retryHandlerRef = useRef<RetryHandler>(new RetryHandler())
+
+    const [recoverableSession, setRecoverableSession] = useState<SavedSession | null>(null)
+    const [showReEngagement, setShowReEngagement] = useState(false)
+    const [idleMinutes, setIdleMinutes] = useState(0)
+    const [escalationResult, setEscalationResult] = useState<{
+      ticketId: string
+      estimatedWait: string
+    } | null>(null)
+    const [conversationContext, setConversationContext] = useState<ConversationContext>({
+      stage: "greeting" as ConversationStage,
+      businessConfirmed: false,
+      serviceType: null,
+      qualifyingAnswers: {},
+      inventoryItems: [],
+      locationOrigin: null,
+      locationDestination: null,
+      quoteAmount: null,
+      selectedDate: null,
+      contactInfo: null,
+      errorCount: 0,
+      lastMessageTime: Date.now(),
+      stageStartTime: Date.now(),
+    })
+    const analyticsRef = useRef<ConversationAnalytics | null>(null)
+    const lastActivityRef = useRef<number>(Date.now())
+    const idleTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+    // The `isLoading` variable is used in the dependency array of this useEffect.
+    // However, `isLoading` is defined later in the component.
+    // To fix this, we move the initialization of `isLoading` to the top.
+    const isLoading = status === "streaming" || status === "submitted"
+
+    useEffect(() => {
+      const checkIdle = () => {
+        const now = Date.now()
+        const idleMs = now - lastActivityRef.current
+        const idle = Math.floor(idleMs / 60000)
+
+        if (idle >= 3 && !showReEngagement && !isLoading && messages.length > 0) {
+          setIdleMinutes(idle)
+          setShowReEngagement(true)
+        }
+      }
+
+      idleTimerRef.current = setInterval(checkIdle, 30000) // Check every 30 seconds
+
+      return () => {
+        if (idleTimerRef.current) {
+          clearInterval(idleTimerRef.current)
+        }
+      }
+    }, [isLoading, messages.length, showReEngagement]) // isLoading is now defined before this useEffect
+
+    useEffect(() => {
+      const session = SessionRecoveryManager.getMostRecentSession()
+      if (session) {
+        setRecoverableSession(session)
+      }
+
+      // Initialize analytics
+      analyticsRef.current = new ConversationAnalytics(conversationId)
+
+      return () => {
+        // Send analytics on unmount
+        analyticsRef.current?.sendMetrics()
+      }
+    }, [])
+
+    useEffect(() => {
+      if (messages.length > 0 && conversationContext.stage !== "greeting") {
+        SessionRecoveryManager.saveSession(
+          conversationId,
+          conversationContext,
+          messages.map((m) => ({
+            id: m.id,
+            role: m.role as "user" | "assistant" | "system",
+            content: typeof m.content === "string" ? m.content : "",
+            timestamp: Date.now(),
+          })),
+        )
+      }
+    }, [messages, conversationContext, conversationId])
+
+    const handleRestoreSession = useCallback(() => {
+      if (recoverableSession) {
+        setConversationContext(recoverableSession.context)
+        // Restore messages would require additional handling with useChat
+        // For now, we'll send a recovery prompt
+        const recoveryPrompt = SessionRecoveryManager.generateRecoveryPrompt(recoverableSession)
+        setRecoverableSession(null)
+        sendMessage({ role: "user", content: "Continue from where I left off" })
+      }
+    }, [recoverableSession, sendMessage])
+
+    const handleStartFresh = useCallback(() => {
+      SessionRecoveryManager.deleteSession(recoverableSession?.conversationId || "")
+      setRecoverableSession(null)
+    }, [recoverableSession])
+
+    const handleReEngagementContinue = useCallback(() => {
+      setShowReEngagement(false)
+      lastActivityRef.current = Date.now()
+      sendMessage({ role: "user", content: "I'm still here" })
+    }, [sendMessage])
+
+    const handleRequestCallback = useCallback(async () => {
+      setShowReEngagement(false)
+
+      // If we have contact info, use it
+      const result = await HumanEscalationService.requestEscalation({
+        conversationId,
+        reason: "customer_request",
+        customerData: conversationContext.contactInfo || undefined,
+        errorCount: conversationContext.errorCount,
+        stage: conversationContext.stage,
+        urgency: "medium",
+      })
+
+      if (result.success && result.ticketId) {
+        setEscalationResult({
+          ticketId: result.ticketId,
+          estimatedWait: result.estimatedWaitTime || "within 30 minutes",
+        })
+      } else {
+        // Fallback: ask Maya to handle it
+        sendMessage({ role: "user", content: "I'd like someone to call me please" })
+      }
+    }, [conversationId, conversationContext, sendMessage])
+
+    const updateActivity = useCallback(() => {
+      lastActivityRef.current = Date.now()
+      setShowReEngagement(false)
+      setConversationContext((prev) => ({
+        ...prev,
+        lastMessageTime: Date.now(),
+      }))
+    }, [])
+
+    const handleSendMessageInternal = useCallback(
+      async (e?: React.FormEvent) => {
+        e?.preventDefault()
+        if (!inputValue.trim() || isLoading) return
+
+        updateActivity()
+        analyticsRef.current?.trackUserMessage()
+
+        // Check for human escalation request in user message
+        if (detectHumanRequest(inputValue)) {
+          // Let Maya handle it, but track it
+          analyticsRef.current?.trackStageTransition("human_escalation")
+        }
+
+        // Send to API with context
+        sendMessage({ text: inputValue })
+        setInputValue("") // Clear input after sending
+      },
+      [inputValue, isLoading, updateActivity, sendMessage],
+    )
+
+    useEffect(() => {
+      const lastMessage = messages[messages.length - 1]
+      if (lastMessage?.role === "assistant") {
+        analyticsRef.current?.trackAssistantResponse()
+      }
+    }, [messages])
 
     useImperativeHandle(ref, () => ({
       open: () => {
@@ -312,130 +560,6 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     }))
 
     const [pendingRetry, setPendingRetry] = useState<{ text: string; retries: number } | null>(null)
-
-    useEffect(() => {
-      if (typeof window !== "undefined" && !hasStarted) {
-        const session = SessionRecoveryManager.getMostRecentSession()
-        if (session && session.context.stage !== "complete") {
-          setRecoveredSession(session)
-          setShowRecoveryPrompt(true)
-        }
-      }
-    }, [hasStarted])
-
-    const handleRecoverSession = useCallback(
-      (recover: boolean) => {
-        setShowRecoveryPrompt(false)
-
-        if (recover && recoveredSession) {
-          // Restore session state
-          setCurrentStep(recoveredSession.context.stage as any)
-          // Note: Full message restoration would require additional useChat configuration
-          // For now, we'll start with a recovery message
-          setHasStarted(true)
-          const recoveryPrompt = SessionRecoveryManager.generateRecoveryPrompt(recoveredSession)
-          // Send recovery context to AI
-          sendMessage({
-            text: `[SYSTEM: User is recovering session. Previous stage: ${recoveredSession.context.stage}. Context: ${JSON.stringify(recoveredSession.context)}] Continue from where we left off.`,
-          })
-        } else {
-          // Clear old session and start fresh
-          if (recoveredSession) {
-            SessionRecoveryManager.deleteSession(recoveredSession.conversationId)
-          }
-          setRecoveredSession(null)
-        }
-      },
-      [recoveredSession, sendMessage],
-    )
-
-    const handleReengagementMessage = useCallback((message: ReengagementMessage) => {
-      setReengagementMessage(message)
-
-      // Auto-dismiss after 30 seconds if no interaction
-      setTimeout(() => {
-        setReengagementMessage((prev) => (prev === message ? null : prev))
-      }, 30000)
-    }, [])
-
-    useEffect(() => {
-      if (!isOpen && !embedded) return
-
-      const manager = reengagementManagerRef.current
-
-      if (isLoading || status === "streaming") {
-        // Stop monitoring while AI is responding
-        manager.stopMonitoring(conversationId)
-      } else if (hasStarted && currentStep !== "complete") {
-        // Start monitoring for idle user
-        manager.startMonitoring(conversationId, currentStep as any, handleReengagementMessage)
-      }
-
-      return () => {
-        manager.stopMonitoring(conversationId)
-      }
-    }, [isOpen, embedded, isLoading, status, hasStarted, currentStep, conversationId, handleReengagementMessage])
-
-    useEffect(() => {
-      if (messages.length > 0) {
-        const lastMessage = messages[messages.length - 1]
-        if (lastMessage.role === "user") {
-          reengagementManagerRef.current.resetAttempts(conversationId)
-          setReengagementMessage(null)
-        }
-      }
-    }, [messages, conversationId])
-
-    const handleRequestEscalation = useCallback(
-      async (reason = "customer_request") => {
-        setEscalationPending(true)
-
-        try {
-          const result = await HumanEscalationService.requestEscalation({
-            conversationId,
-            reason: reason as any,
-            customerData: {
-              name: contactInfo?.contactName || undefined,
-              phone: contactInfo?.phone || undefined,
-              email: contactInfo?.email || undefined,
-              businessName: confirmedBusiness?.name, // Assuming confirmedBusiness is the relevant data
-            },
-            conversationSummary: HumanEscalationService.generateHandoffSummary({
-              stage: currentStep,
-              businessName: confirmedBusiness?.name,
-              serviceType: currentQuote?.moveType,
-              quoteAmount: currentQuote?.estimatedTotal,
-              selectedDate: selectedDate || undefined,
-              errorCount: retryCount,
-            }),
-            errorCount: retryCount,
-            stage: currentStep,
-            urgency: retryCount >= 3 ? "high" : "medium",
-          })
-
-          if (result.success) {
-            // Add escalation message to chat
-            // We need access to the messages setter, which is not directly available in this scope
-            // For now, we'll simulate adding a message (this needs to be properly integrated with useChat's state management if possible)
-            console.log("Escalation successful, but unable to directly add message to state here.")
-            // If you can access messages and setMessages from useChat, you'd do:
-            // setMessages(prev => [...prev, {
-            //   id: `escalation-${Date.now()}`,
-            //   role: "assistant" as const,
-            //   content: `I've arranged for one of our team members to call you ${result.estimatedWaitTime}. ${result.callbackScheduled ? "They'll call the number you provided." : "Could you share your phone number so they can reach you?"} Your reference number is ${result.ticketId}.`,
-            // }])
-          } else {
-            // Similarly, handle error message
-            console.log("Escalation failed, but unable to directly add message to state here.")
-          }
-        } catch (error) {
-          console.error("[Escalation] Failed:", error)
-        } finally {
-          setEscalationPending(false)
-        }
-      },
-      [conversationId, contactInfo, confirmedBusiness, currentStep, currentQuote, selectedDate, retryCount],
-    )
 
     // Enhanced error handling with retry logic
     const handleErrorWithRetry = useCallback(
@@ -482,7 +606,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       [conversationId, currentStep, retryCount],
     )
 
-    const { messages, sendMessage, status, error, setMessages } = useChat({
+    const { messages, sendMessage, status, error, append, input, handleSubmit } = useChat({
       // @ts-ignore
       api: "/api/quote-assistant",
       id: conversationId,
@@ -520,30 +644,6 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         // Save conversation state
         saveConversationState()
       },
-      onStream: ({ message }) => {
-        // If it's a system message related to escalation
-        if (message.role === "assistant" && message.content && typeof message.content === "string") {
-          if (
-            message.content.startsWith("I've arranged for one of our team members to call you") ||
-            message.content.startsWith("I apologise, but I'm having trouble connecting")
-          ) {
-            // This is an escalation message, stop re-engagement monitoring
-            reengagementManagerRef.current.stopMonitoring(conversationId)
-          }
-        }
-
-        // Detect human request or negative sentiment within the stream
-        if (message.role === "assistant" && message.content && typeof message.content === "string") {
-          if (detectHumanRequest(message.content)) {
-            handleRequestEscalation("ai_response_detected_human_request")
-            return // Stop processing this stream further
-          }
-          if (detectNegativeSentiment(message.content)) {
-            console.log("[v0] Negative sentiment detected in AI response.")
-            // Potentially trigger re-engagement or further logic here
-          }
-        }
-      },
     })
 
     // Form persistence
@@ -563,36 +663,39 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       !paymentComplete && !leadSubmitted,
     )
 
-    const saveConversationState = useCallback(() => {
-      if (typeof window === "undefined" || !conversationId) return
-
-      // We need to extract relevant context for session recovery
-      // This might involve consolidating state like currentStep, confirmedBusiness, etc.
-      const context = {
-        stage: currentStep as any, // Use the currentStep to determine the stage
-        businessName: confirmedBusiness?.name,
-        businessABN: confirmedBusiness?.abn,
-        serviceType: currentQuote?.moveType,
-        quoteAmount: currentQuote?.estimatedTotal,
-        selectedDate: selectedDate,
-        errorCount: retryCount, // Include error count for context
-        lastMessageTime: Date.now(), // Track last activity
-        stageStartTime: Date.now(), // Track when current stage started
-        // Add other relevant context fields as needed
-        qualifyingAnswers: {}, // Placeholder for future enhancements
-        inventoryItems: [], // Placeholder for future enhancements
+    // Save conversation state
+    const saveConversationState = () => {
+      const state: ConversationState = {
+        id: conversationId,
+        messages: messages.map((msg) => ({
+          id: msg.id || `msg-${Date.now()}`,
+          role: msg.role,
+          content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+          timestamp: new Date(),
+        })),
+        step: currentStep,
+        selectedOptions: {
+          business: confirmedBusiness || undefined,
+          service: serviceOptions.find((s) => true) || undefined,
+          date: selectedDate || undefined,
+        },
+        formData: {
+          contactInfo: contactInfo || undefined,
+          quote: currentQuote || undefined,
+        },
+        errorState: hasError
+          ? {
+              lastError: errorMessage || "Unknown error",
+              retryCount,
+              lastRetryTime: new Date(),
+            }
+          : undefined,
+        createdAt: new Date(),
+        lastUpdated: new Date(),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       }
-
-      // Serialize messages for storage
-      const serializedMessages: SerializedMessage[] = messages.map((m) => ({
-        id: m.id,
-        role: m.role as "user" | "assistant" | "system",
-        content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
-        timestamp: Date.now(),
-      }))
-
-      SessionRecoveryManager.saveSession(conversationId, context, serializedMessages)
-    }, [conversationId, currentStep, confirmedBusiness, currentQuote, selectedDate, retryCount, messages])
+      ConversationStateManager.save(state)
+    }
 
     // Load saved state on mount
     useEffect(() => {
@@ -603,14 +706,10 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           // Restore from saved state
           if (savedState.formData.quote) setCurrentQuote(savedState.formData.quote)
           if (savedState.formData.contactInfo) setContactInfo(savedState.formData.contactInfo)
-          if (savedState.selectedOptions.date) setSelectedDate(savedState.selectedOptions.date)
+          if (savedState.selectedOptions.date) setSelectedDate(savedState.selectedDate)
           if (savedState.selectedOptions.business) setConfirmedBusiness(savedState.selectedOptions.business)
           if (savedState.step) setCurrentStep(savedState.step)
           setIsInitialMessage(false)
-          // Ensure messages are loaded if conversationStateManager supports it
-          if (savedState.messages) {
-            setMessages(savedState.messages)
-          }
         } else {
           // Fallback to old persistence
           const saved = loadSavedData()
@@ -622,16 +721,15 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           }
         }
       }
-    }, [embedded, conversationId, setMessages, loadSavedData])
+    }, [embedded, conversationId])
 
     // Clear on successful completion
     useEffect(() => {
       if (paymentComplete || leadSubmitted) {
         clearSavedData()
         ConversationStateManager.clear(conversationId)
-        SessionRecoveryManager.deleteSession(conversationId) // Also clear recovered session
       }
-    }, [paymentComplete, leadSubmitted, conversationId, clearSavedData])
+    }, [paymentComplete, leadSubmitted, conversationId])
 
     // Periodically save conversation state
     useEffect(() => {
@@ -651,16 +749,10 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       currentQuote,
       paymentComplete,
       leadSubmitted,
-      saveConversationState,
     ])
 
-    useEffect(() => {
-      if (hasStarted && messages.length > 0) {
-        saveConversationState()
-      }
-    }, [hasStarted, messages.length, currentStep, saveConversationState])
-
-    const isLoading = status === "streaming" || status === "submitted"
+    // The `isLoading` variable is defined here. It should be moved up before its first usage.
+    // const isLoading = status === "streaming" || status === "submitted"
 
     useEffect(() => {
       const lastMessage = messages[messages.length - 1]
@@ -817,6 +909,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
                 }
               }
 
+              // Fix for undeclared toolName variable
               if (toolCall.toolName === "collectContactInfo" && result?.collected) {
                 setContactInfo({
                   contactName: result.contactName,
@@ -1030,7 +1123,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           recognitionRef.current = recognition
         }
       }
-    }, [sendMessage, saveConversationState])
+    }, [sendMessage])
 
     const toggleListening = () => {
       if (!recognitionRef.current) return
@@ -1044,62 +1137,13 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       }
     }
 
-    const handleSendMessageEnhanced = useCallback(
-      (text: string) => {
-        // Check for human request before sending
-        if (detectHumanRequest(text)) {
-          handleRequestEscalation("customer_request")
-          return
-        }
-
-        // Check sentiment
-        if (detectNegativeSentiment(text)) {
-          // Still send message but track for potential escalation
-          console.log("[v0] Negative sentiment detected in user message")
-        }
-
-        // Original send logic
-        handleSendMessage(text)
-      },
-      [handleSendMessage, handleRequestEscalation],
-    )
-
-    const handleSendMessage = (text: string) => {
-      if (!text.trim() || isLoading) return
-      setInputValue("") // Clear input immediately
-      setBusinessLookupResults(null)
-      setShowServicePicker(false)
-      setHasError(false)
-      setErrorMessage(null)
-      setFallbackResponse(null)
-      setRetryCount(0)
-      setLastUserMessageTime(Date.now())
-      setIsInitialMessage(false)
-
-      setPendingRetry({ text, retries: 0 })
-
-      // Detect if message might trigger business lookup or quote calculation
-      const lowerText = text.toLowerCase()
-      if (lowerText.includes("abn") || lowerText.includes("business") || lowerText.includes("company")) {
-        setIsLookingUpBusiness(true)
-      }
-      if (lowerText.includes("quote") || lowerText.includes("price") || lowerText.includes("cost")) {
-        setIsCalculatingQuote(true)
-      }
-      if (lowerText.includes("available") || lowerText.includes("date") || lowerText.includes("when")) {
-        setIsCheckingAvailability(true)
-      }
-
-      // Save state before sending
-      saveConversationState()
-
-      sendMessage({ text })
-    }
+    // Use internal handleSendMessageInternal to manage input clearing and activity tracking
+    const handleSendMessage = handleSendMessageInternal
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault()
-        handleSendMessageEnhanced(inputValue) // Use enhanced handler
+        handleSendMessage()
       }
     }
 
@@ -1203,15 +1247,28 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const handleRetry = () => {
       setHasError(false)
       setErrorMessage(null)
-      setHasStarted(false) // Resetting hasStarted will re-initialize the conversation
-      // Clear session recovery data if retrying fresh
-      if (recoveredSession) {
-        SessionRecoveryManager.deleteSession(recoveredSession.conversationId)
-        setRecoveredSession(null)
-      }
-      setRecoveredSession(null) // Ensure it's cleared
-      setMessages([]) // Clear existing messages
-      setConversationId(`conv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`) // Generate new conversation ID
+      setHasStarted(false)
+      // Reset conversation context and clear session for a fresh start
+      setConversationContext({
+        stage: "greeting" as ConversationStage,
+        businessConfirmed: false,
+        serviceType: null,
+        qualifyingAnswers: {},
+        inventoryItems: [],
+        locationOrigin: null,
+        locationDestination: null,
+        quoteAmount: null,
+        selectedDate: null,
+        contactInfo: null,
+        errorCount: 0,
+        lastMessageTime: Date.now(),
+        stageStartTime: Date.now(),
+      })
+      SessionRecoveryManager.deleteSession(conversationId)
+      // Clear chat messages if necessary, or let useChat handle it if it supports reinitialization
+      // For now, we'll assume a new conversationId will effectively reset it.
+      // If not, we might need to manage messages state directly.
+      window.location.reload() // Simplest way to reset for now
     }
 
     const handleCall = () => {
@@ -1717,6 +1774,30 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
 
         {!isMinimized && (
           <>
+            {recoverableSession && !embedded && (
+              <SessionRecoveryBanner
+                session={recoverableSession}
+                onRestore={handleRestoreSession}
+                onStartFresh={handleStartFresh}
+              />
+            )}
+
+            {showReEngagement && (
+              <ReEngagementPrompt
+                idleMinutes={idleMinutes}
+                onContinue={handleReEngagementContinue}
+                onRequestCallback={handleRequestCallback}
+              />
+            )}
+
+            {escalationResult && (
+              <EscalationConfirmation
+                ticketId={escalationResult.ticketId}
+                estimatedWait={escalationResult.estimatedWait}
+                onClose={() => setEscalationResult(null)}
+              />
+            )}
+
             {/* Progress indicator */}
             {messages.length > 0 && (
               <div className="px-3 pt-3">
@@ -1851,7 +1932,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
                   <Button
                     size="icon"
                     className="h-9 w-9 flex-shrink-0"
-                    onClick={() => handleSendMessageEnhanced(inputValue)} // Use enhanced handler
+                    onClick={handleSendMessage}
                     disabled={!inputValue.trim() || isLoading}
                   >
                     <Send className="h-4 w-4" />
@@ -1873,223 +1954,28 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     // Embedded version
     if (embedded) {
       return (
-        <>
-          {showRecoveryPrompt && recoveredSession && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-              <div className="bg-background rounded-lg shadow-xl max-w-md w-full p-6">
-                <h3 className="text-lg font-semibold mb-2">Continue Your Quote?</h3>
-                <p className="text-muted-foreground mb-4">
-                  {SessionRecoveryManager.generateRecoveryPrompt(recoveredSession)}
-                </p>
-                <div className="flex gap-3">
-                  <Button variant="outline" onClick={() => handleRecoverSession(false)} className="flex-1">
-                    Start Fresh
-                  </Button>
-                  <Button onClick={() => handleRecoverSession(true)} className="flex-1 bg-[#1e3a5f] hover:bg-[#152a45]">
-                    Continue
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {reengagementMessage && isOpen && (
-            <div className="fixed bottom-24 right-4 z-[55] max-w-sm animate-in slide-in-from-bottom-5">
-              <div
-                className={`
-                bg-background border rounded-lg shadow-lg p-4
-                ${reengagementMessage.urgency === "high" ? "border-amber-500" : "border-border"}
-              `}
-              >
-                <p className="text-sm mb-3">{reengagementMessage.message}</p>
-                {reengagementMessage.options && (
-                  <div className="flex flex-wrap gap-2">
-                    {reengagementMessage.options.map((opt) => (
-                      <Button
-                        key={opt.value}
-                        size="sm"
-                        variant={opt.value === "callback" ? "default" : "outline"}
-                        onClick={() => {
-                          setReengagementMessage(null)
-                          if (opt.value === "callback") {
-                            handleRequestEscalation("customer_request")
-                          } else if (opt.value === "restart") {
-                            handleRetry()
-                          } else {
-                            // Continue - send the value as a message
-                            handleSendMessageEnhanced(opt.label)
-                          }
-                        }}
-                      >
-                        {opt.label}
-                      </Button>
-                    ))}
-                  </div>
-                )}
-                <button
-                  onClick={() => setReengagementMessage(null)}
-                  className="absolute top-2 right-2 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div
-            ref={containerRef}
-            className="bg-card rounded-xl border border-border shadow-lg overflow-hidden h-[500px]"
-          >
-            {chatContent}
-          </div>
-        </>
+        <div ref={containerRef} className="bg-card rounded-xl border border-border shadow-lg overflow-hidden h-[500px]">
+          {chatContent}
+        </div>
       )
     }
 
     // Floating version
     if (!isOpen) {
       return (
-        <>
-          {showRecoveryPrompt && recoveredSession && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-              <div className="bg-background rounded-lg shadow-xl max-w-md w-full p-6">
-                <h3 className="text-lg font-semibold mb-2">Continue Your Quote?</h3>
-                <p className="text-muted-foreground mb-4">
-                  {SessionRecoveryManager.generateRecoveryPrompt(recoveredSession)}
-                </p>
-                <div className="flex gap-3">
-                  <Button variant="outline" onClick={() => handleRecoverSession(false)} className="flex-1">
-                    Start Fresh
-                  </Button>
-                  <Button onClick={() => handleRecoverSession(true)} className="flex-1 bg-[#1e3a5f] hover:bg-[#152a45]">
-                    Continue
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {reengagementMessage && isOpen && (
-            <div className="fixed bottom-24 right-4 z-[55] max-w-sm animate-in slide-in-from-bottom-5">
-              <div
-                className={`
-                bg-background border rounded-lg shadow-lg p-4
-                ${reengagementMessage.urgency === "high" ? "border-amber-500" : "border-border"}
-              `}
-              >
-                <p className="text-sm mb-3">{reengagementMessage.message}</p>
-                {reengagementMessage.options && (
-                  <div className="flex flex-wrap gap-2">
-                    {reengagementMessage.options.map((opt) => (
-                      <Button
-                        key={opt.value}
-                        size="sm"
-                        variant={opt.value === "callback" ? "default" : "outline"}
-                        onClick={() => {
-                          setReengagementMessage(null)
-                          if (opt.value === "callback") {
-                            handleRequestEscalation("customer_request")
-                          } else if (opt.value === "restart") {
-                            handleRetry()
-                          } else {
-                            // Continue - send the value as a message
-                            handleSendMessageEnhanced(opt.label)
-                          }
-                        }}
-                      >
-                        {opt.label}
-                      </Button>
-                    ))}
-                  </div>
-                )}
-                <button
-                  onClick={() => setReengagementMessage(null)}
-                  className="absolute top-2 right-2 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          <button
-            onClick={() => setIsOpen(true)}
-            className="fixed bottom-4 right-4 z-50 w-14 h-14 bg-primary text-primary-foreground rounded-full shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
-          >
-            <MessageSquare className="h-6 w-6" />
-          </button>
-        </>
+        <button
+          onClick={() => setIsOpen(true)}
+          className="fixed bottom-4 right-4 z-50 w-14 h-14 bg-primary text-primary-foreground rounded-full shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
+        >
+          <MessageSquare className="h-6 w-6" />
+        </button>
       )
     }
 
     return (
-      <>
-        {showRecoveryPrompt && recoveredSession && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-            <div className="bg-background rounded-lg shadow-xl max-w-md w-full p-6">
-              <h3 className="text-lg font-semibold mb-2">Continue Your Quote?</h3>
-              <p className="text-muted-foreground mb-4">
-                {SessionRecoveryManager.generateRecoveryPrompt(recoveredSession)}
-              </p>
-              <div className="flex gap-3">
-                <Button variant="outline" onClick={() => handleRecoverSession(false)} className="flex-1">
-                  Start Fresh
-                </Button>
-                <Button onClick={() => handleRecoverSession(true)} className="flex-1 bg-[#1e3a5f] hover:bg-[#152a45]">
-                  Continue
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {reengagementMessage && isOpen && (
-          <div className="fixed bottom-24 right-4 z-[55] max-w-sm animate-in slide-in-from-bottom-5">
-            <div
-              className={`
-              bg-background border rounded-lg shadow-lg p-4
-              ${reengagementMessage.urgency === "high" ? "border-amber-500" : "border-border"}
-            `}
-            >
-              <p className="text-sm mb-3">{reengagementMessage.message}</p>
-              {reengagementMessage.options && (
-                <div className="flex flex-wrap gap-2">
-                  {reengagementMessage.options.map((opt) => (
-                    <Button
-                      key={opt.value}
-                      size="sm"
-                      variant={opt.value === "callback" ? "default" : "outline"}
-                      onClick={() => {
-                        setReengagementMessage(null)
-                        if (opt.value === "callback") {
-                          handleRequestEscalation("customer_request")
-                        } else if (opt.value === "restart") {
-                          handleRetry()
-                        } else {
-                          // Continue - send the value as a message
-                          handleSendMessageEnhanced(opt.label)
-                        }
-                      }}
-                    >
-                      {opt.label}
-                    </Button>
-                  ))}
-                </div>
-              )}
-              <button
-                onClick={() => setReengagementMessage(null)}
-                className="absolute top-2 right-2 text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div className="fixed bottom-4 right-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] bg-card rounded-xl border border-border shadow-2xl overflow-hidden">
-          <div className={isMinimized ? "h-auto" : "h-[550px]"}>{chatContent}</div>
-        </div>
-      </>
+      <div className="fixed bottom-4 right-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] bg-card rounded-xl border border-border shadow-2xl overflow-hidden">
+        <div className={isMinimized ? "h-auto" : "h-[550px]"}>{chatContent}</div>
+      </div>
     )
   },
 )

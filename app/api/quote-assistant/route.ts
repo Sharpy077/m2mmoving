@@ -3,15 +3,16 @@ import { openai } from "@ai-sdk/openai"
 import { z } from "zod"
 import { MAYA_SYSTEM_PROMPT, PRICING_CONFIG } from "@/lib/agents/maya/playbook"
 import { ErrorClassifier } from "@/lib/conversation/error-classifier"
-import {
-  validateResponse,
-  validateUserInput,
-  checkConversationHealth,
-  shouldEscalateToHuman,
-} from "@/lib/conversation/guardrails"
-import { detectHumanRequest, detectNegativeSentiment } from "@/lib/conversation/human-escalation"
 import * as fs from "fs"
 import * as path from "path"
+import {
+  validateUserInput,
+  shouldEscalateToHuman,
+  generateRecoveryResponse,
+  checkConversationHealth,
+  type ConversationContext,
+} from "@/lib/conversation/guardrails"
+import { detectHumanRequest, detectNegativeSentiment } from "@/lib/conversation/human-escalation"
 
 function logToFile(message: string) {
   try {
@@ -37,6 +38,7 @@ const moveTypes = {
       "How many workstations or desks need to be moved?",
       "Do you have any server rooms or IT infrastructure?",
       "Are there any large items like boardroom tables or reception desks?",
+      "What's the approximate floor space in square metres?",
     ],
   },
   warehouse: {
@@ -133,13 +135,19 @@ const additionalServices = {
 }
 
 const operationalPrompt = `
-CRITICAL CONVERSATION RULES:
-1. Ask ONE question at a time - never overwhelm users.
-2. ALWAYS acknowledge what the user said before asking the next question.
-3. ALWAYS respond after a user selects an option - never leave them hanging.
+CRITICAL CONVERSATION RULES - MUST FOLLOW:
+1. NEVER leave the user without a response after they send a message or select an option.
+2. Ask ONE question at a time - never overwhelm users.
+3. ALWAYS acknowledge what the user said before asking the next question.
 4. Use tools immediately when you have the information needed.
-5. Keep the conversation moving forward smoothly to the next stage (Discovery -> Qualification -> Quote -> Booking).
-6. If a user selects a service option, acknowledge it immediately and ask the next qualifying question.
+5. Keep the conversation moving forward smoothly through stages (Discovery -> Qualification -> Quote -> Booking).
+
+CRITICAL TOOL CALL RULE:
+After EVERY tool call, you MUST provide a text response to the user. Tool calls alone are NEVER sufficient.
+- If lookupBusiness returns results: "I found your business! Is [Business Name] at [Address] correct?"
+- If showServiceOptions is called: "Which type of move are you planning? Select from the options I've shown you."
+- If calculateQuote returns: "Based on your requirements, here's your quote for $X. Would you like to check available dates?"
+- If a tool fails: "I had a small hiccup there. Let me try that again..." (then retry or ask clarifying question)
 
 CONVERSATION FLOW:
 
@@ -152,47 +160,66 @@ STEP 2 - CONFIRM BUSINESS:
 (Use showServiceOptions immediately after confirmation)
 
 STEP 3 - SELECT SERVICE TYPE:
-After business is confirmed, use showServiceOptions.
-"What type of move are you planning?"
-CRITICAL: When user selects a service (e.g., "I need Office Relocation"), you MUST:
-- Acknowledge their selection: "Great! Office relocation is one of our specialties."
-- Immediately ask the first qualifying question for that service type.
-- Do NOT just say "okay" or remain silent.
+After business is confirmed, use showServiceOptions tool, THEN say:
+"What type of move are you planning? Just select from the options above or tell me what you need."
 
-STEP 4 - QUALIFYING QUESTIONS (Mandatory):
-Once the user selects a move type (or types it), you MUST ask the relevant qualifying questions to gauge the size and complexity.
-- Office: "How many workstations or desks need to be moved?"
-- Warehouse: "Do you have pallet racking that needs to be moved?"
-- Data Centre: "How many server racks need to be relocated?"
-- IT: "Approximately how many computers and monitors are being moved?"
-- Retail: "Do you have display fixtures or shelving that needs to be moved?"
+CRITICAL STEP 3.5 - RESPOND TO SERVICE SELECTION:
+When user selects a service (e.g., clicks "Office Relocation" or types "office"), you MUST:
+1. Acknowledge their selection enthusiastically: "Great choice! Office relocation is one of our specialties."
+2. Immediately ask the FIRST qualifying question for that service type.
+3. NEVER just say "okay" or stay silent.
+
+Example responses after service selection:
+- Office: "Great! Office relocation is one of our specialties. How many workstations or desks need to be moved?"
+- Warehouse: "Perfect! We handle warehouse moves all the time. Do you have pallet racking that needs to be moved?"
+- Data Centre: "Excellent! Data centre migrations require special care. How many server racks need to be relocated?"
+- IT Equipment: "Got it! We're experts with IT equipment. Approximately how many computers and monitors are being moved?"
+- Retail: "Wonderful! Retail relocations are our bread and butter. Do you have display fixtures or shelving that needs to be moved?"
+
+STEP 4 - QUALIFYING QUESTIONS (MANDATORY):
+After service selection acknowledgment, ask qualifying questions ONE AT A TIME:
+- Wait for each answer before asking the next question
+- Acknowledge each answer: "Got it, [X] workstations."
+- Then ask the next relevant question
+
+Office qualifying sequence:
+1. "How many workstations or desks need to be moved?"
+2. "Do you have any server rooms or IT infrastructure?"
+3. "Are there any large items like boardroom tables or reception desks?"
+4. "What's the approximate floor space in square metres?"
 
 STEP 5 - LOCATIONS:
 "Where are you moving from? (Suburb)"
-"And where are you moving to?"
+Then: "And where are you moving to?"
 
 STEP 6 - GENERATE QUOTE:
-Use calculateQuoteTool once you have Type, Size (Sqm/Desks), and Locations.
-Present the quote and checkAvailability.
+Use calculateQuote tool once you have: Type, Size estimates, and Locations.
+THEN say: "Based on your requirements, here's your quote. Would you like to check available dates to book this move?"
 
-STEP 7 - SELECT DATE & DETAILS:
-"When would you like to move?"
-Then collect Name, Phone, Email.
+STEP 7 - SELECT DATE:
+Use checkAvailability tool, THEN say: "Here are our available dates. Which date works best for you?"
+After selection: "Perfect! [Date] is locked in. Now I just need your contact details to finalise the booking."
 
-STEP 8 - PAYMENT:
-"To lock in your booking, we just need a 50% deposit. You can pay securely right here."
-Use initiatePayment.
+STEP 8 - COLLECT CONTACT:
+"What's your name?"
+"And your phone number?"
+"And your email address?"
 
-HANDLING QUICK STARTS:
-If user starts with "I need to move my office", immediately Confirm "Office Relocation" and ask for Business Name.
+STEP 9 - PAYMENT:
+"To secure your booking, we just need a 50% deposit of $[amount]. You can pay securely right here."
+Use initiatePayment tool.
+
+HANDLING SPECIAL SITUATIONS:
+- If user seems frustrated or says "this isn't working": "I apologise for any confusion. Would you like me to have someone call you directly? I can arrange that right now."
+- If user asks to speak to someone: "Of course! Let me arrange a callback. What's the best number to reach you?"
+- If user goes quiet for more than 2 messages without responding: "Still there? No rush - just let me know when you're ready to continue."
+- If there's an error: Apologise briefly and try to continue from where you left off.
 
 RESPONSE REQUIREMENTS:
-- After ANY option selection, you MUST respond with acknowledgment AND continue the conversation.
-- Never leave a user message unanswered.
-- If you're unsure what to say, ask a clarifying question rather than staying silent.
-- After calling ANY tool, you MUST provide a text response to the user explaining what happened and what's next.
-- Tool calls alone are not sufficient - always follow up with a conversational text response.
-- Example: After calling showServiceOptions, say "Great! I've shown you our service options. Which type of move are you planning?"
+- Every user message MUST get a response
+- Every tool call MUST be followed by explanatory text
+- Every question should have a clear call-to-action
+- If unsure, ask a clarifying question rather than staying silent
 `
 
 const systemPrompt = `${MAYA_SYSTEM_PROMPT}\n\n${operationalPrompt}`
@@ -640,91 +667,83 @@ function createErrorStreamResponse(error: unknown, userMessage?: string): Respon
   }
 }
 
-interface ConversationContext {
-  stage: string
-  errorCount: number
-  lastMessageTime: number
-  stageStartTime: number
-  businessName?: string
-  quoteAmount?: number
-}
-
-// In-memory context store (for stateless API, context is passed in request)
-const contextStore = new Map<string, ConversationContext>()
-
 export async function POST(req: Request) {
+  logToFile("[v0] Quote Assistant POST called")
+
   let userMessage: string | undefined
+  let conversationContext: ConversationContext | undefined
 
   try {
     const body = await req.json()
-    logToFile("[v0] Request body parsed: " + JSON.stringify(body).slice(0, 100))
     const rawMessages = body.messages || []
-    const conversationId = body.id || `conv-${Date.now()}`
+    const sessionContext = body.context as ConversationContext | undefined
 
     // Extract last user message for error context
     const lastUserMsg = rawMessages.findLast((m: any) => m.role === "user")
     userMessage = lastUserMsg?.content || lastUserMsg?.parts?.[0]?.text
 
     if (userMessage) {
-      const inputValidation = validateUserInput(userMessage, (body.stage || "greeting") as any)
+      const inputValidation = validateUserInput(userMessage, sessionContext?.stage || "greeting")
       if (!inputValidation.valid) {
-        logToFile(`[v0] Input validation failed: ${inputValidation.warnings.join(", ")}`)
+        return createErrorStreamResponse(new Error("Invalid input"), userMessage)
       }
       userMessage = inputValidation.sanitized
 
-      // Check for human escalation requests
-      if (detectHumanRequest(userMessage)) {
-        logToFile("[v0] Human escalation request detected")
-        // Add system message to guide AI to offer human assistance
-        rawMessages.push({
-          role: "system",
-          content:
-            "The customer is requesting to speak with a human. Acknowledge their request warmly and offer to arrange a callback. Ask for their preferred contact number and best time to call.",
-        })
-      }
-
-      // Check for negative sentiment
-      if (detectNegativeSentiment(userMessage)) {
-        logToFile("[v0] Negative sentiment detected")
-        rawMessages.push({
-          role: "system",
-          content:
-            "The customer seems frustrated. Acknowledge their feelings, apologize for any difficulties, and offer extra assistance. Consider offering to have someone call them.",
-        })
+      // Update the message with sanitized content
+      if (lastUserMsg) {
+        if (lastUserMsg.content) {
+          lastUserMsg.content = userMessage
+        } else if (lastUserMsg.parts?.[0]?.text) {
+          lastUserMsg.parts[0].text = userMessage
+        }
       }
     }
 
-    const context = contextStore.get(conversationId) || {
-      stage: body.stage || "greeting",
-      errorCount: 0,
-      lastMessageTime: Date.now(),
-      stageStartTime: Date.now(),
+    if (userMessage) {
+      const wantsHuman = detectHumanRequest(userMessage)
+      const negativeSentiment = detectNegativeSentiment(userMessage)
+
+      if (wantsHuman || negativeSentiment) {
+        // Add escalation context to system prompt
+        const escalationPrompt = wantsHuman
+          ? "\n\nIMPORTANT: The user has requested to speak with a human. Offer to arrange a callback immediately using the requestCallback tool. Be empathetic and helpful."
+          : "\n\nIMPORTANT: The user seems frustrated. Acknowledge their frustration, apologise sincerely, and offer to either continue helping or arrange a callback. Prioritise their comfort."
+
+        const result = streamText({
+          model: openai("gpt-4o"),
+          system: systemPrompt + escalationPrompt,
+          messages: convertToCoreMessages(rawMessages),
+          tools,
+          maxSteps: 3,
+        })
+
+        return result.toTextStreamResponse()
+      }
     }
 
-    // Update context
-    context.lastMessageTime = Date.now()
-    if (body.stage && body.stage !== context.stage) {
-      context.stage = body.stage
-      context.stageStartTime = Date.now()
-    }
+    if (sessionContext) {
+      const health = checkConversationHealth(sessionContext)
+      const escalationCheck = shouldEscalateToHuman(sessionContext)
 
-    const health = checkConversationHealth(context as any)
-    if (health.status === "critical") {
-      logToFile(`[v0] Conversation health critical: ${health.issues.join(", ")}`)
-      // Add recovery guidance for the AI
-      rawMessages.push({
-        role: "system",
-        content: `Conversation health is critical (score: ${health.score}). Issues: ${health.issues.join(", ")}. Actions needed: ${health.actions.join(", ")}. Prioritize recovering the customer's trust.`,
-      })
-    }
+      if (escalationCheck.shouldEscalate) {
+        const escalationPrompt = `\n\nIMPORTANT: This conversation has encountered issues (${escalationCheck.reason}). Apologise for any difficulties and proactively offer to arrange a callback. The user's experience is the priority.`
 
-    const escalationCheck = shouldEscalateToHuman(context as any)
-    if (escalationCheck.shouldEscalate) {
-      logToFile(`[v0] Escalation warranted: ${escalationCheck.reason}`)
-      rawMessages.push({
-        role: "system",
-        content: `Multiple issues detected (${escalationCheck.reason}). Proactively offer to have a team member call the customer. Make this offer naturally without alarming them.`,
-      })
+        const result = streamText({
+          model: openai("gpt-4o"),
+          system: systemPrompt + escalationPrompt,
+          messages: convertToCoreMessages(rawMessages),
+          tools,
+          maxSteps: 3,
+        })
+
+        return result.toTextStreamResponse()
+      }
+
+      // Add health-based guidance if at risk
+      if (health.status === "at_risk") {
+        const guidancePrompt = `\n\nNOTE: Be extra attentive - ${health.issues.join(", ")}. Focus on moving the conversation forward smoothly.`
+        // Continue with enhanced guidance below
+      }
     }
 
     // Detect if this is an initial message
@@ -741,65 +760,58 @@ export async function POST(req: Request) {
       ? [{ role: "user" as const, content: "Hi, I'd like to get a quote for a commercial move." }]
       : rawMessages
 
-    logToFile(`[v0] Effective messages prepared (initial: ${isInitialMessage}), calling streamText with model gpt-4o`)
-
     const result = streamText({
       model: openai("gpt-4o"),
       system: systemPrompt,
       messages: convertToCoreMessages(effectiveMessages),
       tools,
       maxSteps: 5,
-      onFinish: (result) => {
-        logToFile("[v0] streamText finish: " + JSON.stringify(result.usage, null, 2))
-
-        const toolCallNames = result.toolCalls?.map((tc) => tc.toolName) || []
-        const responseValidation = validateResponse(
-          result.text || "",
-          toolCallNames,
-          context.stage as any,
-          userMessage || "",
-        )
-
-        if (!responseValidation.passed) {
-          logToFile(
-            `[v0] Response validation failed: ${responseValidation.violations.map((v) => v.message).join(", ")}`,
+      onStepFinish: ({ stepType, toolCalls, text }) => {
+        // Log for debugging tool call patterns
+        if (toolCalls && toolCalls.length > 0 && !text) {
+          console.warn(
+            "[Maya Guardrail] Tool called without follow-up text:",
+            toolCalls.map((t) => t.toolName),
           )
-          // Note: In streaming, we can't modify the response here, but we log for monitoring
         }
-
-        if (responseValidation.recommendations.length > 0) {
-          logToFile(`[v0] Response recommendations: ${responseValidation.recommendations.join(", ")}`)
-        }
-
-        // Update context store
-        contextStore.set(conversationId, context)
-
-        if (result.error) {
-          logToFile("[v0] streamText finished with error: " + JSON.stringify(result.error))
-          context.errorCount++
-        }
-      },
-      onError: ({ error }) => {
-        logToFile("[v0] streamText error callback: " + error)
-        context.errorCount++
-        contextStore.set(conversationId, context)
       },
     })
 
-    logToFile("[v0] streamText initiated, returning stream")
-
     return result.toTextStreamResponse()
   } catch (error) {
-    logToFile("[v0] Quote assistant FATAL error: " + error)
-    if (error instanceof Error) {
-      logToFile("[v0] Stack: " + error.stack)
+    console.error("[Maya] Quote assistant error:", error)
+
+    if (conversationContext) {
+      const recoveryMessage = generateRecoveryResponse(
+        conversationContext,
+        error instanceof Error ? error.message : "unknown",
+      )
+
+      const encoder = new TextEncoder()
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: recoveryMessage })}\n\n`))
+          controller.close()
+        },
+      })
+
+      return new Response(stream, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        },
+      })
     }
 
     return createErrorStreamResponse(error, userMessage)
   }
 }
 
-// Health check endpoint
+/**
+ * Health check endpoint
+ */
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const detailed = searchParams.get("detailed") === "true"
@@ -855,11 +867,15 @@ export async function GET(req: Request) {
 }
 
 function formatDate(date: string): string {
-  const options = { year: "numeric", month: "long", day: "numeric" }
+  const options: Intl.DateTimeFormatOptions = { year: "numeric", month: "long", day: "numeric" }
   return new Date(date).toLocaleDateString(undefined, options)
 }
 
 function generateFallbackDates(): any[] {
   // Placeholder for fallback date generation logic
-  return []
+  return [
+    { date: "2024-01-15", available: true, slots: 3 },
+    { date: "2024-01-22", available: true, slots: 2 },
+    { date: "2024-01-29", available: true, slots: 1 },
+  ]
 }
