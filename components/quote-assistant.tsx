@@ -584,6 +584,8 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
             placeholder="Type your message..."
             disabled={isLoading}
             className="flex-1"
+            autoFocus={false}
+            autoComplete="off"
           />
           <Button type="submit" disabled={!input.trim() || isLoading} className="bg-orange-500 hover:bg-orange-600">
             <Send className="h-4 w-4" />
