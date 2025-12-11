@@ -1,311 +1,193 @@
 import { streamText, convertToModelMessages, type UIMessage } from "ai"
 
+const M2M_PHONE = "03 8820 1801"
+const M2M_PHONE_LINK = "tel:0388201801"
+const OPERATIONS_EMAIL = "operations@m2mmoving.au"
+
 export const maxDuration = 60
 
-// Pricing configuration
-const PRICING_CONFIG = {
-  baseRates: {
-    office: { base: 2500, perSqm: 45, minSqm: 20 },
-    warehouse: { base: 3000, perSqm: 35, minSqm: 100 },
-    datacenter: { base: 5000, perSqm: 85, minSqm: 50 },
-    retail: { base: 2000, perSqm: 40, minSqm: 30 },
-  },
-  modifiers: {
-    floors: 150,
-    noLift: 200,
-    afterHours: 1.25,
-    weekend: 1.35,
-    fragile: 300,
-    it_equipment: 400,
-  },
-}
-
-// Move types configuration
-const moveTypes: Record<
-  string,
-  { name: string; baseRate: number; perSqm: number; minSqm: number; description: string }
-> = {
-  office: {
-    name: "Office Relocation",
-    baseRate: PRICING_CONFIG.baseRates.office.base,
-    perSqm: PRICING_CONFIG.baseRates.office.perSqm,
-    minSqm: PRICING_CONFIG.baseRates.office.minSqm,
-    description: "Full-service office moves including furniture, equipment, and IT setup.",
-  },
-  warehouse: {
-    name: "Warehouse Move",
-    baseRate: PRICING_CONFIG.baseRates.warehouse.base,
-    perSqm: PRICING_CONFIG.baseRates.warehouse.perSqm,
-    minSqm: PRICING_CONFIG.baseRates.warehouse.minSqm,
-    description: "Industrial warehouse relocations with heavy equipment handling.",
-  },
-  datacenter: {
-    name: "Data Centre",
-    baseRate: PRICING_CONFIG.baseRates.datacenter.base,
-    perSqm: PRICING_CONFIG.baseRates.datacenter.perSqm,
-    minSqm: PRICING_CONFIG.baseRates.datacenter.minSqm,
-    description: "Secure data centre relocations with specialized equipment handling.",
-  },
-  retail: {
-    name: "Retail Fit-out",
-    baseRate: PRICING_CONFIG.baseRates.retail.base,
-    perSqm: PRICING_CONFIG.baseRates.retail.perSqm,
-    minSqm: PRICING_CONFIG.baseRates.retail.minSqm,
-    description: "Shop fit-outs and retail space relocations.",
-  },
-  it_equipment: {
-    name: "IT Equipment",
-    baseRate: PRICING_CONFIG.baseRates.office.base,
-    perSqm: PRICING_CONFIG.baseRates.office.perSqm,
-    minSqm: 10,
-    description: "Specialized IT and technology equipment moves.",
-  },
-  medical: {
-    name: "Medical & Lab",
-    baseRate: PRICING_CONFIG.baseRates.datacenter.base,
-    perSqm: PRICING_CONFIG.baseRates.datacenter.perSqm,
-    minSqm: 30,
-    description: "Medical facility and laboratory relocations.",
-  },
-  factory: {
-    name: "Factory & Plant",
-    baseRate: PRICING_CONFIG.baseRates.warehouse.base,
-    perSqm: PRICING_CONFIG.baseRates.warehouse.perSqm,
-    minSqm: 200,
-    description: "Manufacturing facility and plant relocations.",
-  },
-  logistics: {
-    name: "Logistics Hub",
-    baseRate: PRICING_CONFIG.baseRates.warehouse.base,
-    perSqm: PRICING_CONFIG.baseRates.warehouse.perSqm,
-    minSqm: 150,
-    description: "Distribution centre and logistics hub moves.",
-  },
-}
-
-// Conversation context type
-interface ConversationContext {
-  stage: "greeting" | "service_selection" | "business_lookup" | "qualifying" | "quote" | "booking" | "human_escalation"
-  businessConfirmed: boolean
-  serviceType: string | null
-  qualifyingAnswers: Record<string, string>
-  inventoryItems: string[]
-  locationOrigin: string | null
-  locationDestination: string | null
-  quoteAmount: number | null
-  selectedDate: string | null
-  contactInfo: { name?: string; email?: string; phone?: string } | null
-  messageCount: number
-  lastActivity: Date
-  errorCount: number
-}
-
-// Helper function to get text from UIMessage
+// Helper to extract text from UIMessage
 function getMessageText(message: UIMessage): string {
   if (!message) return ""
-
-  // Check for parts array (AI SDK v5 format)
-  if (message.parts && Array.isArray(message.parts)) {
-    const textPart = message.parts.find((p: { type: string; text?: string }) => p.type === "text")
-    if (textPart && "text" in textPart) return textPart.text || ""
+  if (typeof message.content === "string") return message.content
+  if (Array.isArray(message.parts)) {
+    const textPart = message.parts.find((p: { type: string }) => p.type === "text")
+    if (textPart && "text" in textPart) return textPart.text
   }
-
-  // Check for content string (legacy format)
-  if (typeof (message as { content?: string }).content === "string") {
-    return (message as { content: string }).content
-  }
-
   return ""
 }
 
-// Input validation
-function validateUserInput(input: string): { valid: boolean; sanitized: string } {
-  if (!input || typeof input !== "string") {
-    return { valid: false, sanitized: "" }
-  }
-  const sanitized = input.trim().slice(0, 2000)
-  return { valid: sanitized.length > 0, sanitized }
-}
-
-// Detect requests for human assistance
-function detectHumanRequest(text: string): boolean {
-  const humanKeywords = ["human", "person", "agent", "representative", "manager", "speak to someone", "real person"]
-  const lower = text.toLowerCase()
-  return humanKeywords.some((k) => lower.includes(k))
-}
-
-// Detect negative sentiment
-function detectNegativeSentiment(text: string): boolean {
-  const negativeKeywords = ["frustrated", "angry", "upset", "terrible", "awful", "hate", "worst", "ridiculous"]
-  const lower = text.toLowerCase()
-  return negativeKeywords.some((k) => lower.includes(k))
-}
-
-// Check conversation health
-function checkConversationHealth(context: ConversationContext): { healthy: boolean; recommendation?: string } {
-  if (context.errorCount > 3) {
-    return { healthy: false, recommendation: "escalate" }
-  }
-  if (context.messageCount > 20 && !context.quoteAmount) {
-    return { healthy: false, recommendation: "escalate" }
-  }
-  return { healthy: true }
-}
-
-// Build system prompt
-function buildSystemPrompt(context: ConversationContext): string {
-  let prompt = `\n\n--- CONVERSATION CONTEXT ---`
-  prompt += `\nCurrent stage: ${context.stage}`
-  if (context.businessConfirmed) prompt += `\nBusiness verified: Yes`
-  if (context.serviceType) prompt += `\nService type: ${context.serviceType}`
-  if (context.locationOrigin) prompt += `\nOrigin: ${context.locationOrigin}`
-  if (context.locationDestination) prompt += `\nDestination: ${context.locationDestination}`
-  if (context.quoteAmount) prompt += `\nQuote provided: $${context.quoteAmount}`
-  prompt += `\n\nPRICING REFERENCE:\n${Object.entries(moveTypes)
-    .map(([key, val]) => `- ${val.name}: Base $${val.baseRate} + $${val.perSqm}/sqm (min ${val.minSqm}sqm)`)
-    .join("\n")}`
-  prompt += `\n\nAll prices plus GST. 50% deposit required to confirm booking.`
-  return prompt
+// Conversation context
+interface ConversationContext {
+  stage: string
+  moveType?: string
+  hasBusinessInfo?: boolean
+  hasAddresses?: boolean
+  hasDateTime?: boolean
+  hasContactInfo?: boolean
+  quoteAmount?: number
 }
 
 function initializeConversationContext(messages: UIMessage[]): ConversationContext {
-  const context: ConversationContext = {
-    stage: "greeting",
-    businessConfirmed: false,
-    serviceType: null,
-    qualifyingAnswers: {},
-    inventoryItems: [],
-    locationOrigin: null,
-    locationDestination: null,
-    quoteAmount: null,
-    selectedDate: null,
-    contactInfo: null,
-    messageCount: messages.length,
-    lastActivity: new Date(),
-    errorCount: 0,
-  }
+  const context: ConversationContext = { stage: "greeting" }
 
   for (const msg of messages) {
     const text = getMessageText(msg).toLowerCase()
 
-    // Detect service type from message content
-    if (text.includes("office")) context.serviceType = "office"
-    else if (text.includes("warehouse")) context.serviceType = "warehouse"
-    else if (text.includes("data") || text.includes("datacenter") || text.includes("data centre"))
-      context.serviceType = "datacenter"
-    else if (text.includes("retail")) context.serviceType = "retail"
-    else if (text.includes("it equipment") || text.includes("it ")) context.serviceType = "it_equipment"
-    else if (text.includes("medical") || text.includes("lab")) context.serviceType = "medical"
-    else if (text.includes("factory") || text.includes("plant")) context.serviceType = "factory"
-    else if (text.includes("logistics") || text.includes("distribution")) context.serviceType = "logistics"
-
-    // Update stage based on context
-    if (context.serviceType) context.stage = "qualifying"
-    if (text.includes("abn") || text.includes("business")) context.stage = "business_lookup"
-    if (text.includes("quote") || text.includes("price") || text.includes("cost")) context.stage = "quote"
+    if (
+      text.includes("office") ||
+      text.includes("warehouse") ||
+      text.includes("data centre") ||
+      text.includes("retail") ||
+      text.includes("it equipment") ||
+      text.includes("medical") ||
+      text.includes("factory") ||
+      text.includes("logistics")
+    ) {
+      context.moveType = text
+      context.stage = "service_selected"
+    }
+    if (text.includes("abn") || text.includes("pty ltd") || text.includes("business")) {
+      context.hasBusinessInfo = true
+      context.stage = "business_info"
+    }
+    if (text.includes("street") || text.includes("road") || text.includes("avenue") || text.includes("suburb")) {
+      context.hasAddresses = true
+      context.stage = "addresses"
+    }
+    if (
+      text.includes("monday") ||
+      text.includes("tuesday") ||
+      text.includes("am") ||
+      text.includes("pm") ||
+      text.match(/\d{1,2}\/\d{1,2}/)
+    ) {
+      context.hasDateTime = true
+      context.stage = "datetime"
+    }
+    if (text.includes("@") || text.match(/04\d{8}/)) {
+      context.hasContactInfo = true
+      context.stage = "contact"
+    }
   }
 
   return context
 }
 
-const MAYA_SYSTEM_PROMPT = `You are Maya, a friendly and professional AI assistant for M&M Commercial Moving in Melbourne, Australia.
+function detectHumanRequest(text: string): boolean {
+  const patterns = ["speak to human", "real person", "talk to someone", "customer service", "manager"]
+  return patterns.some((p) => text.toLowerCase().includes(p))
+}
+
+function detectNegativeSentiment(text: string): boolean {
+  const patterns = ["frustrated", "annoyed", "terrible", "worst", "hate", "useless"]
+  return patterns.some((p) => text.toLowerCase().includes(p))
+}
+
+const MAYA_SYSTEM_PROMPT = `You are Maya, a friendly and professional AI assistant for M&M Commercial Moving, Australia's trusted commercial relocation specialists.
 
 ## YOUR PERSONALITY
 - Warm, professional, and efficient
-- Use Australian English (centre, organisation, colour)
-- Keep responses concise (2-3 sentences max)
-- Ask ONE question at a time
+- Use Australian English
+- Be conversational but focused on helping complete the booking
+- Always guide the conversation toward the next step
 
-## CRITICAL: ALWAYS RESPOND
-You MUST provide a helpful response to every message. Never leave the user without a reply.
+## COMPANY CONTACT DETAILS
+- Phone: ${M2M_PHONE} (ONLY use this number, never any other)
+- Email: ${OPERATIONS_EMAIL}
+- ABN: 71 661 027 309
 
-## CONVERSATION FLOW
-When a user selects a service (e.g., "I need help with Office Relocation" or "IT Equipment"):
+## CONVERSATION FLOW - FOLLOW THIS EXACT ORDER:
 
-1. **Acknowledge & Confirm** - Warmly confirm their selection
-   Example: "Excellent choice! Office relocations are our specialty here at M&M. When are you planning to make the move?"
+### STEP 1: SERVICE TYPE (Already selected from buttons)
+When user selects a service type, acknowledge it warmly and move to Step 2.
 
-2. **Timeline** - Ask about their preferred date/timeframe
-   Example: "Do you have a specific date in mind, or a general timeframe?"
+### STEP 2: BUSINESS DETAILS
+Ask for their business information:
+- Company name
+- ABN (Australian Business Number - 11 digits)
+- Say: "Great choice! To get started, I'll need your company details. What's your business name and ABN?"
 
-3. **Origin Location** - Where they're moving FROM
-   Example: "Great! Where is your current location? The suburb or address would be helpful."
+### STEP 3: ADDRESSES (Full details required)
+After business info, ask for COMPLETE addresses:
+- Origin: Full street address, suburb, state, postcode
+- Destination: Full street address, suburb, state, postcode
+- Say: "Thanks! Now I need the move locations. What's the FULL address you're moving FROM? (Street number, street name, suburb, state, postcode)"
+- Then ask: "And the FULL address you're moving TO?"
 
-4. **Destination** - Where they're moving TO
-   Example: "And where will the equipment be going to?"
+### STEP 4: DATE & TIME SELECTION
+After addresses, ask for preferred date and time:
+- Say: "When would you like to schedule this move? Please provide your preferred date and time slot (morning 7am-12pm, afternoon 12pm-5pm, or a specific time)."
+- Confirm: "Just to confirm, you'd like [DATE] at [TIME]. Is that correct?"
 
-5. **Size/Scope** - Square metres or workstations
-   Example: "Approximately how large is the space? You can estimate in square metres or number of workstations."
+### STEP 5: INVENTORY & SPECIAL REQUIREMENTS
+Ask about what they're moving:
+- Estimated items/volume
+- Any special equipment (servers, medical equipment, etc.)
+- Access requirements (lifts, stairs, loading docks)
+- Say: "What items will you be moving? Any special equipment or access requirements I should note?"
 
-6. **Special Requirements** - Any fragile items, after-hours needs
-   Example: "Are there any special requirements like fragile equipment or after-hours access?"
+### STEP 6: CALCULATE & PRESENT QUOTE
+Based on the information, provide a quote estimate:
+- Base rate: $150/hour for standard moves
+- Add premiums for: special equipment (+20%), stairs (+$50/floor), after-hours (+30%)
+- Include GST in final price
+- Say: "Based on your requirements, your estimated quote is $X,XXX including GST. This includes [list services]."
 
-7. **Quote** - Provide preliminary estimate
-   Example: "Based on what you've told me, your estimated quote is $X,XXX + GST. This includes..."
+### STEP 7: CONTACT DETAILS FOR CONFIRMATION
+Collect contact information:
+- Full name of contact person
+- Email address
+- Mobile phone number
+- Say: "To confirm this booking and send you the details, I'll need your contact information - name, email, and mobile number."
 
-8. **Contact Details** - Collect name, email, phone
-   Example: "To secure this quote, I just need your contact details - name, email, and phone number."
+### STEP 8: PAYMENT
+After collecting all details:
+- Say: "Excellent! To secure your booking, we require a $200 deposit. This will be deducted from your final invoice. I'll now show you our secure payment form."
+- The system will display a Stripe payment form.
 
-9. **Confirmation** - Confirm booking, provide reference
-   Example: "Perfect! Your quote reference is MM-XXXXX. Our team will be in touch within 24 hours."
+### STEP 9: CONFIRMATION
+After payment:
+- Generate a quote reference number (format: MM-XXXXXX)
+- Confirm email and SMS will be sent
+- Say: "Your booking is confirmed! Reference number: MM-XXXXXX. You'll receive a confirmation email and SMS shortly. Our operations team at ${OPERATIONS_EMAIL} will contact you 24 hours before your move. Any questions?"
 
-## EXAMPLE CONVERSATION
-User: "I need help with IT Equipment"
-Maya: "Great choice! IT equipment moves require special care, and that's exactly what we provide. When are you planning to make this move?"
+## IMPORTANT RULES:
+1. ALWAYS guide the user to the next step - don't wait for them to ask
+2. If user provides partial info, acknowledge what you have and ask for what's missing
+3. NEVER use any phone number other than ${M2M_PHONE}
+4. Be proactive - after each response, tell them what comes next
+5. If they seem stuck, offer helpful suggestions
+6. For human escalation, say: "I'll connect you with our team. Please call ${M2M_PHONE} and reference your conversation."
 
-User: "Next week"
-Maya: "That's quite soon - we can definitely accommodate that. Where is your current location?"
+## PRICING GUIDE:
+- Office Relocation: $150-250/hour (2-hour minimum)
+- Warehouse Move: $200-350/hour
+- IT Equipment: $180-280/hour (specialized handling)
+- Medical/Lab: $250-400/hour (compliance requirements)
+- Data Centre: $300-500/hour (24/7 availability)
+- Retail Fit-out: $180-300/hour
+- Factory/Plant: $250-450/hour
+- Logistics Hub: $200-350/hour
 
-User: "Melbourne CBD"
-Maya: "Perfect, CBD moves are our specialty. And where will the equipment be going to?"
-
-## HUMAN ESCALATION
-If the user asks to speak to a human, seems frustrated, or if you're unsure:
-- Offer to connect them with our team
-- Provide phone number: 1300 123 456
-- Be empathetic and understanding
-
-## GUARDRAILS
-- Stay focused on commercial moving services
-- Don't discuss competitors negatively
-- Don't make promises you can't keep
-- If unsure about pricing, give a range and offer to have team confirm
+All prices + GST. Deposit: $200 (deducted from final invoice).
 `
 
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    console.log("[v0] Received request body keys:", Object.keys(body))
-
     const messages: UIMessage[] = body.messages || []
-    console.log("[v0] Received messages count:", messages.length)
 
     const lastMessage = messages[messages.length - 1]
     const userMessageText = lastMessage ? getMessageText(lastMessage) : ""
-    console.log("[v0] Last user message:", userMessageText)
 
     // Initialize conversation context
     const conversationContext = initializeConversationContext(messages)
-
-    // Validate user input
-    const validation = validateUserInput(userMessageText)
-    if (!validation.valid && validation.sanitized) {
-      console.log("[v0] Input validation - using sanitized")
-    }
 
     // Check for human escalation
     if (detectHumanRequest(userMessageText) || detectNegativeSentiment(userMessageText)) {
       conversationContext.stage = "human_escalation"
     }
-
-    // Check conversation health
-    const health = checkConversationHealth(conversationContext)
-    if (!health.healthy && health.recommendation === "escalate") {
-      conversationContext.stage = "human_escalation"
-    }
-
-    // Build enhanced system prompt
-    const systemPrompt = MAYA_SYSTEM_PROMPT + buildSystemPrompt(conversationContext)
 
     // Ensure valid messages
     const validMessages: UIMessage[] =
@@ -319,32 +201,25 @@ export async function POST(req: Request) {
             },
           ]
 
-    console.log("[v0] Valid messages for conversion:", validMessages.length)
-
     // Convert to model format
     const modelMessages = convertToModelMessages(validMessages)
-    console.log("[v0] Model messages prepared:", modelMessages.length)
-
-    console.log("[v0] Starting streamText with Claude model (no tools)")
 
     const result = streamText({
       model: "anthropic/claude-sonnet-4-20250514",
-      system: systemPrompt,
+      system: MAYA_SYSTEM_PROMPT,
       messages: modelMessages,
-      // Tools removed - Claude will handle conversation naturally
       onFinish: ({ text, finishReason }) => {
         console.log("[v0] Stream finished - reason:", finishReason, "text length:", text?.length || 0)
       },
     })
 
-    console.log("[v0] Returning stream response")
     return result.toUIMessageStreamResponse()
   } catch (error) {
     console.error("[v0] Quote assistant error:", error)
 
     return new Response(
       JSON.stringify({
-        error: "I apologize for the technical difficulty. Please try again or call us at 1300 123 456.",
+        error: `I apologize for the technical difficulty. Please try again or call us at ${M2M_PHONE}.`,
       }),
       {
         status: 500,
@@ -358,6 +233,7 @@ export async function GET() {
   return Response.json({
     status: "healthy",
     timestamp: new Date().toISOString(),
-    model: "anthropic/claude-sonnet-4-20250514",
+    service: "Maya Quote Assistant",
+    phone: M2M_PHONE,
   })
 }
