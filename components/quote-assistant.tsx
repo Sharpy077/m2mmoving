@@ -3,6 +3,7 @@
 import type React from "react"
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, useCallback } from "react"
 import { useChat } from "@ai-sdk/react"
+import { DefaultChatTransport } from "ai"
 
 import {
   Building2,
@@ -400,7 +401,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     // useChat HOOK - MUST BE DECLARED EARLY
     // ============================================
     const { messages, sendMessage, status, error } = useChat({
-      api: "/api/quote-assistant",
+      transport: new DefaultChatTransport({ api: "/api/quote-assistant" }),
       id: conversationId,
       onError: (err) => {
         console.log("[v0] Chat error:", err.message)
