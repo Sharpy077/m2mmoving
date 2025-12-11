@@ -1,7 +1,17 @@
 "use client"
 
 import type React from "react"
-import { useState, useRef, useEffect, forwardRef, useImperativeHandle, useMemo, useCallback } from "react"
+import {
+  useState,
+  useRef,
+  useEffect,
+  forwardRef,
+  useImperativeHandle,
+  useMemo,
+  useCallback,
+  lazy,
+  Suspense,
+} from "react"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
 import { Button } from "@/components/ui/button"
@@ -28,31 +38,14 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react"
-import { loadStripe } from "@stripe/stripe-js"
-import { EmbeddedCheckout, EmbeddedCheckoutProvider } from "@stripe/react-stripe-js"
 import { createCheckoutSession } from "@/app/actions/create-checkout-session"
 import { sendBookingConfirmation } from "@/app/actions/send-confirmation"
+import { formatDate } from "@/utils/date-utils" // Import formatDate function
 
 const M2M_PHONE = "03 8820 1801"
 const M2M_PHONE_LINK = "tel:0388201801"
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
-
-function formatDate(date: Date, style: "full" | "short" = "full"): string {
-  if (style === "full") {
-    return date.toLocaleDateString("en-AU", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    })
-  }
-  return date.toLocaleDateString("en-AU", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  })
-}
+const StripeCheckoutWrapper = lazy(() => import("@/components/stripe-checkout-wrapper"))
 
 // Service options for the picker
 const serviceOptions = [
@@ -679,15 +672,16 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
             </div>
           </div>
           {paymentClientSecret ? (
-            <EmbeddedCheckoutProvider
-              stripe={stripePromise}
-              options={{
-                clientSecret: paymentClientSecret,
-                onComplete: handlePaymentComplete,
-              }}
+            <Suspense
+              fallback={
+                <div className="text-center py-4">
+                  <Loader2 className="h-8 w-8 animate-spin mx-auto text-purple-500" />
+                  <p className="text-sm text-muted-foreground mt-2">Loading payment form...</p>
+                </div>
+              }
             >
-              <EmbeddedCheckout />
-            </EmbeddedCheckoutProvider>
+              <StripeCheckoutWrapper clientSecret={paymentClientSecret} onComplete={handlePaymentComplete} />
+            </Suspense>
           ) : (
             <div className="text-center py-4">
               <Loader2 className="h-8 w-8 animate-spin mx-auto text-purple-500" />
