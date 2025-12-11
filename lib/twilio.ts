@@ -1,9 +1,27 @@
-import twilio from "twilio"
+// Twilio client is created lazily to prevent "Object prototype may only be an Object or null" errors
 
-const accountSid = process.env.TWILIO_ACCOUNT_SID
-const authToken = process.env.TWILIO_AUTH_TOKEN
+let twilioClientInstance: ReturnType<typeof import("twilio")["default"]> | null = null
 
-export const twilioClient = accountSid && authToken ? twilio(accountSid, authToken) : null
+export async function getTwilioClient() {
+  if (twilioClientInstance) {
+    return twilioClientInstance
+  }
+
+  const accountSid = process.env.TWILIO_ACCOUNT_SID
+  const authToken = process.env.TWILIO_AUTH_TOKEN
+
+  if (!accountSid || !authToken) {
+    return null
+  }
+
+  // Dynamic import to avoid bundling issues
+  const twilio = (await import("twilio")).default
+  twilioClientInstance = twilio(accountSid, authToken)
+  return twilioClientInstance
+}
+
+// Keep the old export for backwards compatibility but mark as deprecated
+export const twilioClient = null // Use getTwilioClient() instead
 
 // Business hours configuration (Melbourne time)
 export const BUSINESS_HOURS = {

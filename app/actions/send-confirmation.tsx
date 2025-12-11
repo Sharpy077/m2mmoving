@@ -1,7 +1,7 @@
 "use server"
 
 import { resend, EMAIL_FROM_ADDRESS } from "@/lib/email"
-import { twilioClient } from "@/lib/twilio"
+import { getTwilioClient } from "@/lib/twilio"
 import { createClient } from "@/lib/supabase/server"
 
 const OPERATIONS_EMAIL = "operations@m2mmoving.au"
@@ -109,6 +109,7 @@ export async function sendBookingConfirmation(booking: BookingConfirmation) {
   }
 
   // 3. Send SMS confirmation
+  const twilioClient = await getTwilioClient()
   if (twilioClient && booking.customerPhone) {
     try {
       const formattedPhone = booking.customerPhone.startsWith("+61")
