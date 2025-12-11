@@ -141,6 +141,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const chatContainerRef = useRef<HTMLDivElement>(null)
 
   // Memoize transport to prevent recreation
   const transport = useMemo(
@@ -162,8 +163,10 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
 
   // Scroll to bottom when messages change
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" })
+    }
+  }, [messages, isLoading])
 
   useEffect(() => {
     if (
@@ -192,6 +195,28 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     showPayment,
     showConfirmation,
   ])
+
+  useEffect(() => {
+    const handleViewportResize = () => {
+      // Scroll messages into view when keyboard opens
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" })
+      }
+    }
+
+    // Listen for visual viewport changes (mobile keyboard)
+    if (typeof window !== "undefined" && window.visualViewport) {
+      window.visualViewport.addEventListener("resize", handleViewportResize)
+      window.visualViewport.addEventListener("scroll", handleViewportResize)
+    }
+
+    return () => {
+      if (typeof window !== "undefined" && window.visualViewport) {
+        window.visualViewport.removeEventListener("resize", handleViewportResize)
+        window.visualViewport.removeEventListener("scroll", handleViewportResize)
+      }
+    }
+  }, [])
 
   useImperativeHandle(ref, () => ({
     open: () => setIsVisible(true),
@@ -608,9 +633,12 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
   if (!isVisible) return null
 
   return (
-    <div className="flex flex-col h-[500px] bg-background rounded-lg border shadow-lg">
+    <div
+      ref={chatContainerRef}
+      className="flex flex-col h-[500px] max-h-[80dvh] md:max-h-[500px] bg-background rounded-lg border shadow-lg"
+    >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-orange-500 to-red-500">
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-orange-500 to-red-500 shrink-0">
         <div className="flex items-center gap-2">
           <Truck className="h-5 w-5 text-white" />
           <span className="font-semibold text-white">M&M Moving</span>
@@ -621,7 +649,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scroll-smooth overscroll-contain">
         {showServicePicker && messages.length === 0 ? (
           renderServicePicker()
         ) : (
@@ -669,8 +697,8 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
         )}
       </div>
 
-      {/* Input - updated with ref */}
-      <div className="p-4 border-t">
+      {/* Input */}
+      <div className="p-4 border-t shrink-0 bg-background">
         <form onSubmit={handleSubmit} className="flex gap-2">
           <Input
             ref={inputRef}
@@ -680,6 +708,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
             disabled={isLoading}
             className="flex-1"
             autoComplete="off"
+            autoFocus={false}
           />
           <Button type="submit" disabled={!input.trim() || isLoading} className="bg-orange-500 hover:bg-orange-600">
             <Send className="h-4 w-4" />
