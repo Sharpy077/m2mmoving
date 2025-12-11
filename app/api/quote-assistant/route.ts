@@ -1,4 +1,5 @@
 import { convertToCoreMessages, streamText } from "ai"
+import { openai } from "@ai-sdk/openai"
 import { z } from "zod"
 import { MAYA_SYSTEM_PROMPT, PRICING_CONFIG } from "@/lib/agents/maya/playbook"
 import { ErrorClassifier } from "@/lib/conversation/error-classifier"
@@ -218,7 +219,7 @@ RESPONSE REQUIREMENTS:
 - Every user message MUST get a response
 - Every tool call MUST be followed by explanatory text
 - Every question should have a clear call-to-action
-- If unsure, ask a clarifying question rather than staying silent.
+- If unsure, ask a clarifying question rather than staying silent
 `
 
 const systemPrompt = `${MAYA_SYSTEM_PROMPT}\n\n${operationalPrompt}`
@@ -629,7 +630,7 @@ function createErrorStreamResponse(error: unknown, userMessage?: string): Respon
       : `I encountered a ${classified.type} error. Please acknowledge this gracefully and offer to help the user continue. Be brief and helpful.`
 
     const errorResult = streamText({
-      model: "gpt-4o", // Using Vercel AI Gateway model string
+      model: openai("gpt-4o"),
       system: systemPrompt,
       messages: [
         {
@@ -709,7 +710,7 @@ export async function POST(req: Request) {
           : "\n\nIMPORTANT: The user seems frustrated. Acknowledge their frustration, apologise sincerely, and offer to either continue helping or arrange a callback. Prioritise their comfort."
 
         const result = streamText({
-          model: "gpt-4o", // Using Vercel AI Gateway model string
+          model: openai("gpt-4o"),
           system: systemPrompt + escalationPrompt,
           messages: convertToCoreMessages(rawMessages),
           tools,
@@ -728,7 +729,7 @@ export async function POST(req: Request) {
         const escalationPrompt = `\n\nIMPORTANT: This conversation has encountered issues (${escalationCheck.reason}). Apologise for any difficulties and proactively offer to arrange a callback. The user's experience is the priority.`
 
         const result = streamText({
-          model: "gpt-4o", // Using Vercel AI Gateway model string
+          model: openai("gpt-4o"),
           system: systemPrompt + escalationPrompt,
           messages: convertToCoreMessages(rawMessages),
           tools,
@@ -760,7 +761,7 @@ export async function POST(req: Request) {
       : rawMessages
 
     const result = streamText({
-      model: "gpt-4o", // Using Vercel AI Gateway model string
+      model: openai("gpt-4o"),
       system: systemPrompt,
       messages: convertToCoreMessages(effectiveMessages),
       tools,
