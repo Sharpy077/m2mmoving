@@ -3,6 +3,7 @@
 import type React from "react"
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, useCallback } from "react"
 import { useChat } from "@ai-sdk/react"
+import { DefaultChatTransport } from "ai"
 
 import {
   Building2,
@@ -399,9 +400,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     // ============================================
     // useChat HOOK - MUST BE DECLARED EARLY
     // ============================================
-    const chatResult = useChat({
-      // @ts-ignore
-      api: "/api/quote-assistant",
+    const { messages, sendMessage, status, error } = useChat({
+      transport: new DefaultChatTransport({ api: "/api/quote-assistant" }),
       id: conversationId,
       onError: (err) => {
         console.log("[v0] Chat error:", err.message)
@@ -433,18 +433,10 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       },
     })
 
-    console.log("[v0] useChat result:", chatResult)
-    console.log("[v0] useChat append:", typeof chatResult?.append)
-
-    const messages = chatResult?.messages || []
-    const append = chatResult?.append
-    const status = chatResult?.status
-    const error = chatResult?.error
-
     // ============================================
     // DERIVED STATE
     // ============================================
-    const isLoading = status === "streaming" || status === "submitted"
+    const isLoading = status === "in_progress" || status === "streaming" || status === "submitted"
 
     // ============================================
     // CALLBACKS (can now use messages, isLoading, etc.)
@@ -530,9 +522,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       if (recoverableSession) {
         setConversationContext(recoverableSession.context)
         setRecoverableSession(null)
-        append({ role: "user", content: "Continue from where I left off" })
+        sendMessage({ text: "Continue from where I left off" })
       }
-    }, [recoverableSession, append])
+    }, [recoverableSession, sendMessage])
 
     const handleStartFresh = useCallback(() => {
       SessionRecoveryManager.deleteSession(recoverableSession?.conversationId || "")
@@ -542,8 +534,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const handleReEngagementContinue = useCallback(() => {
       setShowReEngagement(false)
       lastActivityRef.current = Date.now()
-      append({ role: "user", content: "I'm still here" })
-    }, [append])
+      sendMessage({ text: "I'm still here" })
+    }, [sendMessage])
 
     const handleRequestCallback = useCallback(async () => {
       setShowReEngagement(false)
@@ -563,9 +555,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           estimatedWait: result.estimatedWaitTime || "within 30 minutes",
         })
       } else {
-        append({ role: "user", content: "I'd like someone to call me please" })
+        sendMessage({ role: "user", content: "I'd like someone to call me please" })
       }
-    }, [conversationId, conversationContext, append])
+    }, [conversationId, conversationContext, sendMessage])
 
     const handleSendMessageInternal = useCallback(
       async (e?: React.FormEvent) => {
@@ -579,10 +571,10 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           analyticsRef.current?.trackStageTransition("human_escalation")
         }
 
-        append({ role: "user", content: inputValue })
+        sendMessage({ role: "user", content: inputValue })
         setInputValue("")
       },
-      [inputValue, isLoading, updateActivity, append],
+      [inputValue, isLoading, updateActivity, sendMessage],
     )
 
     const handleRetry = useCallback(() => {
@@ -634,9 +626,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         setLastUserMessageTime(Date.now())
         const messageText = `Yes, that's correct - ${business.name} (ABN: ${business.abn})`
         setPendingRetry({ text: messageText, retries: 0 })
-        append({ role: "user", content: messageText })
+        sendMessage({ role: "user", content: messageText })
       },
-      [isLoading, append],
+      [isLoading, sendMessage],
     )
 
     const handleSelectService = useCallback(
@@ -649,9 +641,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         setLastUserMessageTime(Date.now())
         const messageText = `I need ${service.name}. ${service.description ? `(${service.description})` : ""}`
         setPendingRetry({ text: messageText, retries: 0 })
-        append({ role: "user", content: messageText })
+        sendMessage({ role: "user", content: messageText })
       },
-      [isLoading, append],
+      [isLoading, sendMessage],
     )
 
     const handleSelectDate = useCallback(
@@ -670,9 +662,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         })
         const messageText = `I'd like to book for ${formattedDate}`
         setPendingRetry({ text: messageText, retries: 0 })
-        append({ role: "user", content: messageText })
+        sendMessage({ role: "user", content: messageText })
       },
-      [isLoading, append],
+      [isLoading, sendMessage],
     )
 
     const handlePromptClick = useCallback(
@@ -682,9 +674,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         setHasError(false)
         setErrorMessage(null)
         setLastUserMessageTime(Date.now())
-        append({ role: "user", content: prompt })
+        sendMessage({ role: "user", content: prompt })
       },
-      [isLoading, append],
+      [isLoading, sendMessage],
     )
 
     const handlePaymentComplete = useCallback(async () => {
@@ -718,8 +710,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           setIsSubmittingLead(false)
         }
       }
-      append({ role: "user", content: "I've completed the payment." })
-    }, [currentQuote, contactInfo, selectedDate, confirmedBusiness, append])
+      sendMessage({ role: "user", content: "I've completed the payment." })
+    }, [currentQuote, contactInfo, selectedDate, confirmedBusiness, sendMessage])
 
     const renderMessageContent = useCallback((message: any) => {
       if (message.parts) {
@@ -737,6 +729,66 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       }
       return null
     }, [])
+
+    const handleSendMessage = useCallback(
+      async (text: string) => {
+        if (!text.trim() || isLoading) return
+
+        updateActivity()
+        setLastUserMessageTime(Date.now())
+
+        // Track analytics
+        analyticsRef.current?.trackEvent("message_sent", {
+          messageLength: text.length,
+          stage: conversationContext.stage,
+        })
+
+        // Start response monitoring
+        responseMonitorRef.current.startTimer(`msg-${Date.now()}`, "user_message")
+
+        try {
+          sendMessage({ text })
+        } catch (error) {
+          handleErrorWithRetry(error, text)
+        }
+      },
+      [isLoading, updateActivity, conversationContext.stage, sendMessage, handleErrorWithRetry],
+    )
+
+    const handleOptionSelect = useCallback(
+      (option: string) => {
+        updateActivity()
+        setLastUserMessageTime(Date.now())
+
+        analyticsRef.current?.trackEvent("option_selected", {
+          option,
+          stage: conversationContext.stage,
+        })
+
+        responseMonitorRef.current.startTimer(`msg-${Date.now()}`, "option_select")
+
+        try {
+          sendMessage({ text: option })
+        } catch (error) {
+          handleErrorWithRetry(error, option)
+        }
+      },
+      [updateActivity, conversationContext.stage, sendMessage, handleErrorWithRetry],
+    )
+
+    const retryLastMessage = useCallback(() => {
+      if (pendingRetry) {
+        setHasError(false)
+        setErrorMessage(null)
+        responseMonitorRef.current.startTimer(`retry-${Date.now()}`, "retry")
+
+        try {
+          sendMessage({ text: pendingRetry.text })
+        } catch (error) {
+          handleErrorWithRetry(error, pendingRetry.text)
+        }
+      }
+    }, [pendingRetry, sendMessage, handleErrorWithRetry])
 
     // ============================================
     // EFFECTS
@@ -853,7 +905,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             if (response.ok) {
               const timer = setTimeout(() => {
                 setLastUserMessageTime(Date.now())
-                append({ role: "user", content: "Hi, I'd like to get a quote for a commercial move." })
+                sendMessage({ text: "Hi, I'd like to get a quote for a commercial move." })
               }, 800)
               return () => clearTimeout(timer)
             }
@@ -863,14 +915,14 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
 
           const timer = setTimeout(() => {
             setLastUserMessageTime(Date.now())
-            append({ role: "user", content: "Hi, I'd like to get a quote for a commercial move." })
+            sendMessage({ text: "Hi, I'd like to get a quote for a commercial move." })
           }, 800)
           return () => clearTimeout(timer)
         }
 
         checkHealth()
       }
-    }, [isOpen, embedded, hasStarted, messages.length, append])
+    }, [isOpen, embedded, hasStarted, messages.length, sendMessage])
 
     // Check for reduced motion preference
     useEffect(() => {
@@ -975,7 +1027,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             setIsListening(false)
             setTimeout(() => {
               setLastUserMessageTime(Date.now())
-              append({ role: "user", content: transcript })
+              sendMessage({ role: "user", content: transcript })
             }, 100)
           }
           recognition.onerror = (event: any) => {
@@ -985,7 +1037,16 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           recognitionRef.current = recognition
         }
       }
-    }, [append])
+    }, [sendMessage])
+
+    useEffect(() => {
+      if (isOpen && isInitialMessage && messages.length === 0 && !isLoading) {
+        const timer = setTimeout(() => {
+          sendMessage({ text: "Hello" })
+        }, 500)
+        return () => clearTimeout(timer)
+      }
+    }, [isOpen, isInitialMessage, messages.length, isLoading, sendMessage])
 
     return (
       <div className="bg-background rounded-lg shadow-lg overflow-hidden w-full max-w-2xl">
