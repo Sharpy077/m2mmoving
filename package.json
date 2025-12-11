@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ai-sdk/openai": "latest",
     "@ai-sdk/react": "latest",
     "@edge-runtime/vm": "latest",
     "@emotion/is-prop-valid": "latest",
@@ -67,6 +68,7 @@
     "lucide-react": "^0.454.0",
     "next": "16.0.7",
     "next-themes": "latest",
+    "openai": "latest",
     "react": "19.2.0",
     "react-day-picker": "latest",
     "react-dom": "19.2.0",
@@ -83,6 +85,7 @@
     "twilio": "latest",
     "uuid": "latest",
     "vaul": "latest",
+    "ws": "latest",
     "zod": "3.25.76"
   },
   "devDependencies": {

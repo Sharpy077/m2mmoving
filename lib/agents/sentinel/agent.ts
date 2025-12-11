@@ -1,21 +1,12 @@
-/**
- * SENTINEL - Customer Support Agent
- * 24/7 customer support, issue resolution, and satisfaction management
- */
-
-import { z } from "zod"
 import { BaseAgent, type AgentInput, type AgentOutput, type AgentAction } from "../base-agent"
 import type {
   AgentIdentity,
   AgentConfig,
-  ToolDefinition,
   InterAgentMessage,
   SupportTicket,
-  TicketMessage,
   TicketStatus,
   TicketPriority,
   TicketCategory,
-  Job,
   AgentMessage,
 } from "../types"
 
@@ -26,12 +17,12 @@ import type {
 export class SentinelAgent extends BaseAgent {
   // Support configuration
   private supportConfig: SupportConfig
-  
+
   constructor(config?: Partial<AgentConfig>) {
     super({
       codename: "SENTINEL_CS",
       enabled: true,
-      model: "gpt-4o",
+      model: "anthropic/claude-sonnet-4-20250514", // Updated model to Claude
       temperature: 0.5, // Lower temperature for more consistent support responses
       maxTokens: 1500,
       systemPrompt: SENTINEL_SYSTEM_PROMPT,
@@ -62,19 +53,20 @@ export class SentinelAgent extends BaseAgent {
       },
       ...config,
     })
-    
+
     this.supportConfig = DEFAULT_SUPPORT_CONFIG
   }
-  
+
   // =============================================================================
   // IDENTITY
   // =============================================================================
-  
+
   protected getIdentity(): AgentIdentity {
     return {
       codename: "SENTINEL_CS",
       name: "Sentinel",
-      description: "AI Customer Support Agent - Handles inquiries, complaints, booking management, and issue resolution",
+      description:
+        "AI Customer Support Agent - Handles inquiries, complaints, booking management, and issue resolution",
       version: "1.0.0",
       capabilities: [
         "Inquiry Handling",
@@ -89,11 +81,11 @@ export class SentinelAgent extends BaseAgent {
       status: "idle",
     }
   }
-  
+
   // =============================================================================
   // TOOLS REGISTRATION
   // =============================================================================
-  
+
   protected registerTools(): void {
     // Get Booking Status
     this.registerTool({
@@ -110,7 +102,7 @@ export class SentinelAgent extends BaseAgent {
       },
       handler: async (params) => this.getBookingStatus(params as BookingLookup),
     })
-    
+
     // Modify Booking
     this.registerTool({
       name: "modifyBooking",
@@ -119,7 +111,11 @@ export class SentinelAgent extends BaseAgent {
         type: "object",
         properties: {
           bookingId: { type: "string", description: "Booking ID to modify" },
-          action: { type: "string", enum: ["reschedule", "update_address", "add_service", "cancel"], description: "Type of modification" },
+          action: {
+            type: "string",
+            enum: ["reschedule", "update_address", "add_service", "cancel"],
+            description: "Type of modification",
+          },
           newDate: { type: "string", description: "New date for reschedule" },
           newAddress: { type: "string", description: "New address" },
           additionalService: { type: "string", description: "Service to add" },
@@ -129,7 +125,7 @@ export class SentinelAgent extends BaseAgent {
       },
       handler: async (params) => this.modifyBooking(params as ModifyBookingParams),
     })
-    
+
     // Create Ticket
     this.registerTool({
       name: "createTicket",
@@ -138,7 +134,11 @@ export class SentinelAgent extends BaseAgent {
         type: "object",
         properties: {
           customerId: { type: "string", description: "Customer ID" },
-          category: { type: "string", enum: ["inquiry", "booking", "complaint", "damage", "refund", "other"], description: "Ticket category" },
+          category: {
+            type: "string",
+            enum: ["inquiry", "booking", "complaint", "damage", "refund", "other"],
+            description: "Ticket category",
+          },
           priority: { type: "string", enum: ["low", "medium", "high", "urgent"], description: "Priority level" },
           subject: { type: "string", description: "Ticket subject" },
           description: { type: "string", description: "Detailed description" },
@@ -148,7 +148,7 @@ export class SentinelAgent extends BaseAgent {
       },
       handler: async (params) => this.createTicket(params as CreateTicketParams),
     })
-    
+
     // Update Ticket
     this.registerTool({
       name: "updateTicket",
@@ -157,7 +157,11 @@ export class SentinelAgent extends BaseAgent {
         type: "object",
         properties: {
           ticketId: { type: "string", description: "Ticket ID" },
-          status: { type: "string", enum: ["open", "pending", "in_progress", "resolved", "closed"], description: "New status" },
+          status: {
+            type: "string",
+            enum: ["open", "pending", "in_progress", "resolved", "closed"],
+            description: "New status",
+          },
           resolution: { type: "string", description: "Resolution details" },
           note: { type: "string", description: "Internal note to add" },
         },
@@ -165,7 +169,7 @@ export class SentinelAgent extends BaseAgent {
       },
       handler: async (params) => this.updateTicket(params as UpdateTicketParams),
     })
-    
+
     // Search FAQ
     this.registerTool({
       name: "searchFAQ",
@@ -180,7 +184,7 @@ export class SentinelAgent extends BaseAgent {
       },
       handler: async (params) => this.searchFAQ(params as { query: string; category?: string }),
     })
-    
+
     // Send Notification
     this.registerTool({
       name: "sendNotification",
@@ -190,14 +194,18 @@ export class SentinelAgent extends BaseAgent {
         properties: {
           customerId: { type: "string", description: "Customer ID" },
           channel: { type: "string", enum: ["email", "sms", "both"], description: "Notification channel" },
-          type: { type: "string", enum: ["status_update", "reminder", "confirmation", "follow_up"], description: "Notification type" },
+          type: {
+            type: "string",
+            enum: ["status_update", "reminder", "confirmation", "follow_up"],
+            description: "Notification type",
+          },
           message: { type: "string", description: "Custom message" },
         },
         required: ["customerId", "channel", "type"],
       },
       handler: async (params) => this.sendNotification(params as NotificationParams),
     })
-    
+
     // Offer Compensation
     this.registerTool({
       name: "offerCompensation",
@@ -214,7 +222,7 @@ export class SentinelAgent extends BaseAgent {
       },
       handler: async (params) => this.offerCompensation(params as CompensationParams),
     })
-    
+
     // Schedule Follow-up
     this.registerTool({
       name: "scheduleFollowUp",
@@ -232,14 +240,14 @@ export class SentinelAgent extends BaseAgent {
       handler: async (params) => this.scheduleFollowUp(params as FollowUpParams),
     })
   }
-  
+
   // =============================================================================
   // MAIN PROCESSING
   // =============================================================================
-  
+
   public async process(input: AgentInput): Promise<AgentOutput> {
     this.log("info", "process", `Processing input type: ${input.type}`)
-    
+
     try {
       switch (input.type) {
         case "message":
@@ -259,14 +267,14 @@ export class SentinelAgent extends BaseAgent {
       }
     }
   }
-  
+
   /**
    * Handle incoming message
    */
   private async handleMessage(input: AgentInput): Promise<AgentOutput> {
     const messages = input.messages || []
     const content = input.content || ""
-    
+
     // Add user message if provided
     if (content) {
       messages.push({
@@ -276,11 +284,11 @@ export class SentinelAgent extends BaseAgent {
         timestamp: new Date(),
       })
     }
-    
+
     // Analyze intent and sentiment
     const intent = await this.classifyIntent(content)
     const sentiment = await this.analyzeSentiment(content)
-    
+
     // Check for escalation triggers
     if (sentiment === "negative" || intent === "complaint" || intent === "damage") {
       const escalationCheck = this.shouldEscalate({
@@ -289,7 +297,7 @@ export class SentinelAgent extends BaseAgent {
         category: intent,
         ...input.metadata,
       })
-      
+
       if (escalationCheck.should) {
         // Create ticket first
         const ticketResult = await this.createTicket({
@@ -298,28 +306,29 @@ export class SentinelAgent extends BaseAgent {
           description: content,
           priority: escalationCheck.priority as TicketPriority,
         })
-        
+
         // Escalate to human
         const escalation = await this.escalateToHuman(
           escalationCheck.reason!,
           `Customer ${sentiment} sentiment detected. Intent: ${intent}. Message: ${content}`,
           { messages, ticketId: ticketResult.data?.ticketId, ...input.metadata },
-          escalationCheck.priority
+          escalationCheck.priority,
         )
-        
+
         return {
           success: true,
-          response: "I understand this is frustrating, and I want to make sure you get the help you deserve. I'm connecting you with our specialist team who will reach out within the hour. Can I get your preferred contact number?",
+          response:
+            "I understand this is frustrating, and I want to make sure you get the help you deserve. I'm connecting you with our specialist team who will reach out within the hour. Can I get your preferred contact number?",
           escalation,
           data: { intent, sentiment, ticketId: ticketResult.data?.ticketId },
         }
       }
     }
-    
+
     // Process based on intent
     let response: string
     const actions: AgentAction[] = []
-    
+
     switch (intent) {
       case "booking_status":
         response = await this.handleBookingInquiry(messages, input.metadata)
@@ -339,7 +348,7 @@ export class SentinelAgent extends BaseAgent {
       default:
         response = await this.generateResponse(messages)
     }
-    
+
     return {
       success: true,
       response,
@@ -347,7 +356,7 @@ export class SentinelAgent extends BaseAgent {
       data: { intent, sentiment },
     }
   }
-  
+
   /**
    * Handle events
    */
@@ -356,7 +365,7 @@ export class SentinelAgent extends BaseAgent {
     if (!event) {
       return { success: false, error: "No event provided" }
     }
-    
+
     switch (event.name) {
       case "support_request":
         return await this.handleSupportRequest(event.data)
@@ -370,7 +379,7 @@ export class SentinelAgent extends BaseAgent {
         return { success: false, error: `Unknown event: ${event.name}` }
     }
   }
-  
+
   /**
    * Handle handoff from another agent
    */
@@ -379,9 +388,9 @@ export class SentinelAgent extends BaseAgent {
     if (!handoff) {
       return { success: false, error: "No handoff data provided" }
     }
-    
+
     this.log("info", "handleHandoff", `Received handoff from ${handoff.fromAgent}`)
-    
+
     // Acknowledge handoff and continue conversation
     const response = await this.generateResponse(
       [
@@ -392,22 +401,22 @@ export class SentinelAgent extends BaseAgent {
           timestamp: new Date(),
         },
       ],
-      handoff.context
+      handoff.context,
     )
-    
+
     return {
       success: true,
       response: `I'll take it from here. ${response}`,
       data: { handoffId: handoff.id },
     }
   }
-  
+
   /**
    * Handle inter-agent messages
    */
   public async handleInterAgentMessage(message: InterAgentMessage): Promise<void> {
     this.log("info", "handleInterAgentMessage", `Message from ${message.from}: ${message.type}`)
-    
+
     switch (message.type) {
       case "request":
         // Handle request from another agent
@@ -420,21 +429,21 @@ export class SentinelAgent extends BaseAgent {
         break
     }
   }
-  
+
   // =============================================================================
   // INTENT HANDLERS
   // =============================================================================
-  
+
   private async handleBookingInquiry(messages: AgentMessage[], metadata?: Record<string, unknown>): Promise<string> {
     const context = {
       intent: "booking_status",
       ...metadata,
     }
-    
+
     // Try to extract booking reference from messages
     const lastMessage = messages[messages.length - 1]?.content || ""
     const bookingRef = this.extractBookingReference(lastMessage)
-    
+
     if (bookingRef) {
       const statusResult = await this.getBookingStatus({ bookingId: bookingRef })
       if (statusResult.success && statusResult.data) {
@@ -442,55 +451,58 @@ export class SentinelAgent extends BaseAgent {
         return `I found your booking! Here's the current status:\n\n📦 **Booking ID:** ${booking.id}\n📅 **Date:** ${booking.scheduledDate}\n📍 **From:** ${booking.originSuburb} → **To:** ${booking.destinationSuburb}\n✅ **Status:** ${booking.status}\n\nIs there anything specific you'd like to know about your move?`
       }
     }
-    
+
     return await this.generateResponse(messages, context)
   }
-  
+
   private async handleRescheduleRequest(messages: AgentMessage[], metadata?: Record<string, unknown>): Promise<string> {
     return `I'd be happy to help you reschedule your move. To do this, I'll need:\n\n1. Your booking reference or email address\n2. Your preferred new date\n\nPlease note that rescheduling requests made less than 48 hours before your move may incur a fee. What's your booking reference?`
   }
-  
-  private async handleCancellationRequest(messages: AgentMessage[], metadata?: Record<string, unknown>): Promise<string> {
+
+  private async handleCancellationRequest(
+    messages: AgentMessage[],
+    metadata?: Record<string, unknown>,
+  ): Promise<string> {
     return `I'm sorry to hear you need to cancel. Before I process this, I want to make sure I understand - is there anything we could do differently to keep your business? Perhaps reschedule to a more convenient time?\n\nIf you do need to cancel, please be aware:\n- Cancellations 7+ days out: Full deposit refund\n- Cancellations 3-7 days out: 50% deposit refund\n- Cancellations under 3 days: Deposit forfeit\n\nWould you like to proceed with the cancellation, or would you like to explore other options?`
   }
-  
+
   private async handleComplaint(messages: AgentMessage[], metadata?: Record<string, unknown>): Promise<string> {
     // Create a ticket for tracking
     await this.createTicket({
       category: "complaint",
       subject: "Customer Complaint - Requires Attention",
-      description: messages.map(m => m.content).join("\n"),
+      description: messages.map((m) => m.content).join("\n"),
       priority: "high",
     })
-    
+
     return `I'm truly sorry to hear about your experience - that's not the standard we strive for at M&M Commercial Moving. I want to make this right.\n\nCould you please tell me more about what happened? I'll make sure this is escalated to our management team and we'll work to resolve this as quickly as possible.`
   }
-  
+
   private async handleGeneralQuestion(messages: AgentMessage[], metadata?: Record<string, unknown>): Promise<string> {
     const lastMessage = messages[messages.length - 1]?.content || ""
-    
+
     // Search FAQ first
     const faqResult = await this.searchFAQ({ query: lastMessage })
-    
+
     if (faqResult.success && faqResult.data) {
       const faqAnswer = (faqResult.data as any).answer
       if (faqAnswer) {
         return faqAnswer
       }
     }
-    
+
     // Generate response if no FAQ match
     return await this.generateResponse(messages, { intent: "question", ...metadata })
   }
-  
+
   // =============================================================================
   // TOOL IMPLEMENTATIONS
   // =============================================================================
-  
+
   private async getBookingStatus(params: BookingLookup) {
     // In production, query database
     this.log("info", "getBookingStatus", `Looking up booking`, params)
-    
+
     // Mock response
     return {
       success: true,
@@ -506,20 +518,20 @@ export class SentinelAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async modifyBooking(params: ModifyBookingParams) {
     this.log("info", "modifyBooking", `Modifying booking: ${params.bookingId}`, params)
-    
+
     // Check if modification is allowed
     const canModify = await this.checkModificationAllowed(params.bookingId)
-    
+
     if (!canModify.allowed) {
       return {
         success: false,
         error: canModify.reason,
       }
     }
-    
+
     switch (params.action) {
       case "reschedule":
         return {
@@ -532,7 +544,7 @@ export class SentinelAgent extends BaseAgent {
             message: "Your move has been successfully rescheduled.",
           },
         }
-      
+
       case "cancel":
         return {
           success: true,
@@ -543,7 +555,7 @@ export class SentinelAgent extends BaseAgent {
             message: "Your booking has been cancelled. Refund will be processed within 5-7 business days.",
           },
         }
-      
+
       default:
         return {
           success: true,
@@ -555,7 +567,7 @@ export class SentinelAgent extends BaseAgent {
         }
     }
   }
-  
+
   private async createTicket(params: CreateTicketParams) {
     const ticket: SupportTicket = {
       id: `TKT-${Date.now()}`,
@@ -570,13 +582,16 @@ export class SentinelAgent extends BaseAgent {
       createdAt: new Date(),
       updatedAt: new Date(),
     }
-    
+
     if (params.bookingId) {
       ticket.bookingId = params.bookingId
     }
-    
-    this.log("info", "createTicket", `Ticket created: ${ticket.id}`, { category: params.category, priority: params.priority })
-    
+
+    this.log("info", "createTicket", `Ticket created: ${ticket.id}`, {
+      category: params.category,
+      priority: params.priority,
+    })
+
     return {
       success: true,
       data: {
@@ -586,10 +601,10 @@ export class SentinelAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async updateTicket(params: UpdateTicketParams) {
     this.log("info", "updateTicket", `Updating ticket: ${params.ticketId}`, params)
-    
+
     return {
       success: true,
       data: {
@@ -599,14 +614,12 @@ export class SentinelAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async searchFAQ(params: { query: string; category?: string }) {
-    const faqMatch = FAQ_DATABASE.find(faq =>
-      faq.keywords.some(keyword =>
-        params.query.toLowerCase().includes(keyword.toLowerCase())
-      )
+    const faqMatch = FAQ_DATABASE.find((faq) =>
+      faq.keywords.some((keyword) => params.query.toLowerCase().includes(keyword.toLowerCase())),
     )
-    
+
     if (faqMatch) {
       return {
         success: true,
@@ -618,19 +631,19 @@ export class SentinelAgent extends BaseAgent {
         },
       }
     }
-    
+
     return {
       success: true,
       data: {
         found: false,
-        suggestions: FAQ_DATABASE.slice(0, 3).map(f => f.question),
+        suggestions: FAQ_DATABASE.slice(0, 3).map((f) => f.question),
       },
     }
   }
-  
+
   private async sendNotification(params: NotificationParams) {
     this.log("info", "sendNotification", `Sending ${params.type} via ${params.channel}`, params)
-    
+
     return {
       success: true,
       data: {
@@ -641,20 +654,20 @@ export class SentinelAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async offerCompensation(params: CompensationParams) {
     const maxAutoApprove = this.supportConfig.compensation.maxAutoApprove
     const amount = params.amount || 0
-    
+
     if (amount > maxAutoApprove) {
       // Escalate for approval
       await this.escalateToHuman(
         "high_value_deal",
         `Compensation request of $${amount} exceeds auto-approve limit of $${maxAutoApprove}`,
         params,
-        "medium"
+        "medium",
       )
-      
+
       return {
         success: true,
         data: {
@@ -664,7 +677,7 @@ export class SentinelAgent extends BaseAgent {
         },
       }
     }
-    
+
     return {
       success: true,
       data: {
@@ -676,7 +689,7 @@ export class SentinelAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async scheduleFollowUp(params: FollowUpParams) {
     return {
       success: true,
@@ -689,14 +702,14 @@ export class SentinelAgent extends BaseAgent {
       },
     }
   }
-  
+
   // =============================================================================
   // HELPER METHODS
   // =============================================================================
-  
+
   private async classifyIntent(text: string): Promise<string> {
     const textLower = text.toLowerCase()
-    
+
     if (textLower.includes("status") || textLower.includes("where") || textLower.includes("tracking")) {
       return "booking_status"
     }
@@ -706,82 +719,113 @@ export class SentinelAgent extends BaseAgent {
     if (textLower.includes("cancel") || textLower.includes("refund")) {
       return "cancel"
     }
-    if (textLower.includes("complaint") || textLower.includes("unhappy") || textLower.includes("disappointed") || textLower.includes("terrible")) {
+    if (
+      textLower.includes("complaint") ||
+      textLower.includes("unhappy") ||
+      textLower.includes("disappointed") ||
+      textLower.includes("terrible")
+    ) {
       return "complaint"
     }
     if (textLower.includes("damage") || textLower.includes("broken") || textLower.includes("destroyed")) {
       return "damage"
     }
-    if (textLower.includes("?") || textLower.includes("how") || textLower.includes("what") || textLower.includes("when")) {
+    if (
+      textLower.includes("?") ||
+      textLower.includes("how") ||
+      textLower.includes("what") ||
+      textLower.includes("when")
+    ) {
       return "question"
     }
-    
+
     return "general"
   }
-  
+
   private async analyzeSentiment(text: string): Promise<"positive" | "neutral" | "negative"> {
     const negativeTriggers = [
-      "angry", "frustrated", "terrible", "awful", "worst", "scam", "rip off",
-      "complaint", "sue", "horrible", "disgusting", "unacceptable", "disappointed",
-      "never again", "waste", "ridiculous"
+      "angry",
+      "frustrated",
+      "terrible",
+      "awful",
+      "worst",
+      "scam",
+      "rip off",
+      "complaint",
+      "sue",
+      "horrible",
+      "disgusting",
+      "unacceptable",
+      "disappointed",
+      "never again",
+      "waste",
+      "ridiculous",
     ]
     const positiveTriggers = [
-      "great", "excellent", "amazing", "wonderful", "perfect", "love", "fantastic",
-      "thank you", "appreciate", "happy", "satisfied", "recommend"
+      "great",
+      "excellent",
+      "amazing",
+      "wonderful",
+      "perfect",
+      "love",
+      "fantastic",
+      "thank you",
+      "appreciate",
+      "happy",
+      "satisfied",
+      "recommend",
     ]
-    
+
     const textLower = text.toLowerCase()
-    
-    const negativeCount = negativeTriggers.filter(t => textLower.includes(t)).length
-    const positiveCount = positiveTriggers.filter(t => textLower.includes(t)).length
-    
+
+    const negativeCount = negativeTriggers.filter((t) => textLower.includes(t)).length
+    const positiveCount = positiveTriggers.filter((t) => textLower.includes(t)).length
+
     if (negativeCount > positiveCount) return "negative"
     if (positiveCount > negativeCount) return "positive"
     return "neutral"
   }
-  
+
   private extractBookingReference(text: string): string | null {
     // Look for booking reference patterns
-    const patterns = [
-      /BK-\d{4}-\d{3}/i,
-      /booking[:\s#]*([A-Z0-9-]+)/i,
-      /reference[:\s#]*([A-Z0-9-]+)/i,
-    ]
-    
+    const patterns = [/BK-\d{4}-\d{3}/i, /booking[:\s#]*([A-Z0-9-]+)/i, /reference[:\s#]*([A-Z0-9-]+)/i]
+
     for (const pattern of patterns) {
       const match = text.match(pattern)
       if (match) {
         return match[1] || match[0]
       }
     }
-    
+
     return null
   }
-  
+
   private async checkModificationAllowed(bookingId: string): Promise<{ allowed: boolean; reason?: string }> {
     // In production, check against actual booking data
     return { allowed: true }
   }
-  
+
   private async handleSupportRequest(data: Record<string, unknown>): Promise<AgentOutput> {
     return {
       success: true,
       response: "Hi! I'm here to help. What can I assist you with today?",
     }
   }
-  
+
   private async handleComplaintEvent(data: Record<string, unknown>): Promise<AgentOutput> {
     return {
       success: true,
-      response: "I understand you've had an issue. I'm here to help resolve this as quickly as possible. Can you tell me more about what happened?",
+      response:
+        "I understand you've had an issue. I'm here to help resolve this as quickly as possible. Can you tell me more about what happened?",
     }
   }
-  
+
   private async handleMoveCompleted(data: Record<string, unknown>): Promise<AgentOutput> {
     // Send satisfaction survey
     return {
       success: true,
-      response: "Thank you for choosing M&M Commercial Moving! We hope everything went smoothly. Would you mind taking a moment to rate your experience?",
+      response:
+        "Thank you for choosing M&M Commercial Moving! We hope everything went smoothly. Would you mind taking a moment to rate your experience?",
       actions: [
         {
           type: "send_email",
@@ -792,33 +836,29 @@ export class SentinelAgent extends BaseAgent {
       ],
     }
   }
-  
+
   private async handleFeedback(data: Record<string, unknown>): Promise<AgentOutput> {
     const rating = data.rating as number
-    
+
     if (rating >= 4) {
       // Hand off to PHOENIX for retention/referral
       await this.requestHandoff(
         "PHOENIX_RET",
         "Positive feedback received - opportunity for testimonial/referral",
         data,
-        "low"
+        "low",
       )
     } else if (rating <= 2) {
       // Escalate for recovery
-      await this.escalateToHuman(
-        "negative_sentiment",
-        `Low satisfaction rating: ${rating}/5`,
-        data,
-        "high"
-      )
+      await this.escalateToHuman("negative_sentiment", `Low satisfaction rating: ${rating}/5`, data, "high")
     }
-    
+
     return {
       success: true,
-      response: rating >= 4
-        ? "Thank you so much for the positive feedback! We'd love if you could share your experience with others. Would you be willing to leave us a Google review?"
-        : "We're sorry to hear about your experience. Your feedback is important to us. Can you tell us more about what we could improve?",
+      response:
+        rating >= 4
+          ? "Thank you so much for the positive feedback! We'd love if you could share your experience with others. Would you be willing to leave us a Google review?"
+          : "We're sorry to hear about your experience. Your feedback is important to us. Can you tell us more about what we could improve?",
     }
   }
 }
@@ -899,37 +939,43 @@ const FAQ_DATABASE = [
   {
     category: "booking",
     question: "How do I check my booking status?",
-    answer: "You can check your booking status by providing your booking reference number (format: BK-YYYY-XXX) or the email address used during booking. I can look this up for you right now!",
+    answer:
+      "You can check your booking status by providing your booking reference number (format: BK-YYYY-XXX) or the email address used during booking. I can look this up for you right now!",
     keywords: ["status", "booking", "check", "where", "tracking"],
   },
   {
     category: "booking",
     question: "How can I reschedule my move?",
-    answer: "You can reschedule your move up to 48 hours before the scheduled date free of charge. Rescheduling requests within 48 hours may incur a $150 fee. Just provide your booking reference and preferred new date, and I'll help you reschedule.",
+    answer:
+      "You can reschedule your move up to 48 hours before the scheduled date free of charge. Rescheduling requests within 48 hours may incur a $150 fee. Just provide your booking reference and preferred new date, and I'll help you reschedule.",
     keywords: ["reschedule", "change date", "different day", "postpone"],
   },
   {
     category: "booking",
     question: "What is your cancellation policy?",
-    answer: "Our cancellation policy:\n• 7+ days before move: Full deposit refund\n• 3-7 days before move: 50% deposit refund\n• Less than 3 days: Deposit is non-refundable\n\nWe understand plans change - let me know if you need to cancel and I'll help process it.",
+    answer:
+      "Our cancellation policy:\n• 7+ days before move: Full deposit refund\n• 3-7 days before move: 50% deposit refund\n• Less than 3 days: Deposit is non-refundable\n\nWe understand plans change - let me know if you need to cancel and I'll help process it.",
     keywords: ["cancel", "cancellation", "refund", "policy"],
   },
   {
     category: "services",
     question: "What additional services do you offer?",
-    answer: "We offer several additional services:\n• Professional Packing: $450\n• Temporary Storage: $300/week\n• Post-Move Cleaning: $350\n• Premium Insurance: $200\n• After Hours Service: $500\n• IT Setup Assistance: $600\n\nWould you like to add any of these to your booking?",
+    answer:
+      "We offer several additional services:\n• Professional Packing: $450\n• Temporary Storage: $300/week\n• Post-Move Cleaning: $350\n• Premium Insurance: $200\n• After Hours Service: $500\n• IT Setup Assistance: $600\n\nWould you like to add any of these to your booking?",
     keywords: ["services", "additional", "packing", "storage", "cleaning", "insurance"],
   },
   {
     category: "payment",
     question: "What payment methods do you accept?",
-    answer: "We accept:\n• Credit/Debit cards (Visa, Mastercard, Amex)\n• Bank transfer (EFT)\n• PayPal\n\nA 50% deposit is required to confirm your booking, with the balance due on move day.",
+    answer:
+      "We accept:\n• Credit/Debit cards (Visa, Mastercard, Amex)\n• Bank transfer (EFT)\n• PayPal\n\nA 50% deposit is required to confirm your booking, with the balance due on move day.",
     keywords: ["payment", "pay", "credit card", "bank transfer"],
   },
   {
     category: "insurance",
     question: "Is my move insured?",
-    answer: "All moves include basic coverage up to $10,000. For additional peace of mind, we offer Premium Insurance at $200 which provides coverage up to $100,000 and includes coverage for high-value items. Would you like to add premium insurance to your booking?",
+    answer:
+      "All moves include basic coverage up to $10,000. For additional peace of mind, we offer Premium Insurance at $200 which provides coverage up to $100,000 and includes coverage for high-value items. Would you like to add premium insurance to your booking?",
     keywords: ["insurance", "covered", "damage", "protection"],
   },
 ]

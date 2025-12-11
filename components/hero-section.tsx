@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Shield, Zap, Target, Phone, MessageSquare } from "lucide-react"
-import { QuoteAssistant, type QuoteAssistantHandle } from "@/components/quote-assistant"
+import { QuoteAssistant, type QuoteAssistantRef } from "@/components/quote-assistant"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { Card, CardContent } from "@/components/ui/card"
 
@@ -37,7 +37,7 @@ function QuoteAssistantFallback() {
 export function HeroSection() {
   const [showFloatingAssistant, setShowFloatingAssistant] = useState(false)
   const assistantContainerRef = useRef<HTMLDivElement>(null)
-  const floatingAssistantRef = useRef<QuoteAssistantHandle>(null)
+  const floatingAssistantRef = useRef<QuoteAssistantRef>(null)
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -100,14 +100,21 @@ export function HeroSection() {
               </h1>
 
               <p className="text-lg md:text-xl text-muted-foreground max-w-xl mb-8 leading-relaxed">
-                Melbourne's commercial moving specialists. Office relocations, data centres, and IT equipment handled with
-                precision. <span className="text-foreground font-semibold">Free instant quotes via AI or phone.</span>
+                Melbourne's commercial moving specialists. Office relocations, data centres, and IT equipment handled
+                with precision.{" "}
+                <span className="text-foreground font-semibold">Free instant quotes via AI or phone.</span>
               </p>
 
+              <div ref={assistantContainerRef} className="lg:hidden mb-8">
+                <ErrorBoundary fallback={<QuoteAssistantFallback />}>
+                  <QuoteAssistant embedded />
+                </ErrorBoundary>
+              </div>
+
               <div className="flex flex-col sm:flex-row gap-4 mb-8">
-                <Button 
-                  size="lg" 
-                  className="uppercase tracking-wider group text-lg min-h-[44px] min-w-[120px] px-6" 
+                <Button
+                  size="lg"
+                  className="uppercase tracking-wider group text-lg min-h-[44px] min-w-[120px] px-6"
                   onClick={scrollToAssistant}
                 >
                   Get Free Quote
@@ -155,7 +162,7 @@ export function HeroSection() {
                   </div>
                 </div>
               </div>
-              
+
               {/* Social Proof */}
               <div className="mt-8 pt-6 border-t border-border/50">
                 <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
@@ -175,7 +182,7 @@ export function HeroSection() {
               </div>
             </div>
 
-            <div ref={assistantContainerRef} className="lg:mt-0">
+            <div className="hidden lg:block">
               <ErrorBoundary fallback={<QuoteAssistantFallback />}>
                 <QuoteAssistant embedded />
               </ErrorBoundary>

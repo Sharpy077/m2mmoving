@@ -1,9 +1,3 @@
-/**
- * PRISM - Dynamic Pricing Agent
- * Demand-based pricing, competitor analysis, and revenue optimization
- */
-
-import { z } from "zod"
 import { BaseAgent, type AgentInput, type AgentOutput } from "../base-agent"
 import type { AgentIdentity, AgentConfig, InterAgentMessage } from "../types"
 
@@ -14,12 +8,12 @@ import type { AgentIdentity, AgentConfig, InterAgentMessage } from "../types"
 export class PrismAgent extends BaseAgent {
   private pricingConfig: PricingConfig
   private demandData: Map<string, DemandData> = new Map()
-  
+
   constructor(config?: Partial<AgentConfig>) {
     super({
       codename: "PRISM_PRICE",
       enabled: true,
-      model: "gpt-4o",
+      model: "anthropic/claude-sonnet-4-20250514",
       temperature: 0.4,
       maxTokens: 1500,
       systemPrompt: PRISM_SYSTEM_PROMPT,
@@ -44,11 +38,11 @@ export class PrismAgent extends BaseAgent {
       rateLimits: { requestsPerMinute: 40, tokensPerDay: 200000 },
       ...config,
     })
-    
+
     this.pricingConfig = DEFAULT_PRICING_CONFIG
     this.initializeDemandData()
   }
-  
+
   protected getIdentity(): AgentIdentity {
     return {
       codename: "PRISM_PRICE",
@@ -67,7 +61,7 @@ export class PrismAgent extends BaseAgent {
       status: "idle",
     }
   }
-  
+
   private initializeDemandData() {
     // Initialize with sample demand patterns
     const days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
@@ -79,7 +73,7 @@ export class PrismAgent extends BaseAgent {
       })
     })
   }
-  
+
   protected registerTools(): void {
     this.registerTool({
       name: "calculatePrice",
@@ -87,7 +81,11 @@ export class PrismAgent extends BaseAgent {
       parameters: {
         type: "object",
         properties: {
-          moveType: { type: "string", enum: ["office", "datacenter", "warehouse", "retail", "it"], description: "Type of move" },
+          moveType: {
+            type: "string",
+            enum: ["office", "datacenter", "warehouse", "retail", "it"],
+            description: "Type of move",
+          },
           squareMeters: { type: "number", description: "Size in sqm" },
           origin: { type: "string", description: "Origin suburb" },
           destination: { type: "string", description: "Destination suburb" },
@@ -98,7 +96,7 @@ export class PrismAgent extends BaseAgent {
       },
       handler: async (params) => this.calculatePrice(params as PriceParams),
     })
-    
+
     this.registerTool({
       name: "analyzeCompetitors",
       description: "Analyze competitor pricing",
@@ -112,7 +110,7 @@ export class PrismAgent extends BaseAgent {
       },
       handler: async (params) => this.analyzeCompetitors(params as CompetitorParams),
     })
-    
+
     this.registerTool({
       name: "getDemandForecast",
       description: "Get demand forecast for a period",
@@ -127,7 +125,7 @@ export class PrismAgent extends BaseAgent {
       },
       handler: async (params) => this.getDemandForecast(params as ForecastParams),
     })
-    
+
     this.registerTool({
       name: "suggestDiscount",
       description: "Suggest optimal discount for a deal",
@@ -143,21 +141,25 @@ export class PrismAgent extends BaseAgent {
       },
       handler: async (params) => this.suggestDiscount(params as DiscountParams),
     })
-    
+
     this.registerTool({
       name: "optimizePricing",
       description: "Optimize pricing strategy",
       parameters: {
         type: "object",
         properties: {
-          objective: { type: "string", enum: ["revenue", "volume", "margin", "market_share"], description: "Optimization objective" },
+          objective: {
+            type: "string",
+            enum: ["revenue", "volume", "margin", "market_share"],
+            description: "Optimization objective",
+          },
           constraints: { type: "array", description: "Constraints to consider" },
         },
         required: ["objective"],
       },
       handler: async (params) => this.optimizePricing(params as OptimizeParams),
     })
-    
+
     this.registerTool({
       name: "getMarginAnalysis",
       description: "Get margin analysis for recent jobs",
@@ -171,7 +173,7 @@ export class PrismAgent extends BaseAgent {
       },
       handler: async (params) => this.getMarginAnalysis(params as MarginParams),
     })
-    
+
     this.registerTool({
       name: "trackConversion",
       description: "Track quote-to-booking conversion",
@@ -187,10 +189,10 @@ export class PrismAgent extends BaseAgent {
       handler: async (params) => this.trackConversion(params as ConversionParams),
     })
   }
-  
+
   public async process(input: AgentInput): Promise<AgentOutput> {
     this.log("info", "process", `Processing input type: ${input.type}`)
-    
+
     try {
       switch (input.type) {
         case "message":
@@ -208,16 +210,16 @@ export class PrismAgent extends BaseAgent {
       return { success: false, error: error instanceof Error ? error.message : "Processing failed" }
     }
   }
-  
+
   private async handleMessage(input: AgentInput): Promise<AgentOutput> {
     const response = await this.generateResponse(input.messages || [])
     return { success: true, response }
   }
-  
+
   private async handleEvent(input: AgentInput): Promise<AgentOutput> {
     const event = input.event
     if (!event) return { success: false, error: "No event" }
-    
+
     switch (event.name) {
       case "quote_requested":
         return await this.handleQuoteRequest(event.data)
@@ -227,13 +229,13 @@ export class PrismAgent extends BaseAgent {
         return { success: false, error: `Unknown event: ${event.name}` }
     }
   }
-  
+
   private async handleScheduledTask(input: AgentInput): Promise<AgentOutput> {
     const taskType = input.metadata?.taskType as string
     if (taskType === "weekly_review") return await this.runWeeklyReview()
     return { success: false, error: "Unknown task" }
   }
-  
+
   private async handleHandoffInput(input: AgentInput): Promise<AgentOutput> {
     // Handle pricing requests from MAYA
     if (input.handoff?.fromAgent === "MAYA_SALES") {
@@ -241,15 +243,15 @@ export class PrismAgent extends BaseAgent {
     }
     return { success: true, response: "Handoff received" }
   }
-  
+
   public async handleInterAgentMessage(message: InterAgentMessage): Promise<void> {
     this.log("info", "handleInterAgentMessage", `From ${message.from}`)
   }
-  
+
   // =============================================================================
   // PRICING WORKFLOWS
   // =============================================================================
-  
+
   private async handleQuoteRequest(data: Record<string, unknown>): Promise<AgentOutput> {
     const priceResult = await this.calculatePrice({
       moveType: data.moveType as string,
@@ -259,20 +261,20 @@ export class PrismAgent extends BaseAgent {
       date: data.date as string,
       additionalServices: data.additionalServices as string[],
     })
-    
+
     return {
       success: true,
       response: "Price calculated",
       data: priceResult.data,
     }
   }
-  
+
   private async handleCompetitorUpdate(data: Record<string, unknown>): Promise<AgentOutput> {
     const analysis = await this.analyzeCompetitors({
       region: data.region as string,
       moveType: data.moveType as string,
     })
-    
+
     // If competitors are significantly cheaper, alert
     if ((analysis.data as any)?.marketPosition === "above_market") {
       await this.sendToAgent("ORACLE_BI", "notification", {
@@ -280,25 +282,25 @@ export class PrismAgent extends BaseAgent {
         analysis: analysis.data,
       })
     }
-    
+
     return { success: true, response: "Competitor analysis updated" }
   }
-  
+
   private async runWeeklyReview(): Promise<AgentOutput> {
     const margin = await this.getMarginAnalysis({ period: "week" })
     const optimization = await this.optimizePricing({ objective: "margin" })
-    
+
     return {
       success: true,
       response: "Weekly pricing review completed",
       data: { margin: margin.data, recommendations: optimization.data },
     }
   }
-  
+
   // =============================================================================
   // TOOL IMPLEMENTATIONS
   // =============================================================================
-  
+
   private async calculatePrice(params: PriceParams) {
     // Base rate per sqm
     const baseRates: Record<string, number> = {
@@ -308,14 +310,14 @@ export class PrismAgent extends BaseAgent {
       retail: 40,
       it: 80,
     }
-    
+
     const baseRate = baseRates[params.moveType] || 45
     let price = params.squareMeters * baseRate
-    
+
     // Distance modifier (simplified)
     const distanceMultiplier = this.calculateDistanceMultiplier(params.origin, params.destination)
     price *= distanceMultiplier
-    
+
     // Day-of-week demand modifier
     if (params.date) {
       const dayOfWeek = new Date(params.date).toLocaleDateString("en-US", { weekday: "lowercase" })
@@ -324,7 +326,7 @@ export class PrismAgent extends BaseAgent {
         price *= demandInfo.baseMultiplier
       }
     }
-    
+
     // Additional services
     const servicePrices: Record<string, number> = {
       packing: 500,
@@ -334,24 +336,28 @@ export class PrismAgent extends BaseAgent {
       weekend: 300,
       storage: 200,
     }
-    
+
     let additionalCost = 0
     if (params.additionalServices) {
-      params.additionalServices.forEach(service => {
+      params.additionalServices.forEach((service) => {
         additionalCost += servicePrices[service] || 0
       })
     }
-    
+
     const subtotal = price + additionalCost
     const gst = subtotal * 0.1
     const total = subtotal + gst
-    
+
     // Calculate margin
     const estimatedCost = subtotal * 0.65
     const margin = ((subtotal - estimatedCost) / subtotal) * 100
-    
-    this.log("info", "calculatePrice", `Quote: $${total.toFixed(2)} for ${params.squareMeters}sqm ${params.moveType} move`)
-    
+
+    this.log(
+      "info",
+      "calculatePrice",
+      `Quote: $${total.toFixed(2)} for ${params.squareMeters}sqm ${params.moveType} move`,
+    )
+
     return {
       success: true,
       data: {
@@ -370,7 +376,7 @@ export class PrismAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async analyzeCompetitors(params: CompetitorParams) {
     // In production, would integrate with competitor monitoring tools
     const competitors = [
@@ -378,37 +384,38 @@ export class PrismAgent extends BaseAgent {
       { name: "CBD Relocations", avgPrice: 55, rating: 4.5 },
       { name: "Office Movers Plus", avgPrice: 48, rating: 4.0 },
     ]
-    
+
     const ourAvgPrice = 45
     const marketAvg = competitors.reduce((sum, c) => sum + c.avgPrice, 0) / competitors.length
-    
+
     return {
       success: true,
       data: {
         region: params.region || "Melbourne",
         competitors,
         marketAverage: marketAvg,
-        ourPosition: ourAvgPrice < marketAvg ? "below_market" : ourAvgPrice > marketAvg * 1.1 ? "above_market" : "market_rate",
+        ourPosition:
+          ourAvgPrice < marketAvg ? "below_market" : ourAvgPrice > marketAvg * 1.1 ? "above_market" : "market_rate",
         recommendation: ourAvgPrice > marketAvg * 1.1 ? "Consider promotional pricing" : "Pricing competitive",
       },
     }
   }
-  
+
   private async getDemandForecast(params: ForecastParams) {
     // Generate 14-day forecast
     const forecast = []
     const startDate = new Date(params.startDate || Date.now())
-    
+
     for (let i = 0; i < 14; i++) {
       const date = new Date(startDate)
       date.setDate(startDate.getDate() + i)
       const dayName = date.toLocaleDateString("en-US", { weekday: "lowercase" })
       const demandInfo = this.demandData.get(dayName)
-      
+
       // Add seasonal and random variation
       const monthFactor = this.getSeasonalFactor(date.getMonth())
       const randomVariation = 0.9 + Math.random() * 0.2
-      
+
       forecast.push({
         date: date.toISOString().split("T")[0],
         demandLevel: demandInfo?.forecastedDemand || "normal",
@@ -416,14 +423,14 @@ export class PrismAgent extends BaseAgent {
         recommendedCapacity: Math.ceil((demandInfo?.historicalBookings || 5) * monthFactor),
       })
     }
-    
+
     return { success: true, data: { forecast } }
   }
-  
+
   private async suggestDiscount(params: DiscountParams) {
-    let maxDiscount = this.pricingConfig.maxDiscount
+    const maxDiscount = this.pricingConfig.maxDiscount
     let suggestedDiscount = 0
-    
+
     // High urgency = willing to discount more
     if (params.urgency === "high") {
       suggestedDiscount = maxDiscount * 0.8
@@ -432,15 +439,15 @@ export class PrismAgent extends BaseAgent {
     } else {
       suggestedDiscount = maxDiscount * 0.25
     }
-    
+
     // If high lifetime value, allow more discount
     if (params.dealValue && params.dealValue > params.currentPrice * 3) {
       suggestedDiscount = Math.min(suggestedDiscount * 1.5, maxDiscount)
     }
-    
+
     const discountAmount = Math.round(params.currentPrice * (suggestedDiscount / 100))
     const newPrice = params.currentPrice - discountAmount
-    
+
     return {
       success: true,
       data: {
@@ -453,7 +460,7 @@ export class PrismAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async optimizePricing(params: OptimizeParams) {
     const objectives: Record<string, any> = {
       revenue: { adjustment: "+5%", rationale: "Increase prices on high-demand days" },
@@ -461,7 +468,7 @@ export class PrismAgent extends BaseAgent {
       margin: { adjustment: "Maintain", rationale: "Current pricing optimal for margins" },
       market_share: { adjustment: "-10%", rationale: "Aggressive pricing to gain market share" },
     }
-    
+
     return {
       success: true,
       data: {
@@ -472,7 +479,7 @@ export class PrismAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async getMarginAnalysis(params: MarginParams) {
     return {
       success: true,
@@ -480,22 +487,24 @@ export class PrismAgent extends BaseAgent {
         period: params.period || "month",
         averageMargin: 32.5,
         targetMargin: 35,
-        marginByCategory: params.byCategory ? {
-          office: 35.2,
-          datacenter: 42.1,
-          warehouse: 28.5,
-          retail: 31.8,
-          it: 38.9,
-        } : undefined,
+        marginByCategory: params.byCategory
+          ? {
+              office: 35.2,
+              datacenter: 42.1,
+              warehouse: 28.5,
+              retail: 31.8,
+              it: 38.9,
+            }
+          : undefined,
         trend: "+2.3% vs previous period",
         recommendation: "Increase warehouse rates by 5% to improve margin",
       },
     }
   }
-  
+
   private async trackConversion(params: ConversionParams) {
     this.log("info", "trackConversion", `Quote ${params.quoteId}: ${params.outcome}`)
-    
+
     return {
       success: true,
       data: {
@@ -506,34 +515,34 @@ export class PrismAgent extends BaseAgent {
       },
     }
   }
-  
+
   // =============================================================================
   // HELPER METHODS
   // =============================================================================
-  
+
   private calculateDistanceMultiplier(origin: string, destination: string): number {
     // Simplified distance calculation
     // In production, use Google Maps Distance Matrix API
     const innerSuburbs = ["cbd", "richmond", "south yarra", "prahran", "fitzroy", "carlton"]
     const outerSuburbs = ["dandenong", "frankston", "werribee", "ringwood", "eltham"]
-    
-    const originInner = innerSuburbs.some(s => origin?.toLowerCase().includes(s))
-    const destInner = innerSuburbs.some(s => destination?.toLowerCase().includes(s))
-    const originOuter = outerSuburbs.some(s => origin?.toLowerCase().includes(s))
-    const destOuter = outerSuburbs.some(s => destination?.toLowerCase().includes(s))
-    
+
+    const originInner = innerSuburbs.some((s) => origin?.toLowerCase().includes(s))
+    const destInner = innerSuburbs.some((s) => destination?.toLowerCase().includes(s))
+    const originOuter = outerSuburbs.some((s) => origin?.toLowerCase().includes(s))
+    const destOuter = outerSuburbs.some((s) => destination?.toLowerCase().includes(s))
+
     if (originOuter && destOuter) return 1.3 // Both outer
     if (originOuter || destOuter) return 1.15 // One outer
     if (originInner && destInner) return 1.0 // Both inner
     return 1.1 // Mixed
   }
-  
+
   private getSeasonalFactor(month: number): number {
     // Higher demand at end/start of financial year and December
     const seasonalFactors = [1.1, 1.0, 1.0, 0.9, 1.0, 1.2, 1.1, 0.9, 0.9, 1.0, 1.1, 1.2]
     return seasonalFactors[month]
   }
-  
+
   private getDemandLevel(date?: string): string {
     if (!date) return "normal"
     const dayOfWeek = new Date(date).getDay()
@@ -589,13 +598,42 @@ interface DemandData {
   forecastedDemand: string
 }
 
-interface PriceParams { moveType: string; squareMeters: number; origin: string; destination: string; date?: string; additionalServices?: string[] }
-interface CompetitorParams { region?: string; moveType?: string }
-interface ForecastParams { startDate?: string; endDate?: string; region?: string }
-interface DiscountParams { leadId: string; currentPrice: number; dealValue?: number; urgency?: string }
-interface OptimizeParams { objective: string; constraints?: string[] }
-interface MarginParams { period?: string; byCategory?: boolean }
-interface ConversionParams { quoteId: string; outcome: string; lostReason?: string }
+interface PriceParams {
+  moveType: string
+  squareMeters: number
+  origin: string
+  destination: string
+  date?: string
+  additionalServices?: string[]
+}
+interface CompetitorParams {
+  region?: string
+  moveType?: string
+}
+interface ForecastParams {
+  startDate?: string
+  endDate?: string
+  region?: string
+}
+interface DiscountParams {
+  leadId: string
+  currentPrice: number
+  dealValue?: number
+  urgency?: string
+}
+interface OptimizeParams {
+  objective: string
+  constraints?: string[]
+}
+interface MarginParams {
+  period?: string
+  byCategory?: boolean
+}
+interface ConversionParams {
+  quoteId: string
+  outcome: string
+  lostReason?: string
+}
 
 // =============================================================================
 // FACTORY

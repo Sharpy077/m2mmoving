@@ -23,6 +23,8 @@ export interface AgentStatus {
   successRate: number
 }
 
+const DEFAULT_MODEL = "anthropic/claude-sonnet-4-20250514"
+
 export abstract class BaseAgent {
   protected identity: AgentIdentity
   protected config: AgentConfig
@@ -38,7 +40,7 @@ export abstract class BaseAgent {
     this.config = {
       codename: config.codename || "UNKNOWN",
       enabled: config.enabled ?? true,
-      model: config.model || "gpt-4o",
+      model: config.model || DEFAULT_MODEL,
       temperature: config.temperature ?? 0.7,
       maxTokens: config.maxTokens ?? 2000,
       systemPrompt: config.systemPrompt || "",
@@ -47,7 +49,7 @@ export abstract class BaseAgent {
       escalationRules: config.escalationRules || [],
       rateLimits: config.rateLimits || { requestsPerMinute: 30, tokensPerDay: 500000 },
     }
-    
+
     this.identity = identityFactory ? identityFactory() : this.getIdentity()
     this.registerTools()
   }
@@ -129,16 +131,13 @@ export abstract class BaseAgent {
     reason: string,
     details: string,
     context: Record<string, unknown>,
-    priority: PriorityLevel
+    priority: PriorityLevel,
   ): Promise<{ reason: string; priority: PriorityLevel }> {
     this.log("info", "escalateToHuman", `Escalating: ${reason} - ${details}`)
     return { reason, priority }
   }
 
-  protected async generateResponse(
-    messages: AgentMessage[],
-    context?: Record<string, unknown>
-  ): Promise<string> {
+  protected async generateResponse(messages: AgentMessage[], context?: Record<string, unknown>): Promise<string> {
     // Default implementation - override in subclasses for actual AI response
     const lastMessage = messages[messages.length - 1]
     if (lastMessage?.role === "user") {
