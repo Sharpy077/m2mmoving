@@ -1,7 +1,7 @@
 "use server"
 
 import { resend, EMAIL_FROM_ADDRESS } from "@/lib/email"
-import { getTwilioClient } from "@/lib/twilio"
+import { sendSMS } from "@/lib/twilio"
 import { createClient } from "@/lib/supabase/server"
 
 const OPERATIONS_EMAIL = "operations@m2mmoving.au"
@@ -108,23 +108,9 @@ export async function sendBookingConfirmation(booking: BookingConfirmation) {
     }
   }
 
-  // 3. Send SMS confirmation
-  const twilioClient = await getTwilioClient()
-  if (twilioClient && booking.customerPhone) {
-    try {
-      const formattedPhone = booking.customerPhone.startsWith("+61")
-        ? booking.customerPhone
-        : `+61${booking.customerPhone.replace(/^0/, "")}`
-
-      await twilioClient.messages.create({
-        body: `M&M Moving: Booking confirmed! Ref: ${booking.quoteReference}. ${booking.moveDate} at ${booking.moveTime}. Questions? Call 03 8820 1801`,
-        to: formattedPhone,
-        from: process.env.TWILIO_PHONE_NUMBER || "+61000000000",
-      })
-      results.sms = true
-    } catch (error) {
-      console.error("[v0] Failed to send SMS:", error)
-    }
+  if (booking.customerPhone) {
+    const smsBody = `M&M Moving: Booking confirmed! Ref: ${booking.quoteReference}. ${booking.moveDate} at ${booking.moveTime}. Questions? Call 03 8820 1801`
+    results.sms = await sendSMS(booking.customerPhone, smsBody)
   }
 
   // 4. Save to database
