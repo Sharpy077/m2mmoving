@@ -41,7 +41,6 @@ import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe
 import { loadStripe } from "@stripe/stripe-js"
 import { submitLead } from "@/app/actions/leads"
 import { createDepositCheckout } from "@/app/actions/stripe"
-import { useFormPersistence } from "@/hooks/use-form-persistence"
 import { PaymentConfirmation } from "@/components/payment-confirmation"
 import { getStripeErrorMessage } from "@/lib/stripe-errors"
 import {
@@ -413,11 +412,133 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const lastActivityRef = useRef<number>(Date.now())
     const idleTimerRef = useRef<NodeJS.Timeout | null>(null)
 
-    // The `isLoading` variable is used in the dependency array of this useEffect.
-    // However, `isLoading` is defined later in the component.
-    // To fix this, we move the initialization of `isLoading` to the top.
+    const [pendingRetry, setPendingRetry] = useState<{ text: string; retries: number } | null>(null)
+
+    // Define handleErrorWithRetry before it's used
+    const handleErrorWithRetry = useCallback(
+      async (error: any, messageText: string) => {
+        setHasError(true)
+        const classified = ErrorClassifier.classify(error)
+        setErrorMessage(classified.message)
+        setRetryCount((prev) => prev + 1)
+
+        // Update conversation context error count
+        setConversationContext((prev) => ({
+          ...prev,
+          errorCount: prev.errorCount + 1,
+        }))
+
+        // Start monitoring for the retry
+        if (retryCount < 3) {
+          // Set pending retry state
+          setPendingRetry({ text: messageText, retries: retryCount + 1 })
+          responseMonitorRef.current.startTimer(`retry-${Date.now()}`, "retry") // Unique ID for retry monitoring
+        } else {
+          // Max retries reached, show fallback or final error
+          console.error("[RetryHandler] Max retries reached, showing fallback.", error)
+          setFallbackResponse(FallbackProvider.getFallback(error))
+        }
+      },
+      [
+        retryCount,
+        setHasError,
+        setErrorMessage,
+        setRetryCount,
+        setConversationContext,
+        setPendingRetry,
+        setFallbackResponse,
+      ],
+    )
+
+    // Save conversation state function (defined early for use in useChat)
+    const saveConversationState = useCallback(() => {
+      const state: ConversationState = {
+        id: conversationId,
+        messages: messages.map((msg) => ({
+          id: msg.id || `msg-${Date.now()}`,
+          role: msg.role,
+          content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+          timestamp: new Date(),
+        })),
+        step: currentStep,
+        selectedOptions: {
+          business: confirmedBusiness || undefined,
+          service: serviceOptions.find((s) => true) || undefined,
+          date: selectedDate || undefined,
+        },
+        formData: {
+          contactInfo: contactInfo || undefined,
+          quote: currentQuote || undefined,
+        },
+        errorState: hasError
+          ? {
+              lastError: errorMessage || "Unknown error",
+              retryCount,
+              lastRetryTime: new Date(),
+            }
+          : undefined,
+        createdAt: new Date(),
+        lastUpdated: new Date(),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      }
+      ConversationStateManager.save(state)
+    }, [
+      conversationId,
+      messages,
+      currentStep,
+      confirmedBusiness,
+      serviceOptions,
+      selectedDate,
+      contactInfo,
+      currentQuote,
+      hasError,
+      errorMessage,
+      retryCount,
+    ])
+
+    const { messages, sendMessage, status, error } = useChat({
+      // @ts-ignore
+      api: "/api/quote-assistant",
+      id: conversationId,
+      onError: (err) => {
+        console.log("[v0] Chat error:", err.message)
+        const classified = ErrorClassifier.classify(err)
+
+        // Cancel response monitor timer
+        if (lastUserMessageTime) {
+          responseMonitorRef.current.cancelTimer(`msg-${lastUserMessageTime}`)
+        }
+
+        // Handle error with retry logic
+        if (pendingRetry) {
+          handleErrorWithRetry(err, pendingRetry.text)
+        } else {
+          setHasError(true)
+          setErrorMessage(classified.message)
+        }
+      },
+      onFinish: () => {
+        setHasError(false)
+        setErrorMessage(null)
+        setPendingRetry(null)
+        setRetryCount(0)
+        setFallbackResponse(null)
+        setLastUserMessageTime(null)
+        setIsInitialMessage(false)
+
+        // Cancel any monitoring timers
+        if (lastUserMessageTime) {
+          responseMonitorRef.current.cancelTimer(`msg-${lastUserMessageTime}`)
+        }
+
+        // Save conversation state
+        saveConversationState()
+      },
+    })
+
     const isLoading = status === "streaming" || status === "submitted"
 
+    // Idle check effect - now isLoading is properly defined
     useEffect(() => {
       const checkIdle = () => {
         const now = Date.now()
@@ -558,386 +679,6 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         setIsMinimized(false)
       },
     }))
-
-    const [pendingRetry, setPendingRetry] = useState<{ text: string; retries: number } | null>(null)
-
-    // Enhanced error handling with retry logic
-    const handleErrorWithRetry = useCallback(
-      async (error: unknown, messageText: string) => {
-        const classified = ErrorClassifier.classify(error)
-        const newRetryCount = retryCount + 1
-        setRetryCount(newRetryCount)
-
-        if (classified.retryable && classified.retryConfig) {
-          const retryConfig = classified.retryConfig
-          if (newRetryCount < retryConfig.maxAttempts) {
-            // Retry will be handled by the onError callback
-            // Just update the pending retry state
-            setPendingRetry({ text: messageText, retries: newRetryCount })
-          } else {
-            // Max retries exceeded, use fallback
-            const fallback = FallbackProvider.getFallback({
-              conversationId,
-              lastUserMessage: messageText,
-              conversationStep: currentStep,
-              errorType: classified.type,
-              retryCount: newRetryCount,
-            })
-            setFallbackResponse(fallback)
-            setHasError(true)
-            setErrorMessage(fallback.message)
-            setPendingRetry(null)
-          }
-        } else {
-          // Not retryable, show error immediately
-          const fallback = FallbackProvider.getFallback({
-            conversationId,
-            lastUserMessage: messageText,
-            conversationStep: currentStep,
-            errorType: classified.type,
-            retryCount: newRetryCount,
-          })
-          setFallbackResponse(fallback)
-          setHasError(true)
-          setErrorMessage(classified.message)
-          setPendingRetry(null)
-        }
-      },
-      [conversationId, currentStep, retryCount],
-    )
-
-    const { messages, sendMessage, status, error, append, input, handleSubmit } = useChat({
-      // @ts-ignore
-      api: "/api/quote-assistant",
-      id: conversationId,
-      onError: (err) => {
-        console.log("[v0] Chat error:", err.message)
-        const classified = ErrorClassifier.classify(err)
-
-        // Cancel response monitor timer
-        if (lastUserMessageTime) {
-          responseMonitorRef.current.cancelTimer(`msg-${lastUserMessageTime}`)
-        }
-
-        // Handle error with retry logic
-        if (pendingRetry) {
-          handleErrorWithRetry(err, pendingRetry.text)
-        } else {
-          setHasError(true)
-          setErrorMessage(classified.message)
-        }
-      },
-      onFinish: () => {
-        setHasError(false)
-        setErrorMessage(null)
-        setPendingRetry(null)
-        setRetryCount(0)
-        setFallbackResponse(null)
-        setLastUserMessageTime(null)
-        setIsInitialMessage(false)
-
-        // Cancel any monitoring timers
-        if (lastUserMessageTime) {
-          responseMonitorRef.current.cancelTimer(`msg-${lastUserMessageTime}`)
-        }
-
-        // Save conversation state
-        saveConversationState()
-      },
-    })
-
-    // Form persistence
-    const formState = {
-      currentQuote,
-      contactInfo,
-      selectedDate,
-      confirmedBusiness,
-      businessLookupResults,
-      serviceOptions,
-      showServicePicker,
-    }
-
-    const { loadSavedData, clearSavedData } = useFormPersistence(
-      formState,
-      "quote-assistant-state",
-      !paymentComplete && !leadSubmitted,
-    )
-
-    // Save conversation state
-    const saveConversationState = () => {
-      const state: ConversationState = {
-        id: conversationId,
-        messages: messages.map((msg) => ({
-          id: msg.id || `msg-${Date.now()}`,
-          role: msg.role,
-          content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
-          timestamp: new Date(),
-        })),
-        step: currentStep,
-        selectedOptions: {
-          business: confirmedBusiness || undefined,
-          service: serviceOptions.find((s) => true) || undefined,
-          date: selectedDate || undefined,
-        },
-        formData: {
-          contactInfo: contactInfo || undefined,
-          quote: currentQuote || undefined,
-        },
-        errorState: hasError
-          ? {
-              lastError: errorMessage || "Unknown error",
-              retryCount,
-              lastRetryTime: new Date(),
-            }
-          : undefined,
-        createdAt: new Date(),
-        lastUpdated: new Date(),
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      }
-      ConversationStateManager.save(state)
-    }
-
-    // Load saved state on mount
-    useEffect(() => {
-      if (embedded && messages.length === 0) {
-        // Try to load from new state manager first
-        const savedState = ConversationStateManager.load(conversationId)
-        if (savedState) {
-          // Restore from saved state
-          if (savedState.formData.quote) setCurrentQuote(savedState.formData.quote)
-          if (savedState.formData.contactInfo) setContactInfo(savedState.formData.contactInfo)
-          if (savedState.selectedOptions.date) setSelectedDate(savedState.selectedDate)
-          if (savedState.selectedOptions.business) setConfirmedBusiness(savedState.selectedOptions.business)
-          if (savedState.step) setCurrentStep(savedState.step)
-          setIsInitialMessage(false)
-        } else {
-          // Fallback to old persistence
-          const saved = loadSavedData()
-          if (saved) {
-            if (saved.currentQuote) setCurrentQuote(saved.currentQuote)
-            if (saved.contactInfo) setContactInfo(saved.contactInfo)
-            if (saved.selectedDate) setSelectedDate(saved.selectedDate)
-            if (saved.confirmedBusiness) setConfirmedBusiness(saved.confirmedBusiness)
-          }
-        }
-      }
-    }, [embedded, conversationId])
-
-    // Clear on successful completion
-    useEffect(() => {
-      if (paymentComplete || leadSubmitted) {
-        clearSavedData()
-        ConversationStateManager.clear(conversationId)
-      }
-    }, [paymentComplete, leadSubmitted, conversationId])
-
-    // Periodically save conversation state
-    useEffect(() => {
-      const interval = setInterval(() => {
-        if (messages.length > 0 && !paymentComplete && !leadSubmitted) {
-          saveConversationState()
-        }
-      }, 30000) // Save every 30 seconds
-
-      return () => clearInterval(interval)
-    }, [
-      messages,
-      currentStep,
-      confirmedBusiness,
-      selectedDate,
-      contactInfo,
-      currentQuote,
-      paymentComplete,
-      leadSubmitted,
-    ])
-
-    // The `isLoading` variable is defined here. It should be moved up before its first usage.
-    // const isLoading = status === "streaming" || status === "submitted"
-
-    useEffect(() => {
-      const lastMessage = messages[messages.length - 1]
-      if (lastMessage?.role === "assistant") {
-        // Reset watchdog when Maya responds
-        setLastUserMessageTime(null)
-
-        if (lastMessage.parts) {
-          lastMessage.parts.forEach((part: any) => {
-            if (part.type?.startsWith("tool-") && part.state === "output-available") {
-              const toolName = part.type.replace("tool-", "")
-              const result = part.output
-
-              if (toolName === "lookupBusiness") {
-                setIsLookingUpBusiness(false)
-                if (result?.results?.length > 0) {
-                  setBusinessLookupResults(result.results)
-                  setCurrentStep("business")
-                }
-              }
-
-              if (toolName === "confirmBusiness" && result?.confirmed) {
-                setConfirmedBusiness({
-                  name: result.name,
-                  abn: result.abn,
-                  type: result.entityType || "",
-                  state: result.state || "",
-                  status: "Active",
-                })
-                setCurrentStep("service")
-                if (result.showServiceOptions) {
-                  setShowServicePicker(true)
-                }
-              }
-
-              if (toolName === "showServiceOptions" && result?.showServicePicker) {
-                setServiceOptions(result.services)
-                setShowServicePicker(true)
-                setCurrentStep("service")
-              }
-
-              if (toolName === "calculateQuote") {
-                setIsCalculatingQuote(false)
-                // Handle both direct result (flat object) and nested data structure from agent
-                const quoteData = result?.quote || result
-
-                if (quoteData?.estimatedTotal) {
-                  // Transform breakdown object to array if needed
-                  let breakdownArray = quoteData.breakdown
-                  if (
-                    quoteData.breakdown &&
-                    typeof quoteData.breakdown === "object" &&
-                    !Array.isArray(quoteData.breakdown)
-                  ) {
-                    breakdownArray = [
-                      { label: "Base Rate", amount: quoteData.breakdown.baseRate },
-                      { label: "Distance Charge", amount: quoteData.breakdown.distanceCharge },
-                      { label: "Square Meters Charge", amount: quoteData.breakdown.sqmCharge },
-                      { label: "Additional Services", amount: quoteData.breakdown.additionalServices },
-                      { label: "GST", amount: quoteData.breakdown.gst },
-                    ].filter((item) => item.amount > 0)
-                  }
-
-                  setCurrentQuote({
-                    ...quoteData,
-                    breakdown: breakdownArray || [],
-                  })
-                  setCurrentStep("quote")
-                  if (result.showAvailability) {
-                    setShowCalendar(true)
-                  }
-                }
-              }
-
-              if (toolName === "checkAvailability") {
-                setIsCheckingAvailability(false)
-                if (result?.dates) {
-                  setAvailableDates(result.dates)
-                  setShowCalendar(true)
-                  setCurrentStep("date")
-                }
-              }
-
-              if (toolName === "confirmBookingDate" && result?.confirmedDate) {
-                setSelectedDate(result.confirmedDate)
-                setCurrentStep("contact")
-              }
-
-              if (toolName === "collectContactInfo" && result?.collected) {
-                setContactInfo({
-                  contactName: result.contactName,
-                  email: result.email,
-                  phone: result.phone,
-                  companyName: result.companyName,
-                })
-                setCurrentStep("payment")
-              }
-
-              if (toolName === "initiatePayment" && result?.showPayment) {
-                setShowPayment(true)
-                setPaymentInfo({
-                  clientSecret: result.clientSecret || "",
-                  amount: result.amount,
-                })
-                setCurrentStep("payment")
-              }
-            }
-          })
-        }
-
-        // Backwards compatibility with toolInvocations
-        if ((lastMessage as any).toolInvocations) {
-          ;(lastMessage as any).toolInvocations.forEach((toolCall: any) => {
-            if (toolCall.state === "result") {
-              const result = toolCall.result
-
-              if (toolCall.toolName === "lookupBusiness") {
-                setIsLookingUpBusiness(false)
-                if (result?.results?.length > 0) {
-                  setBusinessLookupResults(result.results)
-                }
-              }
-
-              if (toolCall.toolName === "confirmBusiness" && result?.confirmed) {
-                setConfirmedBusiness({
-                  name: result.name,
-                  abn: result.abn,
-                  type: result.entityType || "",
-                  state: result.state || "",
-                  status: "Active",
-                })
-                setCurrentStep("service")
-              }
-
-              if (toolCall.toolName === "showServiceOptions" && result?.showServicePicker) {
-                setServiceOptions(result.services)
-                setShowServicePicker(true)
-              }
-
-              if (toolCall.toolName === "calculateQuote") {
-                setIsCalculatingQuote(false)
-                if (result?.estimatedTotal) {
-                  setCurrentQuote(result)
-                  setCurrentStep("quote")
-                }
-              }
-
-              if (toolCall.toolName === "checkAvailability") {
-                setIsCheckingAvailability(false)
-                if (result?.dates) {
-                  setAvailableDates(result.dates)
-                  setShowCalendar(true)
-                  setCurrentStep("date")
-                }
-              }
-
-              // Fix for undeclared toolName variable
-              if (toolCall.toolName === "collectContactInfo" && result?.collected) {
-                setContactInfo({
-                  contactName: result.contactName,
-                  email: result.email,
-                  phone: result.phone,
-                  companyName: result.companyName,
-                })
-                setCurrentStep("payment")
-              }
-
-              if (toolCall.toolName === "initiatePayment" && result?.showPayment) {
-                setShowPayment(true)
-                setPaymentInfo({
-                  clientSecret: result.clientSecret || "",
-                  amount: result.amount,
-                })
-              }
-            }
-          })
-        }
-      }
-    }, [messages])
-
-    useEffect(() => {
-      if (messages.length > 0) {
-        setShowInitialPrompts(false)
-      }
-    }, [messages])
 
     // Enhanced watchdog with ResponseMonitor
     useEffect(() => {
@@ -1123,7 +864,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           recognitionRef.current = recognition
         }
       }
-    }, [sendMessage])
+    }, [sendMessage, saveConversationState])
 
     const toggleListening = () => {
       if (!recognitionRef.current) return
