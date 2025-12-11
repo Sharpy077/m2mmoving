@@ -605,4 +605,5 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
 QuoteAssistant.displayName = "QuoteAssistant"
 
 export { QuoteAssistant }
+export type { QuoteAssistantRef }
 export default QuoteAssistant
