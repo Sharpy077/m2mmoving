@@ -8,10 +8,12 @@ import { CTASection } from "@/components/cta-section"
 import { Footer } from "@/components/footer"
 import { Navbar } from "@/components/navbar"
 import { FloatingCTA } from "@/components/floating-cta"
+import { ScrollToTop } from "@/components/scroll-to-top"
 
 export default function HomePage() {
   return (
     <main id="main-content" className="min-h-screen bg-background pb-20 md:pb-0">
+      <ScrollToTop />
       <Navbar />
       <HeroSection />
       <TrustBar />

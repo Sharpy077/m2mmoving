@@ -38,7 +38,7 @@ class StubAgent extends BaseAgent {
       {
         codename,
         enabled: true,
-        model: "gpt-4o",
+        model: "anthropic/claude-sonnet-4-20250514",
         temperature: 0.7,
         maxTokens: 2000,
         systemPrompt: `You are ${name}, an AI assistant for M&M Commercial Moving.`,
@@ -47,7 +47,7 @@ class StubAgent extends BaseAgent {
         escalationRules: [],
         rateLimits: { requestsPerMinute: 30, tokensPerDay: 500000 },
       },
-      () => identity
+      () => identity,
     )
 
     this.stubIdentity = identity
@@ -59,14 +59,14 @@ class StubAgent extends BaseAgent {
 
   async process(input: AgentInput): Promise<AgentOutput> {
     const response = `Hello! I'm ${this.stubIdentity.name}, your AI assistant for M&M Commercial Moving. How can I help you today with your commercial relocation needs?`
-    
+
     return this.buildDefaultResponse(response)
   }
 }
 
 export class CortexOrchestrator {
   private agents: Map<AgentCodename, BaseAgent> = new Map()
-  private initialized: boolean = false
+  private initialized = false
 
   constructor() {
     this.initialize()
@@ -74,7 +74,7 @@ export class CortexOrchestrator {
 
   private initialize() {
     if (this.initialized) return
-    
+
     // Create stub agents
     const agentConfigs: Array<{ codename: AgentCodename; name: string; description: string }> = [
       { codename: "MAYA_SALES", name: "Maya", description: "AI Sales Agent" },
@@ -90,11 +90,11 @@ export class CortexOrchestrator {
       { codename: "BRIDGE_HH", name: "Bridge", description: "AI Handoff Agent" },
       { codename: "GUARDIAN_QA", name: "Guardian", description: "AI Quality Agent" },
     ]
-    
+
     for (const config of agentConfigs) {
       this.agents.set(config.codename, new StubAgent(config.codename, config.name, config.description))
     }
-    
+
     this.initialized = true
   }
 
@@ -105,7 +105,7 @@ export class CortexOrchestrator {
   async determineAgent(content: string): Promise<BaseAgent | undefined> {
     // Simple routing logic - default to Maya for sales
     const lowerContent = content.toLowerCase()
-    
+
     if (lowerContent.includes("support") || lowerContent.includes("help") || lowerContent.includes("issue")) {
       return this.agents.get("SENTINEL_CS")
     }
@@ -115,7 +115,7 @@ export class CortexOrchestrator {
     if (lowerContent.includes("marketing") || lowerContent.includes("campaign")) {
       return this.agents.get("AURORA_MKT")
     }
-    
+
     // Default to Maya for sales
     return this.agents.get("MAYA_SALES")
   }
@@ -126,7 +126,7 @@ export class CortexOrchestrator {
   }
 
   getAgentIdentities(): AgentIdentity[] {
-    return Array.from(this.agents.values()).map(agent => agent.getAgentIdentity())
+    return Array.from(this.agents.values()).map((agent) => agent.getAgentIdentity())
   }
 
   getStatus(): "active" | "inactive" {
@@ -135,7 +135,7 @@ export class CortexOrchestrator {
 
   getHealthStatus(): HealthStatus {
     const agents: Record<string, { active: boolean; lastActivity: string | null }> = {}
-    
+
     for (const [codename, agent] of this.agents) {
       const status = agent.getStatus()
       agents[codename] = {
@@ -143,7 +143,7 @@ export class CortexOrchestrator {
         lastActivity: status.lastActivity?.toISOString() || null,
       }
     }
-    
+
     return {
       status: "healthy",
       agents,

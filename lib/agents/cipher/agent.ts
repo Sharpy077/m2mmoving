@@ -13,12 +13,12 @@ import type { AgentIdentity, AgentConfig, InterAgentMessage } from "../types"
 export class CipherAgent extends BaseAgent {
   private securityConfig: SecurityConfig
   private auditLog: AuditEntry[] = []
-  
+
   constructor(config?: Partial<AgentConfig>) {
     super({
       codename: "CIPHER_SEC",
       enabled: true,
-      model: "gpt-4o",
+      model: "anthropic/claude-sonnet-4-20250514",
       temperature: 0.2, // Very low for precise compliance
       maxTokens: 1500,
       systemPrompt: CIPHER_SYSTEM_PROMPT,
@@ -44,10 +44,10 @@ export class CipherAgent extends BaseAgent {
       rateLimits: { requestsPerMinute: 50, tokensPerDay: 150000 },
       ...config,
     })
-    
+
     this.securityConfig = DEFAULT_SECURITY_CONFIG
   }
-  
+
   protected getIdentity(): AgentIdentity {
     return {
       codename: "CIPHER_SEC",
@@ -67,7 +67,7 @@ export class CipherAgent extends BaseAgent {
       status: "idle",
     }
   }
-  
+
   protected registerTools(): void {
     this.registerTool({
       name: "validateDataAccess",
@@ -83,7 +83,7 @@ export class CipherAgent extends BaseAgent {
       },
       handler: async (params) => this.validateDataAccess(params as AccessParams),
     })
-    
+
     this.registerTool({
       name: "checkCompliance",
       description: "Run compliance check",
@@ -97,7 +97,7 @@ export class CipherAgent extends BaseAgent {
       },
       handler: async (params) => this.checkCompliance(params as ComplianceParams),
     })
-    
+
     this.registerTool({
       name: "auditLog",
       description: "Record audit log entry",
@@ -113,7 +113,7 @@ export class CipherAgent extends BaseAgent {
       },
       handler: async (params) => this.recordAuditLog(params as AuditParams),
     })
-    
+
     this.registerTool({
       name: "encryptSensitiveData",
       description: "Flag and encrypt sensitive data",
@@ -122,13 +122,17 @@ export class CipherAgent extends BaseAgent {
         properties: {
           dataId: { type: "string", description: "Data identifier" },
           dataType: { type: "string", description: "Type of sensitive data" },
-          classification: { type: "string", enum: ["pii", "financial", "health", "confidential"], description: "Classification" },
+          classification: {
+            type: "string",
+            enum: ["pii", "financial", "health", "confidential"],
+            description: "Classification",
+          },
         },
         required: ["dataId", "classification"],
       },
       handler: async (params) => this.encryptSensitiveData(params as EncryptParams),
     })
-    
+
     this.registerTool({
       name: "generatePrivacyReport",
       description: "Generate privacy compliance report",
@@ -142,7 +146,7 @@ export class CipherAgent extends BaseAgent {
       },
       handler: async (params) => this.generatePrivacyReport(params as ReportParams),
     })
-    
+
     this.registerTool({
       name: "handleDataRequest",
       description: "Handle customer data request (access/delete)",
@@ -157,7 +161,7 @@ export class CipherAgent extends BaseAgent {
       },
       handler: async (params) => this.handleDataRequest(params as DataRequestParams),
     })
-    
+
     this.registerTool({
       name: "detectAnomalies",
       description: "Detect security anomalies",
@@ -171,7 +175,7 @@ export class CipherAgent extends BaseAgent {
       },
       handler: async (params) => this.detectAnomalies(params as AnomalyParams),
     })
-    
+
     this.registerTool({
       name: "enforceRetention",
       description: "Enforce data retention policies",
@@ -186,10 +190,10 @@ export class CipherAgent extends BaseAgent {
       handler: async (params) => this.enforceRetention(params as RetentionParams),
     })
   }
-  
+
   public async process(input: AgentInput): Promise<AgentOutput> {
     this.log("info", "process", `Processing: ${input.type}`)
-    
+
     try {
       switch (input.type) {
         case "message":
@@ -205,16 +209,16 @@ export class CipherAgent extends BaseAgent {
       return { success: false, error: error instanceof Error ? error.message : "Processing failed" }
     }
   }
-  
+
   private async handleMessage(input: AgentInput): Promise<AgentOutput> {
     const response = await this.generateResponse(input.messages || [])
     return { success: true, response }
   }
-  
+
   private async handleEvent(input: AgentInput): Promise<AgentOutput> {
     const event = input.event
     if (!event) return { success: false, error: "No event" }
-    
+
     switch (event.name) {
       case "data_access":
         return await this.processDataAccess(event.data)
@@ -226,10 +230,10 @@ export class CipherAgent extends BaseAgent {
         return { success: false, error: `Unknown event: ${event.name}` }
     }
   }
-  
+
   private async handleScheduledTask(input: AgentInput): Promise<AgentOutput> {
     const taskType = input.metadata?.taskType as string
-    
+
     switch (taskType) {
       case "daily_security_scan":
         return await this.runDailySecurityScan()
@@ -241,7 +245,7 @@ export class CipherAgent extends BaseAgent {
         return { success: false, error: "Unknown task" }
     }
   }
-  
+
   public async handleInterAgentMessage(message: InterAgentMessage): Promise<void> {
     // Log all inter-agent data flows
     await this.recordAuditLog({
@@ -251,125 +255,130 @@ export class CipherAgent extends BaseAgent {
       outcome: "success",
     })
   }
-  
+
   // =============================================================================
   // SECURITY WORKFLOWS
   // =============================================================================
-  
+
   private async processDataAccess(data: Record<string, unknown>): Promise<AgentOutput> {
     const validation = await this.validateDataAccess({
       requesterId: data.requesterId as string,
       dataType: data.dataType as string,
       purpose: data.purpose as string,
     })
-    
+
     if (!(validation.data as any)?.allowed) {
       await this.escalateToHuman(
         "compliance_issue",
         `Unauthorized data access attempt: ${data.requesterId}`,
         data,
-        "high"
+        "high",
       )
     }
-    
+
     return { success: true, data: validation.data }
   }
-  
+
   private async processDataSubjectRequest(data: Record<string, unknown>): Promise<AgentOutput> {
     const result = await this.handleDataRequest({
       requestType: data.requestType as string,
       customerId: data.customerId as string,
       scope: data.scope as string[],
     })
-    
+
     // Always notify human for data subject requests
     await this.escalateToHuman(
       "data_request",
       `Data subject request: ${data.requestType} from ${data.customerId}`,
       data,
-      "medium"
+      "medium",
     )
-    
+
     return { success: true, response: "Data request initiated" }
   }
-  
+
   private async investigateAnomaly(data: Record<string, unknown>): Promise<AgentOutput> {
     const severity = data.severity as string
-    
+
     if (severity === "critical") {
       await this.escalateToHuman("compliance_issue", "Critical security anomaly detected", data, "urgent")
     }
-    
+
     await this.recordAuditLog({
       action: "anomaly_investigation",
       actor: "CIPHER_SEC",
       resource: data.source as string,
       outcome: "success",
     })
-    
+
     return { success: true, response: "Anomaly investigated" }
   }
-  
+
   private async runDailySecurityScan(): Promise<AgentOutput> {
     const anomalies = await this.detectAnomalies({})
     const compliance = await this.checkCompliance({ framework: "all" })
-    
+
     return {
       success: true,
       response: "Daily security scan completed",
       data: { anomalies: anomalies.data, compliance: compliance.data },
     }
   }
-  
+
   private async runComplianceReview(): Promise<AgentOutput> {
     const report = await this.generatePrivacyReport({ format: "detailed" })
     return { success: true, response: "Compliance review completed", data: report.data }
   }
-  
+
   private async runRetentionCleanup(): Promise<AgentOutput> {
     const categories = ["marketing_data", "inactive_leads", "old_quotes"]
     const results = []
-    
+
     for (const category of categories) {
       const result = await this.enforceRetention({ dataCategory: category })
       results.push(result.data)
     }
-    
+
     return { success: true, response: "Retention cleanup completed", data: { results } }
   }
-  
+
   // =============================================================================
   // TOOL IMPLEMENTATIONS
   // =============================================================================
-  
+
   private async validateDataAccess(params: AccessParams) {
     const accessRules: Record<string, string[]> = {
       customer_pii: ["admin", "sales_lead", "support_lead"],
       financial_data: ["admin", "finance"],
       analytics: ["admin", "marketing", "analytics"],
     }
-    
+
     const allowedRoles = accessRules[params.dataType] || ["admin"]
     const allowed = allowedRoles.includes(params.requesterId)
-    
+
     await this.recordAuditLog({
       action: "data_access_request",
       actor: params.requesterId,
       resource: params.dataType,
       outcome: allowed ? "success" : "denied",
     })
-    
+
     return {
       success: true,
-      data: { allowed, dataType: params.dataType, requester: params.requesterId, reason: allowed ? "authorized" : "insufficient_permissions" },
+      data: {
+        allowed,
+        dataType: params.dataType,
+        requester: params.requesterId,
+        reason: allowed ? "authorized" : "insufficient_permissions",
+      },
     }
   }
-  
+
   private async checkCompliance(params: ComplianceParams) {
     const frameworks = params.framework === "all" ? ["privacy_act", "gdpr", "pci_dss"] : [params.framework]
     const results: Record<string, any> = {}
-    
-    frameworks.forEach(fw => {
+
+    frameworks.forEach((fw) => {
       results[fw] = {
         status: "compliant",
         score: 95 + Math.floor(Math.random() * 5),
@@ -378,10 +387,10 @@ export class CipherAgent extends BaseAgent {
         recommendations: fw === "gdpr" ? ["Update cookie consent banner"] : [],
       }
     })
-    
+
     return { success: true, data: { frameworks: results, overallStatus: "compliant" } }
   }
-  
+
   private async recordAuditLog(params: AuditParams) {
     const entry: AuditEntry = {
       id: `AUDIT-${Date.now()}`,
@@ -391,16 +400,16 @@ export class CipherAgent extends BaseAgent {
       resource: params.resource,
       outcome: params.outcome,
     }
-    
+
     this.auditLog.push(entry)
     this.log("info", "auditLog", `Audit: ${params.action} by ${params.actor}`)
-    
+
     return { success: true, data: entry }
   }
-  
+
   private async encryptSensitiveData(params: EncryptParams) {
     this.log("info", "encryptSensitiveData", `Flagged ${params.dataId} as ${params.classification}`)
-    
+
     return {
       success: true,
       data: {
@@ -411,7 +420,7 @@ export class CipherAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async generatePrivacyReport(params: ReportParams) {
     return {
       success: true,
@@ -426,14 +435,11 @@ export class CipherAgent extends BaseAgent {
           retentionCompliance: 98,
           encryptionCoverage: 100,
         },
-        recommendations: [
-          "Review marketing consent records",
-          "Update data processing agreements",
-        ],
+        recommendations: ["Review marketing consent records", "Update data processing agreements"],
       },
     }
   }
-  
+
   private async handleDataRequest(params: DataRequestParams) {
     const actions: Record<string, string> = {
       access: "Compiling data export for customer",
@@ -441,14 +447,14 @@ export class CipherAgent extends BaseAgent {
       rectify: "Flagging records for update",
       port: "Preparing portable data format",
     }
-    
+
     await this.recordAuditLog({
       action: `data_${params.requestType}_request`,
       actor: params.customerId,
       resource: "customer_data",
       outcome: "success",
     })
-    
+
     return {
       success: true,
       data: {
@@ -461,24 +467,22 @@ export class CipherAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async detectAnomalies(params: AnomalyParams) {
     // In production, integrate with SIEM/security monitoring
-    const anomalies = [
-      { type: "unusual_access_pattern", severity: "low", source: "api_gateway", count: 2 },
-    ]
-    
+    const anomalies = [{ type: "unusual_access_pattern", severity: "low", source: "api_gateway", count: 2 }]
+
     return {
       success: true,
       data: {
         timeframe: params.timeframe || "24h",
         anomaliesDetected: anomalies.length,
         anomalies,
-        status: anomalies.some(a => a.severity === "critical") ? "alert" : "normal",
+        status: anomalies.some((a) => a.severity === "critical") ? "alert" : "normal",
       },
     }
   }
-  
+
   private async enforceRetention(params: RetentionParams) {
     const retentionPolicies: Record<string, number> = {
       marketing_data: 365 * 2, // 2 years
@@ -486,9 +490,9 @@ export class CipherAgent extends BaseAgent {
       old_quotes: 365 * 3, // 3 years
       completed_jobs: 365 * 7, // 7 years (legal requirement)
     }
-    
+
     const retentionDays = retentionPolicies[params.dataCategory] || 365
-    
+
     return {
       success: true,
       data: {
@@ -548,14 +552,43 @@ interface AuditEntry {
   outcome: string
 }
 
-interface AccessParams { requesterId: string; dataType: string; purpose?: string }
-interface ComplianceParams { framework?: string; scope?: string }
-interface AuditParams { action: string; actor: string; resource: string; outcome: string }
-interface EncryptParams { dataId: string; dataType?: string; classification: string }
-interface ReportParams { period?: string; format?: string }
-interface DataRequestParams { requestType: string; customerId: string; scope?: string[] }
-interface AnomalyParams { timeframe?: string; systems?: string[] }
-interface RetentionParams { dataCategory: string; action?: string }
+interface AccessParams {
+  requesterId: string
+  dataType: string
+  purpose?: string
+}
+interface ComplianceParams {
+  framework?: string
+  scope?: string
+}
+interface AuditParams {
+  action: string
+  actor: string
+  resource: string
+  outcome: string
+}
+interface EncryptParams {
+  dataId: string
+  dataType?: string
+  classification: string
+}
+interface ReportParams {
+  period?: string
+  format?: string
+}
+interface DataRequestParams {
+  requestType: string
+  customerId: string
+  scope?: string[]
+}
+interface AnomalyParams {
+  timeframe?: string
+  systems?: string[]
+}
+interface RetentionParams {
+  dataCategory: string
+  action?: string
+}
 
 // =============================================================================
 // FACTORY

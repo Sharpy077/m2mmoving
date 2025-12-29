@@ -11,7 +11,6 @@ export const stripe = new Proxy({} as Stripe, {
         throw new Error("Missing STRIPE_SECRET_KEY environment variable")
       }
       stripeInstance = new Stripe(STRIPE_SECRET_KEY, {
-        apiVersion: "2024-11-20",
         typescript: true,
       })
     }

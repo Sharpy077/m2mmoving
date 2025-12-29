@@ -1,9 +1,3 @@
-/**
- * ECHO - Reputation Management Agent
- * Online reputation monitoring, review generation, and brand sentiment analysis
- */
-
-import { z } from "zod"
 import { BaseAgent, type AgentInput, type AgentOutput } from "../base-agent"
 import type { AgentIdentity, AgentConfig, InterAgentMessage } from "../types"
 
@@ -14,12 +8,12 @@ import type { AgentIdentity, AgentConfig, InterAgentMessage } from "../types"
 export class EchoAgent extends BaseAgent {
   private reputationConfig: ReputationConfig
   private reviewQueue: ReviewItem[] = []
-  
+
   constructor(config?: Partial<AgentConfig>) {
     super({
       codename: "ECHO_REP",
       enabled: true,
-      model: "gpt-4o",
+      model: "anthropic/claude-sonnet-4-20250514",
       temperature: 0.6,
       maxTokens: 1500,
       systemPrompt: ECHO_SYSTEM_PROMPT,
@@ -44,10 +38,10 @@ export class EchoAgent extends BaseAgent {
       rateLimits: { requestsPerMinute: 30, tokensPerDay: 250000 },
       ...config,
     })
-    
+
     this.reputationConfig = DEFAULT_REPUTATION_CONFIG
   }
-  
+
   protected getIdentity(): AgentIdentity {
     return {
       codename: "ECHO_REP",
@@ -66,7 +60,7 @@ export class EchoAgent extends BaseAgent {
       status: "idle",
     }
   }
-  
+
   protected registerTools(): void {
     this.registerTool({
       name: "monitorReviews",
@@ -81,7 +75,7 @@ export class EchoAgent extends BaseAgent {
       },
       handler: async (params) => this.monitorReviews(params as MonitorParams),
     })
-    
+
     this.registerTool({
       name: "respondToReview",
       description: "Post a response to a review",
@@ -97,7 +91,7 @@ export class EchoAgent extends BaseAgent {
       },
       handler: async (params) => this.respondToReview(params as ResponseParams),
     })
-    
+
     this.registerTool({
       name: "analyzeSentiment",
       description: "Analyze sentiment of text or reviews",
@@ -111,7 +105,7 @@ export class EchoAgent extends BaseAgent {
       },
       handler: async (params) => this.analyzeSentiment(params as SentimentParams),
     })
-    
+
     this.registerTool({
       name: "trackMentions",
       description: "Track brand mentions across social media",
@@ -125,7 +119,7 @@ export class EchoAgent extends BaseAgent {
       },
       handler: async (params) => this.trackMentions(params as MentionParams),
     })
-    
+
     this.registerTool({
       name: "generateReviewResponse",
       description: "Generate a response for a review",
@@ -140,7 +134,7 @@ export class EchoAgent extends BaseAgent {
       },
       handler: async (params) => this.generateReviewResponse(params as GenerateResponseParams),
     })
-    
+
     this.registerTool({
       name: "flagCrisis",
       description: "Flag a potential reputation crisis",
@@ -155,7 +149,7 @@ export class EchoAgent extends BaseAgent {
       },
       handler: async (params) => this.flagCrisis(params as CrisisParams),
     })
-    
+
     this.registerTool({
       name: "reportReputationScore",
       description: "Generate reputation score report",
@@ -170,10 +164,10 @@ export class EchoAgent extends BaseAgent {
       handler: async (params) => this.reportReputationScore(params as ReportParams),
     })
   }
-  
+
   public async process(input: AgentInput): Promise<AgentOutput> {
     this.log("info", "process", `Processing input type: ${input.type}`)
-    
+
     try {
       switch (input.type) {
         case "message":
@@ -191,16 +185,16 @@ export class EchoAgent extends BaseAgent {
       return { success: false, error: error instanceof Error ? error.message : "Processing failed" }
     }
   }
-  
+
   private async handleMessage(input: AgentInput): Promise<AgentOutput> {
     const response = await this.generateResponse(input.messages || [])
     return { success: true, response }
   }
-  
+
   private async handleEvent(input: AgentInput): Promise<AgentOutput> {
     const event = input.event
     if (!event) return { success: false, error: "No event" }
-    
+
     switch (event.name) {
       case "new_review":
         return await this.processNewReview(event.data)
@@ -210,65 +204,65 @@ export class EchoAgent extends BaseAgent {
         return { success: false, error: `Unknown event: ${event.name}` }
     }
   }
-  
+
   private async handleScheduledTask(input: AgentInput): Promise<AgentOutput> {
     const taskType = input.metadata?.taskType as string
     if (taskType === "daily_scan") return await this.runDailyScan()
     return { success: false, error: "Unknown task" }
   }
-  
+
   private async handleHandoffInput(input: AgentInput): Promise<AgentOutput> {
     return { success: true, response: "Handoff received" }
   }
-  
+
   public async handleInterAgentMessage(message: InterAgentMessage): Promise<void> {
     this.log("info", "handleInterAgentMessage", `From ${message.from}`)
   }
-  
+
   // =============================================================================
   // REVIEW WORKFLOWS
   // =============================================================================
-  
+
   private async processNewReview(data: Record<string, unknown>): Promise<AgentOutput> {
     const rating = data.rating as number
     const text = data.text as string
     const platform = data.platform as string
-    
+
     // Analyze sentiment
     const sentiment = await this.analyzeSentiment({ text })
-    
+
     // Generate response
     const responseResult = await this.generateReviewResponse({
       reviewText: text,
       rating,
       customerName: data.customerName as string,
     })
-    
+
     // If negative, escalate
     if (rating <= 2) {
       await this.escalateToHuman(
         "negative_sentiment",
         `${rating}-star review on ${platform}: ${text.substring(0, 100)}...`,
         data,
-        "high"
+        "high",
       )
     }
-    
+
     // Hand to PHOENIX for follow-up if positive
     if (rating >= 4) {
       await this.requestHandoff("PHOENIX_RET", "Positive review - referral opportunity", data, "low")
     }
-    
+
     return {
       success: true,
       response: "Review processed",
       data: { sentiment: sentiment.data, suggestedResponse: responseResult.data },
     }
   }
-  
+
   private async processBrandMention(data: Record<string, unknown>): Promise<AgentOutput> {
     const sentiment = await this.analyzeSentiment({ text: data.content as string })
-    
+
     if ((sentiment.data as any)?.score < -0.5) {
       await this.flagCrisis({
         issue: data.content as string,
@@ -276,25 +270,25 @@ export class EchoAgent extends BaseAgent {
         source: data.platform as string,
       })
     }
-    
+
     return { success: true, response: "Mention processed" }
   }
-  
+
   private async runDailyScan(): Promise<AgentOutput> {
     const reviews = await this.monitorReviews({})
     const score = await this.reportReputationScore({})
-    
+
     return {
       success: true,
       response: "Daily scan completed",
       data: { reviews: reviews.data, score: score.data },
     }
   }
-  
+
   // =============================================================================
   // TOOL IMPLEMENTATIONS
   // =============================================================================
-  
+
   private async monitorReviews(params: MonitorParams) {
     const platforms = params.platforms || ["google", "facebook", "productreview"]
     // In production, integrate with review APIs
@@ -312,43 +306,47 @@ export class EchoAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async respondToReview(params: ResponseParams) {
     this.log("info", "respondToReview", `Responding on ${params.platform}`)
     return { success: true, data: { reviewId: params.reviewId, status: "posted" } }
   }
-  
+
   private async analyzeSentiment(params: SentimentParams) {
     const text = params.text.toLowerCase()
     let score = 0
-    
+
     const positive = ["excellent", "great", "amazing", "wonderful", "recommend", "professional"]
     const negative = ["terrible", "awful", "worst", "damage", "late", "unprofessional"]
-    
-    positive.forEach(w => { if (text.includes(w)) score += 0.2 })
-    negative.forEach(w => { if (text.includes(w)) score -= 0.3 })
-    
+
+    positive.forEach((w) => {
+      if (text.includes(w)) score += 0.2
+    })
+    negative.forEach((w) => {
+      if (text.includes(w)) score -= 0.3
+    })
+
     return {
       success: true,
       data: {
         score: Math.max(-1, Math.min(1, score)),
         sentiment: score > 0.2 ? "positive" : score < -0.2 ? "negative" : "neutral",
-        keywords: [...positive, ...negative].filter(w => text.includes(w)),
+        keywords: [...positive, ...negative].filter((w) => text.includes(w)),
       },
     }
   }
-  
+
   private async trackMentions(params: MentionParams) {
     return {
       success: true,
       data: { keywords: params.keywords, mentions: 12, sentiment: "mostly_positive" },
     }
   }
-  
+
   private async generateReviewResponse(params: GenerateResponseParams) {
     const { rating, customerName, reviewText } = params
     const name = customerName || "there"
-    
+
     let response: string
     if (rating >= 4) {
       response = `Thank you so much for the wonderful feedback${name !== "there" ? `, ${name}` : ""}! We're thrilled to hear your move went smoothly. Your recommendation means the world to us! 🌟`
@@ -357,20 +355,23 @@ export class EchoAgent extends BaseAgent {
     } else {
       response = `We're truly sorry to hear about your experience${name !== "there" ? `, ${name}` : ""}. This doesn't reflect the standard we strive for. Please contact us at 03 8820 1801 so we can make this right.`
     }
-    
-    return { success: true, data: { response, tone: rating >= 4 ? "grateful" : rating >= 3 ? "professional" : "apologetic" } }
+
+    return {
+      success: true,
+      data: { response, tone: rating >= 4 ? "grateful" : rating >= 3 ? "professional" : "apologetic" },
+    }
   }
-  
+
   private async flagCrisis(params: CrisisParams) {
     this.log("warn", "flagCrisis", `Crisis flagged: ${params.severity}`, params)
-    
+
     if (params.severity === "critical" || params.severity === "high") {
       await this.escalateToHuman("compliance_issue", params.issue, params, "urgent")
     }
-    
+
     return { success: true, data: { crisisId: this.generateId(), severity: params.severity, status: "flagged" } }
   }
-  
+
   private async reportReputationScore(params: ReportParams) {
     return {
       success: true,
@@ -435,13 +436,38 @@ interface ReviewItem {
   responded: boolean
 }
 
-interface MonitorParams { platforms?: string[]; since?: string }
-interface ResponseParams { reviewId: string; platform: string; response: string; tone?: string }
-interface SentimentParams { text: string; context?: string }
-interface MentionParams { keywords: string[]; platforms?: string[] }
-interface GenerateResponseParams { reviewText: string; rating: number; customerName?: string }
-interface CrisisParams { issue: string; severity: string; source?: string }
-interface ReportParams { period?: string; includeCompetitors?: boolean }
+interface MonitorParams {
+  platforms?: string[]
+  since?: string
+}
+interface ResponseParams {
+  reviewId: string
+  platform: string
+  response: string
+  tone?: string
+}
+interface SentimentParams {
+  text: string
+  context?: string
+}
+interface MentionParams {
+  keywords: string[]
+  platforms?: string[]
+}
+interface GenerateResponseParams {
+  reviewText: string
+  rating: number
+  customerName?: string
+}
+interface CrisisParams {
+  issue: string
+  severity: string
+  source?: string
+}
+interface ReportParams {
+  period?: string
+  includeCompetitors?: boolean
+}
 
 // =============================================================================
 // FACTORY

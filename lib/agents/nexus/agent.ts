@@ -1,11 +1,5 @@
-/**
- * NEXUS - Operations Coordinator Agent
- * Scheduling optimization, resource allocation, and operational efficiency
- */
-
-import { z } from "zod"
 import { BaseAgent, type AgentInput, type AgentOutput } from "../base-agent"
-import type { AgentIdentity, AgentConfig, InterAgentMessage, Job } from "../types"
+import type { AgentIdentity, AgentConfig, InterAgentMessage } from "../types"
 
 // =============================================================================
 // NEXUS AGENT
@@ -15,12 +9,12 @@ export class NexusAgent extends BaseAgent {
   private opsConfig: OperationsConfig
   private schedule: Map<string, ScheduledJob[]> = new Map()
   private resources: ResourcePool
-  
+
   constructor(config?: Partial<AgentConfig>) {
     super({
       codename: "NEXUS_OPS",
       enabled: true,
-      model: "gpt-4o",
+      model: "anthropic/claude-sonnet-4-20250514",
       temperature: 0.3, // Low temperature for precise scheduling
       maxTokens: 2000,
       systemPrompt: NEXUS_SYSTEM_PROMPT,
@@ -46,11 +40,11 @@ export class NexusAgent extends BaseAgent {
       rateLimits: { requestsPerMinute: 30, tokensPerDay: 300000 },
       ...config,
     })
-    
+
     this.opsConfig = DEFAULT_OPS_CONFIG
     this.resources = DEFAULT_RESOURCE_POOL
   }
-  
+
   protected getIdentity(): AgentIdentity {
     return {
       codename: "NEXUS_OPS",
@@ -70,7 +64,7 @@ export class NexusAgent extends BaseAgent {
       status: "idle",
     }
   }
-  
+
   protected registerTools(): void {
     this.registerTool({
       name: "scheduleJob",
@@ -88,7 +82,7 @@ export class NexusAgent extends BaseAgent {
       },
       handler: async (params) => this.scheduleJob(params as ScheduleParams),
     })
-    
+
     this.registerTool({
       name: "optimizeRoute",
       description: "Optimize route for multiple stops",
@@ -103,7 +97,7 @@ export class NexusAgent extends BaseAgent {
       },
       handler: async (params) => this.optimizeRoute(params as RouteParams),
     })
-    
+
     this.registerTool({
       name: "assignCrew",
       description: "Assign crew to a job",
@@ -119,7 +113,7 @@ export class NexusAgent extends BaseAgent {
       },
       handler: async (params) => this.assignCrew(params as CrewParams),
     })
-    
+
     this.registerTool({
       name: "allocateVehicles",
       description: "Allocate vehicles for a job",
@@ -127,14 +121,18 @@ export class NexusAgent extends BaseAgent {
         type: "object",
         properties: {
           jobId: { type: "string", description: "Job ID" },
-          vehicleType: { type: "string", enum: ["van", "truck_small", "truck_medium", "truck_large"], description: "Vehicle type" },
+          vehicleType: {
+            type: "string",
+            enum: ["van", "truck_small", "truck_medium", "truck_large"],
+            description: "Vehicle type",
+          },
           quantity: { type: "number", description: "Number of vehicles" },
         },
         required: ["jobId", "vehicleType"],
       },
       handler: async (params) => this.allocateVehicles(params as VehicleParams),
     })
-    
+
     this.registerTool({
       name: "checkCapacity",
       description: "Check available capacity for a date",
@@ -149,7 +147,7 @@ export class NexusAgent extends BaseAgent {
       },
       handler: async (params) => this.checkCapacity(params as CapacityParams),
     })
-    
+
     this.registerTool({
       name: "sendDayOfUpdates",
       description: "Send day-of status updates to customer",
@@ -164,7 +162,7 @@ export class NexusAgent extends BaseAgent {
       },
       handler: async (params) => this.sendDayOfUpdates(params as UpdateParams),
     })
-    
+
     this.registerTool({
       name: "handleContingency",
       description: "Handle scheduling contingencies",
@@ -172,14 +170,18 @@ export class NexusAgent extends BaseAgent {
         type: "object",
         properties: {
           jobId: { type: "string", description: "Affected job ID" },
-          issue: { type: "string", enum: ["weather", "traffic", "crew_sick", "vehicle_breakdown", "customer_delay"], description: "Issue type" },
+          issue: {
+            type: "string",
+            enum: ["weather", "traffic", "crew_sick", "vehicle_breakdown", "customer_delay"],
+            description: "Issue type",
+          },
           severity: { type: "string", enum: ["minor", "moderate", "major"], description: "Impact severity" },
         },
         required: ["jobId", "issue"],
       },
       handler: async (params) => this.handleContingency(params as ContingencyParams),
     })
-    
+
     this.registerTool({
       name: "getScheduleOverview",
       description: "Get overview of scheduled jobs",
@@ -195,10 +197,10 @@ export class NexusAgent extends BaseAgent {
       handler: async (params) => this.getScheduleOverview(params as OverviewParams),
     })
   }
-  
+
   public async process(input: AgentInput): Promise<AgentOutput> {
     this.log("info", "process", `Processing input type: ${input.type}`)
-    
+
     try {
       switch (input.type) {
         case "message":
@@ -216,25 +218,25 @@ export class NexusAgent extends BaseAgent {
       return { success: false, error: error instanceof Error ? error.message : "Processing failed" }
     }
   }
-  
+
   private async handleMessage(input: AgentInput): Promise<AgentOutput> {
     const content = input.content || ""
-    
+
     if (content.includes("schedule") || content.includes("book")) {
       return await this.handleSchedulingRequest(content, input.metadata)
     }
     if (content.includes("capacity") || content.includes("available")) {
       return await this.handleCapacityRequest(content, input.metadata)
     }
-    
+
     const response = await this.generateResponse(input.messages || [])
     return { success: true, response }
   }
-  
+
   private async handleEvent(input: AgentInput): Promise<AgentOutput> {
     const event = input.event
     if (!event) return { success: false, error: "No event" }
-    
+
     switch (event.name) {
       case "booking_confirmed":
         return await this.processNewBooking(event.data)
@@ -248,10 +250,10 @@ export class NexusAgent extends BaseAgent {
         return { success: false, error: `Unknown event: ${event.name}` }
     }
   }
-  
+
   private async handleScheduledTask(input: AgentInput): Promise<AgentOutput> {
     const taskType = input.metadata?.taskType as string
-    
+
     switch (taskType) {
       case "daily_optimization":
         return await this.runDailyOptimization()
@@ -261,39 +263,39 @@ export class NexusAgent extends BaseAgent {
         return { success: false, error: "Unknown task" }
     }
   }
-  
+
   private async handleHandoffInput(input: AgentInput): Promise<AgentOutput> {
     const handoff = input.handoff
     if (!handoff) return { success: false, error: "No handoff" }
-    
+
     // Handle booking handoff from MAYA
     if (handoff.fromAgent === "MAYA_SALES") {
       return await this.processNewBooking(handoff.context)
     }
-    
+
     return { success: true, response: "Handoff received" }
   }
-  
+
   public async handleInterAgentMessage(message: InterAgentMessage): Promise<void> {
     this.log("info", "handleInterAgentMessage", `From ${message.from}`)
   }
-  
+
   // =============================================================================
   // SCHEDULING WORKFLOWS
   // =============================================================================
-  
+
   private async processNewBooking(data: Record<string, unknown>): Promise<AgentOutput> {
-    const jobId = data.jobId as string || data.leadId as string
+    const jobId = (data.jobId as string) || (data.leadId as string)
     const date = data.scheduledDate as string
     const moveType = data.moveType as string
-    const sqm = data.squareMeters as number || 100
-    
+    const sqm = (data.squareMeters as number) || 100
+
     // Estimate duration based on size
     const estimatedDuration = this.estimateDuration(moveType, sqm)
-    
+
     // Check capacity
     const capacity = await this.checkCapacity({ date, duration: estimatedDuration })
-    
+
     if (!(capacity.data as any)?.available) {
       return {
         success: false,
@@ -301,57 +303,57 @@ export class NexusAgent extends BaseAgent {
         data: { suggestedDates: (capacity.data as any)?.alternatives },
       }
     }
-    
+
     // Schedule the job
     const scheduleResult = await this.scheduleJob({
       jobId,
       date,
       estimatedDuration,
     })
-    
+
     // Assign crew
     const crewSize = this.calculateCrewSize(moveType, sqm)
     await this.assignCrew({ jobId, crewSize, skills: this.getRequiredSkills(moveType) })
-    
+
     // Allocate vehicle
     const vehicleType = this.selectVehicleType(sqm)
     await this.allocateVehicles({ jobId, vehicleType, quantity: 1 })
-    
+
     // Notify SENTINEL to enable support
     await this.sendToAgent("SENTINEL_CS", "notification", {
       type: "job_scheduled",
       jobId,
       date,
     })
-    
+
     return {
       success: true,
       response: "Job scheduled successfully",
       data: scheduleResult.data,
     }
   }
-  
+
   private async runDailyOptimization(): Promise<AgentOutput> {
     const tomorrow = new Date()
     tomorrow.setDate(tomorrow.getDate() + 1)
     const dateStr = tomorrow.toISOString().split("T")[0]
-    
+
     // Optimize routes for all crews
     const routeResult = await this.optimizeRoute({ date: dateStr, considerTraffic: true })
-    
+
     return {
       success: true,
       response: "Daily optimization completed",
       data: routeResult.data,
     }
   }
-  
+
   private async generateMorningBriefing(): Promise<AgentOutput> {
     const today = new Date().toISOString().split("T")[0]
     const overview = await this.getScheduleOverview({ dateFrom: today, dateTo: today })
-    
+
     const jobs = (overview.data as any)?.jobs || []
-    
+
     const briefing = `
 📋 **Operations Briefing - ${today}**
 
@@ -364,61 +366,61 @@ ${jobs.map((j: any) => `• ${j.time} - ${j.customer} (${j.type})`).join("\n")}
 **Weather:** Clear, 22°C
 **Traffic:** Normal conditions expected
 `
-    
+
     return { success: true, response: briefing, data: overview.data }
   }
-  
+
   private async handleSchedulingRequest(content: string, metadata?: Record<string, unknown>): Promise<AgentOutput> {
     return { success: true, response: "I can help with scheduling. What date are you looking at?" }
   }
-  
+
   private async handleCapacityRequest(content: string, metadata?: Record<string, unknown>): Promise<AgentOutput> {
     const today = new Date()
     const results = []
-    
+
     for (let i = 1; i <= 7; i++) {
       const date = new Date(today)
       date.setDate(today.getDate() + i)
       const capacity = await this.checkCapacity({ date: date.toISOString().split("T")[0] })
       results.push({ date: date.toISOString().split("T")[0], ...capacity.data })
     }
-    
+
     return {
       success: true,
       response: "Here's our availability for the next 7 days",
       data: { availability: results },
     }
   }
-  
+
   private async handleJobStarted(data: Record<string, unknown>): Promise<AgentOutput> {
     await this.sendDayOfUpdates({ jobId: data.jobId as string, updateType: "started" })
     return { success: true, response: "Job start notification sent" }
   }
-  
+
   private async handleJobCompleted(data: Record<string, unknown>): Promise<AgentOutput> {
     await this.sendDayOfUpdates({ jobId: data.jobId as string, updateType: "completed" })
-    
+
     // Trigger retention sequence via PHOENIX
     await this.sendToAgent("PHOENIX_RET", "notification", {
       type: "move_completed",
       ...data,
     })
-    
+
     return { success: true, response: "Job completion processed" }
   }
-  
+
   private async processContingency(data: Record<string, unknown>): Promise<AgentOutput> {
     return await this.handleContingency({
       jobId: data.jobId as string,
       issue: data.issue as string,
-      severity: data.severity as string || "moderate",
+      severity: (data.severity as string) || "moderate",
     })
   }
-  
+
   // =============================================================================
   // TOOL IMPLEMENTATIONS
   // =============================================================================
-  
+
   private async scheduleJob(params: ScheduleParams) {
     const slot: ScheduledJob = {
       id: params.jobId,
@@ -428,19 +430,19 @@ ${jobs.map((j: any) => `• ${j.time} - ${j.customer} (${j.type})`).join("\n")}
       status: "scheduled",
       priority: params.priority || "standard",
     }
-    
+
     const dateJobs = this.schedule.get(params.date) || []
     dateJobs.push(slot)
     this.schedule.set(params.date, dateJobs)
-    
+
     this.log("info", "scheduleJob", `Scheduled job ${params.jobId} for ${params.date}`)
-    
+
     return {
       success: true,
       data: { ...slot, confirmationNumber: `SCH-${Date.now()}` },
     }
   }
-  
+
   private async optimizeRoute(params: RouteParams) {
     // In production, integrate with Google Maps/OSRM for actual routing
     return {
@@ -457,11 +459,11 @@ ${jobs.map((j: any) => `• ${j.time} - ${j.customer} (${j.type})`).join("\n")}
       },
     }
   }
-  
+
   private async assignCrew(params: CrewParams) {
     const available = this.resources.crews.filter((c: any) => c.status === "available")
     const assigned = available.slice(0, params.crewSize)
-    
+
     return {
       success: true,
       data: {
@@ -471,12 +473,12 @@ ${jobs.map((j: any) => `• ${j.time} - ${j.customer} (${j.type})`).join("\n")}
       },
     }
   }
-  
+
   private async allocateVehicles(params: VehicleParams) {
     const available = this.resources.vehicles.filter(
-      (v: any) => v.status === "available" && v.type === params.vehicleType
+      (v: any) => v.status === "available" && v.type === params.vehicleType,
     )
-    
+
     return {
       success: true,
       data: {
@@ -489,13 +491,13 @@ ${jobs.map((j: any) => `• ${j.time} - ${j.customer} (${j.type})`).join("\n")}
       },
     }
   }
-  
+
   private async checkCapacity(params: CapacityParams) {
     const dateJobs = this.schedule.get(params.date) || []
     const totalBooked = dateJobs.reduce((sum, j) => sum + j.duration, 0)
     const maxCapacity = this.opsConfig.dailyCapacity
     const available = totalBooked < maxCapacity
-    
+
     return {
       success: true,
       data: {
@@ -508,7 +510,7 @@ ${jobs.map((j: any) => `• ${j.time} - ${j.customer} (${j.type})`).join("\n")}
       },
     }
   }
-  
+
   private async sendDayOfUpdates(params: UpdateParams) {
     const messages: Record<string, string> = {
       eta: "Our team is on the way! Expected arrival in 30 minutes.",
@@ -516,9 +518,9 @@ ${jobs.map((j: any) => `• ${j.time} - ${j.customer} (${j.type})`).join("\n")}
       progress: "Move in progress - 50% complete. Everything going smoothly!",
       completed: "Your move is complete! Thank you for choosing M&M Commercial Moving.",
     }
-    
+
     this.log("info", "sendDayOfUpdates", `Sending ${params.updateType} update for ${params.jobId}`)
-    
+
     return {
       success: true,
       data: {
@@ -529,7 +531,7 @@ ${jobs.map((j: any) => `• ${j.time} - ${j.customer} (${j.type})`).join("\n")}
       },
     }
   }
-  
+
   private async handleContingency(params: ContingencyParams) {
     const solutions: Record<string, string> = {
       weather: "Monitoring conditions. Will contact customer if reschedule needed.",
@@ -538,13 +540,13 @@ ${jobs.map((j: any) => `• ${j.time} - ${j.customer} (${j.type})`).join("\n")}
       vehicle_breakdown: "Replacement vehicle dispatched. 30-minute delay.",
       customer_delay: "Adjusting schedule. Next job notified of potential delay.",
     }
-    
+
     this.log("warn", "handleContingency", `Handling ${params.issue} for ${params.jobId}`)
-    
+
     if (params.severity === "major") {
       await this.escalateToHuman("compliance_issue", `Major contingency: ${params.issue}`, params, "urgent")
     }
-    
+
     return {
       success: true,
       data: {
@@ -555,17 +557,17 @@ ${jobs.map((j: any) => `• ${j.time} - ${j.customer} (${j.type})`).join("\n")}
       },
     }
   }
-  
+
   private async getScheduleOverview(params: OverviewParams) {
     const dateFrom = params.dateFrom || new Date().toISOString().split("T")[0]
     const jobs: any[] = []
-    
+
     this.schedule.forEach((dateJobs, date) => {
       if (date >= dateFrom && (!params.dateTo || date <= params.dateTo)) {
-        jobs.push(...dateJobs.map(j => ({ ...j, date })))
+        jobs.push(...dateJobs.map((j) => ({ ...j, date })))
       }
     })
-    
+
     return {
       success: true,
       data: {
@@ -576,11 +578,11 @@ ${jobs.map((j: any) => `• ${j.time} - ${j.customer} (${j.type})`).join("\n")}
       },
     }
   }
-  
+
   // =============================================================================
   // HELPER METHODS
   // =============================================================================
-  
+
   private estimateDuration(moveType: string, sqm: number): number {
     const baseHours: Record<string, number> = {
       office: 4,
@@ -593,31 +595,31 @@ ${jobs.map((j: any) => `• ${j.time} - ${j.customer} (${j.type})`).join("\n")}
     const sqmFactor = Math.ceil(sqm / 100)
     return Math.min(base + sqmFactor, 12) // Cap at 12 hours
   }
-  
+
   private calculateCrewSize(moveType: string, sqm: number): number {
     if (moveType === "datacenter") return 4
     if (sqm > 500) return 4
     if (sqm > 200) return 3
     return 2
   }
-  
+
   private getRequiredSkills(moveType: string): string[] {
     if (moveType === "datacenter") return ["it_specialist", "heavy_lifting"]
     if (moveType === "it") return ["it_specialist"]
     return ["general"]
   }
-  
+
   private selectVehicleType(sqm: number): string {
     if (sqm > 300) return "truck_large"
     if (sqm > 150) return "truck_medium"
     if (sqm > 50) return "truck_small"
     return "van"
   }
-  
+
   private findAlternativeDates(date: string): string[] {
     const alternatives: string[] = []
     const baseDate = new Date(date)
-    
+
     for (let i = 1; i <= 5; i++) {
       const altDate = new Date(baseDate)
       altDate.setDate(baseDate.getDate() + i)
@@ -625,7 +627,7 @@ ${jobs.map((j: any) => `• ${j.time} - ${j.customer} (${j.type})`).join("\n")}
         alternatives.push(altDate.toISOString().split("T")[0])
       }
     }
-    
+
     return alternatives.slice(0, 3)
   }
 }
@@ -700,14 +702,49 @@ interface ScheduledJob {
   vehicle?: string
 }
 
-interface ScheduleParams { jobId: string; date: string; startTime?: string; estimatedDuration?: number; priority?: string }
-interface RouteParams { date: string; crewId?: string; considerTraffic?: boolean }
-interface CrewParams { jobId: string; crewSize: number; skills?: string[]; preferredCrew?: string[] }
-interface VehicleParams { jobId: string; vehicleType: string; quantity?: number }
-interface CapacityParams { date: string; jobType?: string; duration?: number }
-interface UpdateParams { jobId: string; updateType: string; customMessage?: string }
-interface ContingencyParams { jobId: string; issue: string; severity?: string }
-interface OverviewParams { dateFrom?: string; dateTo?: string; status?: string }
+interface ScheduleParams {
+  jobId: string
+  date: string
+  startTime?: string
+  estimatedDuration?: number
+  priority?: string
+}
+interface RouteParams {
+  date: string
+  crewId?: string
+  considerTraffic?: boolean
+}
+interface CrewParams {
+  jobId: string
+  crewSize: number
+  skills?: string[]
+  preferredCrew?: string[]
+}
+interface VehicleParams {
+  jobId: string
+  vehicleType: string
+  quantity?: number
+}
+interface CapacityParams {
+  date: string
+  jobType?: string
+  duration?: number
+}
+interface UpdateParams {
+  jobId: string
+  updateType: string
+  customMessage?: string
+}
+interface ContingencyParams {
+  jobId: string
+  issue: string
+  severity?: string
+}
+interface OverviewParams {
+  dateFrom?: string
+  dateTo?: string
+  status?: string
+}
 
 // =============================================================================
 // FACTORY
