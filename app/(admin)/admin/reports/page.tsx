@@ -6,43 +6,70 @@ import { BarChart3, TrendingUp, AlertTriangle, FileText, Calendar, Lightbulb, Ta
 
 export const dynamic = "force-dynamic"
 
+async function safeQuery<T>(queryFn: () => Promise<{ data: T | null; error: unknown }>): Promise<T | null> {
+  try {
+    const { data, error } = await queryFn()
+    if (error) return null
+    return data
+  } catch {
+    return null
+  }
+}
+
 export default async function ReportsPage() {
   const supabase = await createClient()
 
-  // Fetch analytics data
-  const { data: snapshots } = await supabase
-    .from("analytics_snapshots")
-    .select("*")
-    .order("snapshot_date", { ascending: false })
-    .limit(7)
+  const snapshots = await safeQuery(() =>
+    supabase.from("analytics_snapshots").select("*").order("snapshot_date", { ascending: false }).limit(7),
+  )
 
-  const { data: insights } = await supabase
-    .from("analytics_insights")
-    .select("*")
-    .eq("status", "new")
-    .order("priority", { ascending: false })
-    .limit(10)
+  const insights = await safeQuery(() =>
+    supabase
+      .from("analytics_insights")
+      .select("*")
+      .eq("status", "new")
+      .order("priority", { ascending: false })
+      .limit(10),
+  )
 
-  const { data: forecasts } = await supabase
-    .from("revenue_forecasts")
-    .select("*")
-    .order("forecast_date", { ascending: false })
-    .limit(3)
+  const forecasts = await safeQuery(() =>
+    supabase.from("revenue_forecasts").select("*").order("forecast_date", { ascending: false }).limit(3),
+  )
 
-  const { data: anomalies } = await supabase
-    .from("detected_anomalies")
-    .select("*")
-    .eq("status", "open")
-    .order("severity", { ascending: false })
-    .limit(5)
+  const anomalies = await safeQuery(() =>
+    supabase
+      .from("detected_anomalies")
+      .select("*")
+      .eq("status", "open")
+      .order("severity", { ascending: false })
+      .limit(5),
+  )
 
-  const { data: scheduledReports } = await supabase
-    .from("scheduled_reports")
-    .select("*")
-    .eq("is_active", true)
-    .order("next_send_at", { ascending: true })
+  const scheduledReports = await safeQuery(() =>
+    supabase.from("scheduled_reports").select("*").eq("is_active", true).order("next_send_at", { ascending: true }),
+  )
 
   const latestSnapshot = snapshots?.[0]
+
+  if (!snapshots && !insights && !forecasts && !anomalies && !scheduledReports) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold">Analytics & Reports</h1>
+          <p className="text-muted-foreground">Oracle Agent - Business Intelligence Dashboard</p>
+        </div>
+        <Card>
+          <CardContent className="py-12 text-center">
+            <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-amber-500" />
+            <h3 className="text-lg font-semibold mb-2">Database Setup Required</h3>
+            <p className="text-muted-foreground">
+              The analytics tables have not been created yet. Please run SQL migration 008 to enable this feature.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   const priorityColors: Record<string, string> = {
     critical: "bg-red-500",

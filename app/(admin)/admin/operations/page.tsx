@@ -5,49 +5,76 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CalendarDays, Truck, Users, AlertTriangle, Clock, MapPin, CheckCircle2 } from "lucide-react"
 
+export const dynamic = "force-dynamic"
+
+async function safeQuery<T>(queryFn: () => Promise<{ data: T | null; error: unknown }>): Promise<T | null> {
+  try {
+    const { data, error } = await queryFn()
+    if (error) return null
+    return data
+  } catch {
+    return null
+  }
+}
+
 export default async function OperationsPage() {
   const supabase = await createClient()
 
   const today = new Date().toISOString().split("T")[0]
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split("T")[0]
 
-  // Fetch scheduled jobs
-  const { data: jobs } = await supabase
-    .from("scheduled_jobs")
-    .select(`
-      *,
-      crews:assigned_crew_id (id, name),
-      vehicles:assigned_vehicle_id (id, name, registration)
-    `)
-    .gte("scheduled_date", today)
-    .order("scheduled_date", { ascending: true })
-    .order("start_time", { ascending: true })
-    .limit(50)
+  const jobs = await safeQuery(() =>
+    supabase
+      .from("scheduled_jobs")
+      .select(`*, crews:assigned_crew_id (id, name), vehicles:assigned_vehicle_id (id, name, registration)`)
+      .gte("scheduled_date", today)
+      .order("scheduled_date", { ascending: true })
+      .order("start_time", { ascending: true })
+      .limit(50),
+  )
 
-  // Fetch crews
-  const { data: crews } = await supabase.from("crews").select("*").order("name")
+  const crews = await safeQuery(() => supabase.from("crews").select("*").order("name"))
 
-  // Fetch contingencies
-  const { data: contingencies } = await supabase
-    .from("contingency_events")
-    .select("*")
-    .eq("status", "active")
-    .order("created_at", { ascending: false })
+  const contingencies = await safeQuery(() =>
+    supabase.from("contingency_events").select("*").eq("status", "active").order("created_at", { ascending: false }),
+  )
 
-  // Fetch capacity
-  const { data: capacity } = await supabase
-    .from("capacity_slots")
-    .select("*")
-    .gte("slot_date", today)
-    .order("slot_date", { ascending: true })
-    .limit(14)
+  const capacity = await safeQuery(() =>
+    supabase
+      .from("capacity_slots")
+      .select("*")
+      .gte("slot_date", today)
+      .order("slot_date", { ascending: true })
+      .limit(14),
+  )
 
-  const todayJobs = jobs?.filter((j) => j.scheduled_date === today) || []
-  const tomorrowJobs = jobs?.filter((j) => j.scheduled_date === tomorrow) || []
-  const upcomingJobs = jobs?.filter((j) => j.scheduled_date > tomorrow) || []
+  const todayJobs = jobs?.filter((j: any) => j.scheduled_date === today) || []
+  const tomorrowJobs = jobs?.filter((j: any) => j.scheduled_date === tomorrow) || []
+  const upcomingJobs = jobs?.filter((j: any) => j.scheduled_date > tomorrow) || []
 
-  const availableCrews = crews?.filter((c) => c.status === "available").length || 0
-  const onJobCrews = crews?.filter((c) => c.status === "on_job").length || 0
+  const availableCrews = crews?.filter((c: any) => c.status === "available").length || 0
+  const onJobCrews = crews?.filter((c: any) => c.status === "on_job").length || 0
+
+  if (!jobs && !crews && !contingencies && !capacity) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold">Operations Dashboard</h1>
+          <p className="text-muted-foreground">Manage scheduling, crews, and day-of operations</p>
+        </div>
+        <Card>
+          <CardContent className="py-12 text-center">
+            <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-amber-500" />
+            <h3 className="text-lg font-semibold mb-2">Database Setup Required</h3>
+            <p className="text-muted-foreground">
+              The operations tables have not been created yet. Please run the SQL migrations (008 and 009) to enable
+              this feature.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -60,13 +87,13 @@ export default async function OperationsPage() {
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Today's Jobs</CardTitle>
+            <CardTitle className="text-sm font-medium">{"Today's Jobs"}</CardTitle>
             <CalendarDays className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{todayJobs.length}</div>
             <p className="text-xs text-muted-foreground">
-              {todayJobs.filter((j) => j.status === "completed").length} completed
+              {todayJobs.filter((j: any) => j.status === "completed").length} completed
             </p>
           </CardContent>
         </Card>
@@ -84,13 +111,13 @@ export default async function OperationsPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Tomorrow's Jobs</CardTitle>
+            <CardTitle className="text-sm font-medium">{"Tomorrow's Jobs"}</CardTitle>
             <Truck className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{tomorrowJobs.length}</div>
             <p className="text-xs text-muted-foreground">
-              {tomorrowJobs.filter((j) => j.assigned_crew_id).length} crews assigned
+              {tomorrowJobs.filter((j: any) => j.assigned_crew_id).length} crews assigned
             </p>
           </CardContent>
         </Card>
@@ -123,7 +150,7 @@ export default async function OperationsPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <Badge variant={c.severity === "major" ? "destructive" : "outline"}>{c.severity}</Badge>
-                      <span className="font-medium">{c.event_type.replace("_", " ")}</span>
+                      <span className="font-medium">{c.event_type?.replace("_", " ")}</span>
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">{c.description}</p>
                   </div>
@@ -301,11 +328,11 @@ export default async function OperationsPage() {
                     </div>
                     <div>
                       <span className="text-muted-foreground">Members: </span>
-                      {(crew.members as any[])?.length || 0}
+                      {Array.isArray(crew.members) ? crew.members.length : 0}
                     </div>
                     <div>
                       <span className="text-muted-foreground">Skills: </span>
-                      {(crew.skills as string[])?.slice(0, 3).join(", ") || "General"}
+                      {Array.isArray(crew.skills) ? crew.skills.slice(0, 3).join(", ") : "General"}
                     </div>
                     <div>
                       <span className="text-muted-foreground">Shift: </span>
@@ -314,7 +341,11 @@ export default async function OperationsPage() {
                   </div>
                 </CardContent>
               </Card>
-            ))}
+            )) || (
+              <Card className="col-span-full">
+                <CardContent className="py-8 text-center text-muted-foreground">No crews configured</CardContent>
+              </Card>
+            )}
           </div>
         </TabsContent>
 
@@ -323,7 +354,6 @@ export default async function OperationsPage() {
           <div className="grid gap-4 md:grid-cols-7">
             {capacity?.map((slot: any) => {
               const date = new Date(slot.slot_date)
-              const isWeekend = date.getDay() === 0 || date.getDay() === 6
               const utilizationPercent =
                 slot.total_crew_hours > 0 ? Math.round((slot.booked_crew_hours / slot.total_crew_hours) * 100) : 0
 
@@ -352,7 +382,11 @@ export default async function OperationsPage() {
                   </CardContent>
                 </Card>
               )
-            })}
+            }) || (
+              <Card className="col-span-full">
+                <CardContent className="py-8 text-center text-muted-foreground">No capacity data available</CardContent>
+              </Card>
+            )}
           </div>
         </TabsContent>
       </Tabs>

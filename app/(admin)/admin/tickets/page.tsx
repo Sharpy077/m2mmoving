@@ -4,6 +4,28 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Ticket, Clock, AlertTriangle, CheckCircle, MessageSquare } from "lucide-react"
 
+export const dynamic = "force-dynamic"
+
+async function safeQuery<T>(queryFn: () => Promise<{ data: T | null; error: unknown }>): Promise<T | null> {
+  try {
+    const { data, error } = await queryFn()
+    if (error) return null
+    return data
+  } catch {
+    return null
+  }
+}
+
+async function safeCount(queryFn: () => Promise<{ count: number | null; error: unknown }>): Promise<number> {
+  try {
+    const { count, error } = await queryFn()
+    if (error) return 0
+    return count || 0
+  } catch {
+    return 0
+  }
+}
+
 const priorityColors: Record<string, string> = {
   low: "bg-slate-500/20 text-slate-300 border-slate-500/30",
   medium: "bg-amber-500/20 text-amber-300 border-amber-500/30",
@@ -33,35 +55,57 @@ const categoryIcons: Record<string, React.ReactNode> = {
 export default async function TicketsPage() {
   const supabase = await createClient()
 
-  // Fetch tickets
-  const { data: tickets } = await supabase
-    .from("support_tickets")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(50)
+  const tickets = await safeQuery(() =>
+    supabase.from("support_tickets").select("*").order("created_at", { ascending: false }).limit(50),
+  )
 
-  // Fetch stats
-  const { count: openCount } = await supabase
-    .from("support_tickets")
-    .select("*", { count: "exact", head: true })
-    .in("status", ["open", "pending", "in_progress"])
+  const openCount = await safeCount(() =>
+    supabase
+      .from("support_tickets")
+      .select("*", { count: "exact", head: true })
+      .in("status", ["open", "pending", "in_progress"]),
+  )
 
-  const { count: urgentCount } = await supabase
-    .from("support_tickets")
-    .select("*", { count: "exact", head: true })
-    .eq("priority", "urgent")
-    .in("status", ["open", "pending", "in_progress"])
+  const urgentCount = await safeCount(() =>
+    supabase
+      .from("support_tickets")
+      .select("*", { count: "exact", head: true })
+      .eq("priority", "urgent")
+      .in("status", ["open", "pending", "in_progress"]),
+  )
 
-  const { count: resolvedToday } = await supabase
-    .from("support_tickets")
-    .select("*", { count: "exact", head: true })
-    .eq("status", "resolved")
-    .gte("resolved_at", new Date().toISOString().split("T")[0])
+  const resolvedToday = await safeCount(() =>
+    supabase
+      .from("support_tickets")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "resolved")
+      .gte("resolved_at", new Date().toISOString().split("T")[0]),
+  )
+
+  if (tickets === null) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-white mb-2">Support Tickets</h1>
+          <p className="text-white/60">Manage customer support requests handled by Sentinel</p>
+        </div>
+        <Card className="bg-white/5 border-white/10">
+          <CardContent className="py-12 text-center">
+            <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-amber-500" />
+            <h3 className="text-lg font-semibold mb-2 text-white">Database Setup Required</h3>
+            <p className="text-white/60">
+              The support tickets tables have not been created yet. Please run SQL migration 004 to enable this feature.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   const stats = [
-    { label: "Open Tickets", value: openCount || 0, icon: Ticket, color: "text-blue-400" },
-    { label: "Urgent", value: urgentCount || 0, icon: AlertTriangle, color: "text-red-400" },
-    { label: "Resolved Today", value: resolvedToday || 0, icon: CheckCircle, color: "text-emerald-400" },
+    { label: "Open Tickets", value: openCount, icon: Ticket, color: "text-blue-400" },
+    { label: "Urgent", value: urgentCount, icon: AlertTriangle, color: "text-red-400" },
+    { label: "Resolved Today", value: resolvedToday, icon: CheckCircle, color: "text-emerald-400" },
   ]
 
   return (
@@ -102,7 +146,7 @@ export default async function TicketsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {tickets.map((ticket) => (
+              {tickets.map((ticket: any) => (
                 <div
                   key={ticket.id}
                   className="p-4 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
@@ -119,7 +163,7 @@ export default async function TicketsPage() {
                             {ticket.priority}
                           </Badge>
                           <Badge variant="outline" className={statusColors[ticket.status]}>
-                            {ticket.status.replace("_", " ")}
+                            {ticket.status?.replace("_", " ")}
                           </Badge>
                         </div>
                         <h3 className="font-medium text-white">{ticket.subject}</h3>

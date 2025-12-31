@@ -13,52 +13,70 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
+  AlertTriangle,
 } from "lucide-react"
+
+export const dynamic = "force-dynamic"
+
+async function safeQuery<T>(queryFn: () => Promise<{ data: T | null; error: unknown }>): Promise<T | null> {
+  try {
+    const { data, error } = await queryFn()
+    if (error) return null
+    return data
+  } catch {
+    return null
+  }
+}
+
+async function safeCount(queryFn: () => Promise<{ count: number | null; error: unknown }>): Promise<number> {
+  try {
+    const { count, error } = await queryFn()
+    if (error) return 0
+    return count || 0
+  } catch {
+    return 0
+  }
+}
 
 async function getProspectStats() {
   const supabase = await createClient()
 
-  const { count: total } = await supabase.from("prospects").select("*", { count: "exact", head: true })
+  const total = await safeCount(() => supabase.from("prospects").select("*", { count: "exact", head: true }))
 
-  const { count: qualified } = await supabase
-    .from("prospects")
-    .select("*", { count: "exact", head: true })
-    .eq("qualified", true)
+  const qualified = await safeCount(() =>
+    supabase.from("prospects").select("*", { count: "exact", head: true }).eq("qualified", true),
+  )
 
-  const { count: contacted } = await supabase
-    .from("prospects")
-    .select("*", { count: "exact", head: true })
-    .eq("status", "contacted")
+  const contacted = await safeCount(() =>
+    supabase.from("prospects").select("*", { count: "exact", head: true }).eq("status", "contacted"),
+  )
 
-  const { count: converted } = await supabase
-    .from("prospects")
-    .select("*", { count: "exact", head: true })
-    .eq("status", "converted")
+  const converted = await safeCount(() =>
+    supabase.from("prospects").select("*", { count: "exact", head: true }).eq("status", "converted"),
+  )
 
-  const { data: scores } = await supabase.from("prospects").select("score").gt("score", 0)
+  const scores = await safeQuery(() => supabase.from("prospects").select("score").gt("score", 0))
 
-  const avgScore = scores?.length ? Math.round(scores.reduce((sum, p) => sum + p.score, 0) / scores.length) : 0
+  const avgScore = scores?.length
+    ? Math.round(scores.reduce((sum: number, p: any) => sum + p.score, 0) / scores.length)
+    : 0
 
   return {
-    total: total || 0,
-    qualified: qualified || 0,
-    contacted: contacted || 0,
-    converted: converted || 0,
+    total,
+    qualified,
+    contacted,
+    converted,
     avgScore,
+    hasData: total > 0 || scores !== null,
   }
 }
 
 async function getProspects() {
   const supabase = await createClient()
-
-  const { data, error } = await supabase.from("prospects").select("*").order("score", { ascending: false }).limit(50)
-
-  if (error) {
-    console.error("Error fetching prospects:", error)
-    return []
-  }
-
-  return data || []
+  const result = await safeQuery(() =>
+    supabase.from("prospects").select("*").order("score", { ascending: false }).limit(50),
+  )
+  return result || []
 }
 
 function getStatusBadge(status: string) {
@@ -89,6 +107,26 @@ function getScoreColor(score: number) {
 
 export default async function ProspectsPage() {
   const [stats, prospects] = await Promise.all([getProspectStats(), getProspects()])
+
+  if (!stats.hasData && prospects.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Hunter Prospects</h1>
+          <p className="text-muted-foreground">AI-identified leads and outreach management</p>
+        </div>
+        <Card>
+          <CardContent className="py-12 text-center">
+            <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-amber-500" />
+            <h3 className="text-lg font-semibold mb-2">Database Setup Required</h3>
+            <p className="text-muted-foreground">
+              The prospects tables have not been created yet. Please run SQL migration 005 to enable this feature.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -165,7 +203,7 @@ export default async function ProspectsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {prospects.map((prospect) => {
+              {prospects.map((prospect: any) => {
                 const enrichedData = (prospect.enriched_data as Record<string, unknown>) || {}
                 const signals = (prospect.signals as any[]) || []
 

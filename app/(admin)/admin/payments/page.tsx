@@ -3,14 +3,48 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { DollarSign, CreditCard, RefreshCw, AlertTriangle, CheckCircle, XCircle } from "lucide-react"
 
+export const dynamic = "force-dynamic"
+
+async function safeQuery<T>(queryFn: () => Promise<{ data: T | null; error: unknown }>): Promise<T | null> {
+  try {
+    const { data, error } = await queryFn()
+    if (error) return null
+    return data
+  } catch {
+    return null
+  }
+}
+
 export default async function PaymentsPage() {
   const supabase = await createClient()
 
-  const { data: payments } = await supabase
-    .from("payments")
-    .select("*, leads(contact_name, company_name, email)")
-    .order("created_at", { ascending: false })
-    .limit(100)
+  const payments = await safeQuery(() =>
+    supabase
+      .from("payments")
+      .select("*, leads(contact_name, company_name, email)")
+      .order("created_at", { ascending: false })
+      .limit(100),
+  )
+
+  if (payments === null) {
+    return (
+      <div className="p-6 space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Payments</h1>
+          <p className="text-white/60">Track all payment transactions and refunds</p>
+        </div>
+        <Card className="bg-white/5 border-white/10">
+          <CardContent className="py-12 text-center">
+            <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-amber-500" />
+            <h3 className="text-lg font-semibold mb-2 text-white">Database Setup Required</h3>
+            <p className="text-white/60">
+              The payments table has not been created yet. Please run SQL migration 003 to enable this feature.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   const stats = {
     total: payments?.length || 0,
