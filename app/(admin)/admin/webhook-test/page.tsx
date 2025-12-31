@@ -18,17 +18,23 @@ import {
   Database,
   AlertTriangle,
 } from "lucide-react"
-import { loadStripe } from "@stripe/stripe-js"
-import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js"
 
-const getStripePromise = () => {
-  const key = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-  if (!key) {
-    console.error("[v0] Missing NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY")
-    return null
-  }
-  return loadStripe(key)
-}
+import dynamic from "next/dynamic"
+
+const StripeCheckoutSection = dynamic(
+  () =>
+    import("@/components/stripe-checkout-wrapper").then((mod) => {
+      return { default: mod.default }
+    }),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    ),
+  },
+)
 
 interface TestState {
   status: "idle" | "creating" | "paying" | "verifying" | "complete" | "error"
@@ -48,25 +54,16 @@ interface TestState {
 export default function WebhookTestPage() {
   const [state, setState] = useState<TestState>({ status: "idle" })
   const [polling, setPolling] = useState(false)
-  const [stripePromise, setStripePromise] = useState<ReturnType<typeof loadStripe> | null>(null)
+  const [stripeReady, setStripeReady] = useState(false)
 
   useEffect(() => {
-    const promise = getStripePromise()
-    if (promise) {
-      setStripePromise(promise)
+    // Check if Stripe key is available
+    if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) {
+      setStripeReady(true)
     }
   }, [])
 
-  // Start the test
   async function startTest() {
-    if (!stripePromise) {
-      setState({
-        status: "error",
-        error: "Stripe is not configured. Please check NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY environment variable.",
-      })
-      return
-    }
-
     setState({ status: "creating" })
 
     try {
@@ -98,7 +95,6 @@ export default function WebhookTestPage() {
     }
   }
 
-  // Check verification status
   const checkVerification = useCallback(async () => {
     if (!state.leadId) return
 
@@ -117,18 +113,16 @@ export default function WebhookTestPage() {
           setPolling(false)
         }
       }
-    } catch (error) {
-      console.error("[v0] Verification check failed:", error)
+    } catch {
+      // Silent fail for polling
     }
   }, [state.leadId])
 
-  // Start polling after payment
   function onPaymentComplete() {
     setState((prev) => ({ ...prev, status: "verifying" }))
     setPolling(true)
   }
 
-  // Poll for webhook delivery
   useEffect(() => {
     if (!polling || !state.leadId) return
 
@@ -136,7 +130,6 @@ export default function WebhookTestPage() {
     return () => clearInterval(interval)
   }, [polling, state.leadId, checkVerification])
 
-  // Cleanup test data
   async function cleanup() {
     if (!state.leadId) return
 
@@ -145,18 +138,17 @@ export default function WebhookTestPage() {
         method: "DELETE",
       })
       setState({ status: "idle" })
-    } catch (error) {
-      console.error("[v0] Cleanup failed:", error)
+    } catch {
+      // Silent fail
     }
   }
 
-  // Reset test
   function reset() {
     setPolling(false)
     setState({ status: "idle" })
   }
 
-  if (!stripePromise && state.status === "idle") {
+  if (!stripeReady && state.status === "idle") {
     return (
       <div className="container mx-auto py-8 max-w-4xl">
         <div className="mb-8">
@@ -263,8 +255,8 @@ export default function WebhookTestPage() {
             </div>
           )}
 
-          {/* Payment State */}
-          {state.status === "paying" && state.clientSecret && stripePromise && (
+          {/* Payment State - Use dynamic import */}
+          {state.status === "paying" && state.clientSecret && (
             <div className="space-y-4">
               <Alert>
                 <AlertTriangle className="h-4 w-4" />
@@ -276,15 +268,7 @@ export default function WebhookTestPage() {
               </Alert>
 
               <div className="border rounded-lg p-4 bg-white">
-                <EmbeddedCheckoutProvider
-                  stripe={stripePromise}
-                  options={{
-                    clientSecret: state.clientSecret,
-                    onComplete: onPaymentComplete,
-                  }}
-                >
-                  <EmbeddedCheckout />
-                </EmbeddedCheckoutProvider>
+                <StripeCheckoutSection clientSecret={state.clientSecret} onComplete={onPaymentComplete} />
               </div>
             </div>
           )}

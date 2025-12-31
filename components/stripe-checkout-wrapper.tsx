@@ -4,14 +4,11 @@ import { useEffect, useState } from "react"
 import { loadStripe } from "@stripe/stripe-js"
 import { EmbeddedCheckout, EmbeddedCheckoutProvider } from "@stripe/react-stripe-js"
 
-const getStripePromise = () => {
-  const key = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-  if (!key) {
-    console.error("[v0] Missing NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY")
-    return null
-  }
-  return loadStripe(key)
-}
+// Initialize Stripe outside component to avoid recreating on each render
+const stripePromise =
+  typeof window !== "undefined" && process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+    ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
+    : null
 
 interface StripeCheckoutWrapperProps {
   clientSecret: string
@@ -20,17 +17,9 @@ interface StripeCheckoutWrapperProps {
 
 export default function StripeCheckoutWrapper({ clientSecret, onComplete }: StripeCheckoutWrapperProps) {
   const [mounted, setMounted] = useState(false)
-  const [stripePromise, setStripePromise] = useState<ReturnType<typeof loadStripe> | null>(null)
-  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     setMounted(true)
-    const promise = getStripePromise()
-    if (promise) {
-      setStripePromise(promise)
-    } else {
-      setError("Stripe is not configured. Please check environment variables.")
-    }
   }, [])
 
   if (!mounted) {
@@ -41,10 +30,10 @@ export default function StripeCheckoutWrapper({ clientSecret, onComplete }: Stri
     )
   }
 
-  if (error || !stripePromise) {
+  if (!stripePromise) {
     return (
       <div className="flex items-center justify-center p-8 text-destructive">
-        <p>{error || "Failed to load Stripe"}</p>
+        <p>Stripe is not configured. Please check environment variables.</p>
       </div>
     )
   }
