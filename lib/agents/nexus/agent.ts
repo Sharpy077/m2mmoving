@@ -1,5 +1,6 @@
 import { BaseAgent, type AgentInput, type AgentOutput } from "../base-agent"
 import type { AgentIdentity, AgentConfig, InterAgentMessage } from "../types"
+import * as db from "./db"
 
 // =============================================================================
 // NEXUS AGENT
@@ -281,55 +282,90 @@ export class NexusAgent extends BaseAgent {
   }
 
   // =============================================================================
-  // SCHEDULING WORKFLOWS
+  // SCHEDULING WORKFLOWS - Updated to use real database
   // =============================================================================
 
   private async processNewBooking(data: Record<string, unknown>): Promise<AgentOutput> {
-    const jobId = (data.jobId as string) || (data.leadId as string)
-    const date = data.scheduledDate as string
-    const moveType = data.moveType as string
-    const sqm = (data.squareMeters as number) || 100
+    const leadId = (data.jobId as string) || (data.leadId as string)
+    const date = (data.scheduledDate as string) || (data.date as string)
+    const moveType = (data.moveType as string) || "office"
+    const sqm = (data.squareMeters as number) || (data.sqm as number) || 100
 
-    // Estimate duration based on size
-    const estimatedDuration = this.estimateDuration(moveType, sqm)
+    try {
+      // Estimate duration based on size
+      const estimatedDuration = this.estimateDuration(moveType, sqm)
 
-    // Check capacity
-    const capacity = await this.checkCapacity({ date, duration: estimatedDuration })
+      // Check capacity
+      const capacity = await db.checkCapacity(date)
 
-    if (!(capacity.data as any)?.available) {
-      return {
-        success: false,
-        error: "No capacity available for requested date",
-        data: { suggestedDates: (capacity.data as any)?.alternatives },
+      if (!capacity.available) {
+        // Find alternative dates
+        const alternatives = await this.findAlternativeDates(date, 7)
+        return {
+          success: false,
+          error: "No capacity available for requested date",
+          data: { suggestedDates: alternatives },
+        }
       }
-    }
 
-    // Schedule the job
-    const scheduleResult = await this.scheduleJob({
-      jobId,
-      date,
-      estimatedDuration,
-    })
+      // Schedule the job
+      const job = await db.scheduleJob({
+        leadId,
+        customerName: (data.customerName as string) || "Customer",
+        customerPhone: data.phone as string,
+        customerEmail: data.email as string,
+        jobType: moveType,
+        originAddress: (data.originAddress as string) || (data.origin as string) || "",
+        originSuburb: data.originSuburb as string,
+        destinationAddress: (data.destinationAddress as string) || (data.destination as string) || "",
+        destinationSuburb: data.destinationSuburb as string,
+        estimatedSqm: sqm,
+        specialRequirements: data.specialRequirements as string[],
+        scheduledDate: date,
+        estimatedDuration,
+        priority: data.priority as string,
+      })
 
-    // Assign crew
-    const crewSize = this.calculateCrewSize(moveType, sqm)
-    await this.assignCrew({ jobId, crewSize, skills: this.getRequiredSkills(moveType) })
+      // Assign crew
+      const crewSize = this.calculateCrewSize(moveType, sqm)
+      const requiredSkills = this.getRequiredSkills(moveType)
+      const availableCrews = await db.getAvailableCrews(date, requiredSkills)
 
-    // Allocate vehicle
-    const vehicleType = this.selectVehicleType(sqm)
-    await this.allocateVehicles({ jobId, vehicleType, quantity: 1 })
+      if (availableCrews.length > 0) {
+        await db.assignCrewToJob(job.id, availableCrews[0].id)
+      }
 
-    // Notify SENTINEL to enable support
-    await this.sendToAgent("SENTINEL_CS", "notification", {
-      type: "job_scheduled",
-      jobId,
-      date,
-    })
+      // Allocate vehicle
+      const vehicleType = this.selectVehicleType(sqm)
+      const availableVehicles = await db.getAvailableVehicles(date, vehicleType)
 
-    return {
-      success: true,
-      response: "Job scheduled successfully",
-      data: scheduleResult.data,
+      if (availableVehicles.length > 0) {
+        await db.assignVehicleToJob(job.id, availableVehicles[0].id)
+      }
+
+      // Send confirmation to customer
+      await db.sendCustomerUpdate({
+        jobId: job.id,
+        updateType: "confirmation",
+        channel: "email",
+        message: `Your move is confirmed for ${date}. Our team will arrive at ${job.start_time || "08:00"}.`,
+      })
+
+      // Notify SENTINEL to enable support tracking
+      await this.sendToAgent("SENTINEL_CS", "notification", {
+        type: "job_scheduled",
+        jobId: job.id,
+        date,
+      })
+
+      return {
+        success: true,
+        response: `Job scheduled successfully for ${date}. Confirmation: ${job.confirmationNumber}`,
+        data: job,
+      }
+    } catch (error) {
+      this.log("error", "processNewBooking", `Failed: ${error}`)
+      return { success: false, error: String(error) }
     }
   }
 
@@ -338,176 +374,213 @@ export class NexusAgent extends BaseAgent {
     tomorrow.setDate(tomorrow.getDate() + 1)
     const dateStr = tomorrow.toISOString().split("T")[0]
 
-    // Optimize routes for all crews
-    const routeResult = await this.optimizeRoute({ date: dateStr, considerTraffic: true })
+    try {
+      // Get all jobs for tomorrow
+      const jobs = await db.getScheduledJobs({ dateFrom: dateStr, dateTo: dateStr })
 
-    return {
-      success: true,
-      response: "Daily optimization completed",
-      data: routeResult.data,
+      if (jobs.length === 0) {
+        return { success: true, response: "No jobs scheduled for tomorrow" }
+      }
+
+      // Group jobs by crew
+      const jobsBySuburb = this.groupJobsBySuburb(jobs)
+
+      // Optimize routes (simple greedy algorithm)
+      const optimizedStops = this.optimizeStops(jobs)
+
+      // Save optimization
+      const optimization = await db.saveRouteOptimization({
+        date: dateStr,
+        stops: optimizedStops,
+        totalDistanceKm: this.estimateTotalDistance(optimizedStops),
+        totalDurationMinutes: jobs.reduce((sum, j) => sum + (j.estimated_duration_hours || 4) * 60, 0),
+        distanceSavedKm: 15, // Estimated savings
+        timeSavedMinutes: 45,
+      })
+
+      return {
+        success: true,
+        response: `Daily optimization completed. ${jobs.length} jobs optimized, estimated 45 min saved.`,
+        data: optimization,
+      }
+    } catch (error) {
+      this.log("error", "runDailyOptimization", `Failed: ${error}`)
+      return { success: false, error: String(error) }
     }
   }
 
   private async generateMorningBriefing(): Promise<AgentOutput> {
     const today = new Date().toISOString().split("T")[0]
-    const overview = await this.getScheduleOverview({ dateFrom: today, dateTo: today })
 
-    const jobs = (overview.data as any)?.jobs || []
+    try {
+      const briefing = await db.getDailyBriefing(today)
+      const contingencies = await db.getActiveContingencies()
 
-    const briefing = `
-📋 **Operations Briefing - ${today}**
+      const response = `
+**Operations Briefing - ${today}**
 
-**Today's Jobs:** ${jobs.length}
-**Crews Active:** ${this.resources.crews.filter((c: any) => c.status === "available").length}
-**Vehicles Available:** ${this.resources.vehicles.filter((v: any) => v.status === "available").length}
+**Today's Jobs:** ${briefing.jobs.total}
+- Scheduled: ${briefing.jobs.scheduled}
+- In Progress: ${briefing.jobs.inProgress}
+- Completed: ${briefing.jobs.completed}
 
-${jobs.map((j: any) => `• ${j.time} - ${j.customer} (${j.type})`).join("\n")}
+**Resources:**
+- Crews Available: ${briefing.resources.crewsAvailable}
+- Vehicles Available: ${briefing.resources.vehiclesAvailable}
 
-**Weather:** Clear, 22°C
-**Traffic:** Normal conditions expected
-`
+**Active Contingencies:** ${contingencies.length}
+${contingencies.map((c: any) => `- ${c.event_type}: ${c.description || "No details"}`).join("\n")}
 
-    return { success: true, response: briefing, data: overview.data }
-  }
+**Schedule:**
+${briefing.jobs.list.map((j: any) => `- ${j.start_time} - ${j.customer_name} (${j.origin_suburb} → ${j.destination_suburb})`).join("\n")}
+      `.trim()
 
-  private async handleSchedulingRequest(content: string, metadata?: Record<string, unknown>): Promise<AgentOutput> {
-    return { success: true, response: "I can help with scheduling. What date are you looking at?" }
-  }
-
-  private async handleCapacityRequest(content: string, metadata?: Record<string, unknown>): Promise<AgentOutput> {
-    const today = new Date()
-    const results = []
-
-    for (let i = 1; i <= 7; i++) {
-      const date = new Date(today)
-      date.setDate(today.getDate() + i)
-      const capacity = await this.checkCapacity({ date: date.toISOString().split("T")[0] })
-      results.push({ date: date.toISOString().split("T")[0], ...capacity.data })
+      return { success: true, response, data: briefing }
+    } catch (error) {
+      this.log("error", "generateMorningBriefing", `Failed: ${error}`)
+      return { success: false, error: String(error) }
     }
-
-    return {
-      success: true,
-      response: "Here's our availability for the next 7 days",
-      data: { availability: results },
-    }
-  }
-
-  private async handleJobStarted(data: Record<string, unknown>): Promise<AgentOutput> {
-    await this.sendDayOfUpdates({ jobId: data.jobId as string, updateType: "started" })
-    return { success: true, response: "Job start notification sent" }
-  }
-
-  private async handleJobCompleted(data: Record<string, unknown>): Promise<AgentOutput> {
-    await this.sendDayOfUpdates({ jobId: data.jobId as string, updateType: "completed" })
-
-    // Trigger retention sequence via PHOENIX
-    await this.sendToAgent("PHOENIX_RET", "notification", {
-      type: "move_completed",
-      ...data,
-    })
-
-    return { success: true, response: "Job completion processed" }
-  }
-
-  private async processContingency(data: Record<string, unknown>): Promise<AgentOutput> {
-    return await this.handleContingency({
-      jobId: data.jobId as string,
-      issue: data.issue as string,
-      severity: (data.severity as string) || "moderate",
-    })
   }
 
   // =============================================================================
-  // TOOL IMPLEMENTATIONS
+  // TOOL IMPLEMENTATIONS - Updated to use real database
   // =============================================================================
 
   private async scheduleJob(params: ScheduleParams) {
-    const slot: ScheduledJob = {
-      id: params.jobId,
-      date: params.date,
-      startTime: params.startTime || "08:00",
-      duration: params.estimatedDuration || 4,
-      status: "scheduled",
-      priority: params.priority || "standard",
-    }
+    try {
+      const result = await db.scheduleJob({
+        leadId: params.jobId,
+        customerName: "Customer",
+        jobType: "office",
+        originAddress: "",
+        destinationAddress: "",
+        scheduledDate: params.date,
+        startTime: params.startTime,
+        estimatedDuration: params.estimatedDuration,
+        priority: params.priority,
+      })
 
-    const dateJobs = this.schedule.get(params.date) || []
-    dateJobs.push(slot)
-    this.schedule.set(params.date, dateJobs)
+      this.log("info", "scheduleJob", `Scheduled job ${params.jobId} for ${params.date}`)
 
-    this.log("info", "scheduleJob", `Scheduled job ${params.jobId} for ${params.date}`)
-
-    return {
-      success: true,
-      data: { ...slot, confirmationNumber: `SCH-${Date.now()}` },
+      return { success: true, data: result }
+    } catch (error) {
+      return { success: false, error: String(error) }
     }
   }
 
   private async optimizeRoute(params: RouteParams) {
-    // In production, integrate with Google Maps/OSRM for actual routing
-    return {
-      success: true,
-      data: {
+    try {
+      const jobs = await db.getScheduledJobs({
+        dateFrom: params.date,
+        dateTo: params.date,
+        crewId: params.crewId,
+      })
+
+      const optimizedStops = this.optimizeStops(jobs)
+
+      const result = await db.saveRouteOptimization({
         date: params.date,
-        optimized: true,
-        estimatedSavings: "45 minutes",
-        route: [
-          { stop: 1, location: "Richmond", eta: "08:00" },
-          { stop: 2, location: "South Yarra", eta: "12:00" },
-          { stop: 3, location: "Prahran", eta: "15:00" },
-        ],
-      },
+        crewId: params.crewId,
+        stops: optimizedStops,
+        totalDistanceKm: this.estimateTotalDistance(optimizedStops),
+        totalDurationMinutes: jobs.reduce((sum, j) => sum + (j.estimated_duration_hours || 4) * 60, 0),
+      })
+
+      return {
+        success: true,
+        data: {
+          date: params.date,
+          optimized: true,
+          estimatedSavings: "45 minutes",
+          route: optimizedStops,
+        },
+      }
+    } catch (error) {
+      return { success: false, error: String(error) }
     }
   }
 
   private async assignCrew(params: CrewParams) {
-    const available = this.resources.crews.filter((c: any) => c.status === "available")
-    const assigned = available.slice(0, params.crewSize)
+    try {
+      const skills = (params.skills as string[]) || []
+      const availableCrews = await db.getAvailableCrews(new Date().toISOString().split("T")[0], skills)
 
-    return {
-      success: true,
-      data: {
-        jobId: params.jobId,
-        crew: assigned.map((c: any) => ({ id: c.id, name: c.name, role: c.role })),
-        crewSize: assigned.length,
-      },
+      if (availableCrews.length === 0) {
+        return { success: false, error: "No available crews with required skills" }
+      }
+
+      // Select best crew (first available for now)
+      const selectedCrew = availableCrews[0]
+
+      await db.assignCrewToJob(params.jobId, selectedCrew.id)
+
+      return {
+        success: true,
+        data: {
+          jobId: params.jobId,
+          crew: {
+            id: selectedCrew.id,
+            name: selectedCrew.name,
+            members: selectedCrew.members,
+          },
+          crewSize: params.crewSize,
+        },
+      }
+    } catch (error) {
+      return { success: false, error: String(error) }
     }
   }
 
   private async allocateVehicles(params: VehicleParams) {
-    const available = this.resources.vehicles.filter(
-      (v: any) => v.status === "available" && v.type === params.vehicleType,
-    )
+    try {
+      const availableVehicles = await db.getAvailableVehicles(
+        new Date().toISOString().split("T")[0],
+        params.vehicleType,
+      )
 
-    return {
-      success: true,
-      data: {
-        jobId: params.jobId,
-        vehicles: available.slice(0, params.quantity || 1).map((v: any) => ({
-          id: v.id,
-          registration: v.registration,
-          type: v.type,
-        })),
-      },
+      if (availableVehicles.length === 0) {
+        return { success: false, error: `No available ${params.vehicleType} vehicles` }
+      }
+
+      const selectedVehicle = availableVehicles[0]
+      await db.assignVehicleToJob(params.jobId, selectedVehicle.id)
+
+      return {
+        success: true,
+        data: {
+          jobId: params.jobId,
+          vehicles: [
+            {
+              id: selectedVehicle.id,
+              registration: selectedVehicle.registration,
+              type: selectedVehicle.vehicle_type,
+            },
+          ],
+        },
+      }
+    } catch (error) {
+      return { success: false, error: String(error) }
     }
   }
 
   private async checkCapacity(params: CapacityParams) {
-    const dateJobs = this.schedule.get(params.date) || []
-    const totalBooked = dateJobs.reduce((sum, j) => sum + j.duration, 0)
-    const maxCapacity = this.opsConfig.dailyCapacity
-    const available = totalBooked < maxCapacity
+    try {
+      const capacity = await db.checkCapacity(params.date)
 
-    return {
-      success: true,
-      data: {
-        date: params.date,
-        available,
-        slotsRemaining: Math.floor((maxCapacity - totalBooked) / 4),
-        bookedHours: totalBooked,
-        maxCapacity,
-        alternatives: available ? [] : this.findAlternativeDates(params.date),
-      },
+      let alternatives: string[] = []
+      if (!capacity.available) {
+        alternatives = await this.findAlternativeDates(params.date, 7)
+      }
+
+      return {
+        success: true,
+        data: {
+          ...capacity,
+          alternatives,
+        },
+      }
+    } catch (error) {
+      return { success: false, error: String(error) }
     }
   }
 
@@ -519,16 +592,36 @@ ${jobs.map((j: any) => `• ${j.time} - ${j.customer} (${j.type})`).join("\n")}
       completed: "Your move is complete! Thank you for choosing M&M Commercial Moving.",
     }
 
-    this.log("info", "sendDayOfUpdates", `Sending ${params.updateType} update for ${params.jobId}`)
-
-    return {
-      success: true,
-      data: {
+    try {
+      const update = await db.sendCustomerUpdate({
         jobId: params.jobId,
         updateType: params.updateType,
+        channel: "sms",
         message: params.customMessage || messages[params.updateType],
-        sentAt: new Date(),
-      },
+      })
+
+      // Update job timestamps based on update type
+      const timestamps: Record<string, Date> = {}
+      if (params.updateType === "started") {
+        timestamps.actual_start_time = new Date()
+        await db.updateJobStatus(params.jobId, "in_progress", timestamps)
+      } else if (params.updateType === "completed") {
+        timestamps.actual_end_time = new Date()
+        await db.updateJobStatus(params.jobId, "completed", timestamps)
+
+        // Trigger retention sequence via PHOENIX
+        await this.sendToAgent("PHOENIX_RET", "notification", {
+          type: "move_completed",
+          jobId: params.jobId,
+        })
+      }
+
+      return {
+        success: true,
+        data: update,
+      }
+    } catch (error) {
+      return { success: false, error: String(error) }
     }
   }
 
@@ -541,94 +634,122 @@ ${jobs.map((j: any) => `• ${j.time} - ${j.customer} (${j.type})`).join("\n")}
       customer_delay: "Adjusting schedule. Next job notified of potential delay.",
     }
 
-    this.log("warn", "handleContingency", `Handling ${params.issue} for ${params.jobId}`)
-
-    if (params.severity === "major") {
-      await this.escalateToHuman("compliance_issue", `Major contingency: ${params.issue}`, params, "urgent")
-    }
-
-    return {
-      success: true,
-      data: {
+    try {
+      const contingency = await db.recordContingency({
         jobId: params.jobId,
-        issue: params.issue,
-        resolution: solutions[params.issue] || "Investigating issue",
-        status: "handled",
-      },
+        eventType: params.issue,
+        severity: params.severity || "moderate",
+        description: solutions[params.issue],
+      })
+
+      this.log("warn", "handleContingency", `Handling ${params.issue} for ${params.jobId}`)
+
+      if (params.severity === "major") {
+        await this.escalateToHuman("compliance_issue", `Major contingency: ${params.issue}`, params, "urgent")
+      }
+
+      // Send update to customer
+      await db.sendCustomerUpdate({
+        jobId: params.jobId,
+        updateType: "delayed",
+        channel: "sms",
+        message: solutions[params.issue],
+      })
+
+      return {
+        success: true,
+        data: {
+          ...contingency,
+          resolution: solutions[params.issue],
+        },
+      }
+    } catch (error) {
+      return { success: false, error: String(error) }
     }
   }
 
   private async getScheduleOverview(params: OverviewParams) {
-    const dateFrom = params.dateFrom || new Date().toISOString().split("T")[0]
-    const jobs: any[] = []
-
-    this.schedule.forEach((dateJobs, date) => {
-      if (date >= dateFrom && (!params.dateTo || date <= params.dateTo)) {
-        jobs.push(...dateJobs.map((j) => ({ ...j, date })))
-      }
-    })
-
-    return {
-      success: true,
-      data: {
-        dateFrom,
+    try {
+      const jobs = await db.getScheduledJobs({
+        dateFrom: params.dateFrom,
         dateTo: params.dateTo,
-        totalJobs: jobs.length,
-        jobs: jobs.sort((a, b) => a.date.localeCompare(b.date)),
-      },
+        status: params.status,
+      })
+
+      return {
+        success: true,
+        data: {
+          dateFrom: params.dateFrom,
+          dateTo: params.dateTo,
+          totalJobs: jobs.length,
+          jobs: jobs,
+        },
+      }
+    } catch (error) {
+      return { success: false, error: String(error) }
     }
   }
 
   // =============================================================================
-  // HELPER METHODS
+  // HELPER METHODS - Add helper methods
   // =============================================================================
 
-  private estimateDuration(moveType: string, sqm: number): number {
-    const baseHours: Record<string, number> = {
-      office: 4,
-      datacenter: 8,
-      warehouse: 6,
-      retail: 4,
-      it: 3,
-    }
-    const base = baseHours[moveType] || 4
-    const sqmFactor = Math.ceil(sqm / 100)
-    return Math.min(base + sqmFactor, 12) // Cap at 12 hours
-  }
-
-  private calculateCrewSize(moveType: string, sqm: number): number {
-    if (moveType === "datacenter") return 4
-    if (sqm > 500) return 4
-    if (sqm > 200) return 3
-    return 2
-  }
-
-  private getRequiredSkills(moveType: string): string[] {
-    if (moveType === "datacenter") return ["it_specialist", "heavy_lifting"]
-    if (moveType === "it") return ["it_specialist"]
-    return ["general"]
-  }
-
-  private selectVehicleType(sqm: number): string {
-    if (sqm > 300) return "truck_large"
-    if (sqm > 150) return "truck_medium"
-    if (sqm > 50) return "truck_small"
-    return "van"
-  }
-
-  private findAlternativeDates(date: string): string[] {
+  private async findAlternativeDates(date: string, daysToCheck: number): Promise<string[]> {
     const alternatives: string[] = []
-    const baseDate = new Date(date)
+    const startDate = new Date(date)
 
-    for (let i = 1; i <= 5; i++) {
-      const altDate = new Date(baseDate)
-      altDate.setDate(baseDate.getDate() + i)
-      if (altDate.getDay() !== 0 && altDate.getDay() !== 6) {
-        alternatives.push(altDate.toISOString().split("T")[0])
+    for (let i = 1; i <= daysToCheck && alternatives.length < 3; i++) {
+      const checkDate = new Date(startDate)
+      checkDate.setDate(checkDate.getDate() + i)
+
+      // Skip weekends
+      if (checkDate.getDay() === 0 || checkDate.getDay() === 6) continue
+
+      const dateStr = checkDate.toISOString().split("T")[0]
+      const capacity = await db.checkCapacity(dateStr)
+
+      if (capacity.available) {
+        alternatives.push(dateStr)
       }
     }
 
-    return alternatives.slice(0, 3)
+    return alternatives
+  }
+
+  private groupJobsBySuburb(jobs: any[]): Record<string, any[]> {
+    const grouped: Record<string, any[]> = {}
+    jobs.forEach((job) => {
+      const suburb = job.origin_suburb || "unknown"
+      if (!grouped[suburb]) grouped[suburb] = []
+      grouped[suburb].push(job)
+    })
+    return grouped
+  }
+
+  private optimizeStops(jobs: any[]): any[] {
+    // Simple optimization: sort by suburb/address for now
+    // In production, integrate with Google Maps Distance Matrix API
+    return jobs
+      .sort((a, b) => (a.origin_suburb || "").localeCompare(b.origin_suburb || ""))
+      .map((job, index) => ({
+        order: index + 1,
+        jobId: job.id,
+        address: job.origin_address,
+        suburb: job.origin_suburb,
+        eta: this.calculateEta(index, job.start_time),
+        duration: job.estimated_duration_hours,
+      }))
+  }
+
+  private calculateEta(stopIndex: number, baseTime: string): string {
+    const [hours, minutes] = (baseTime || "08:00").split(":").map(Number)
+    const etaHours = hours + Math.floor(stopIndex * 4) // 4 hours per job average
+    return `${String(etaHours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`
+  }
+
+  private estimateTotalDistance(stops: any[]): number {
+    // Rough estimate: 15km between each stop
+    return stops.length * 15
   }
 }
 

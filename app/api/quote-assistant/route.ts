@@ -6,6 +6,37 @@ const OPERATIONS_EMAIL = "operations@m2mmoving.au"
 
 export const maxDuration = 60
 
+const RATE_LIMIT_WINDOW = 60 * 1000 // 1 minute
+const MAX_REQUESTS_PER_WINDOW = 20
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>()
+
+function checkRateLimit(clientId: string): { allowed: boolean; remaining: number } {
+  const now = Date.now()
+  const record = rateLimitMap.get(clientId)
+
+  if (!record || now > record.resetTime) {
+    rateLimitMap.set(clientId, { count: 1, resetTime: now + RATE_LIMIT_WINDOW })
+    return { allowed: true, remaining: MAX_REQUESTS_PER_WINDOW - 1 }
+  }
+
+  if (record.count >= MAX_REQUESTS_PER_WINDOW) {
+    return { allowed: false, remaining: 0 }
+  }
+
+  record.count++
+  return { allowed: true, remaining: MAX_REQUESTS_PER_WINDOW - record.count }
+}
+
+// Clean up old rate limit entries periodically
+setInterval(() => {
+  const now = Date.now()
+  for (const [key, value] of rateLimitMap.entries()) {
+    if (now > value.resetTime) {
+      rateLimitMap.delete(key)
+    }
+  }
+}, 60 * 1000)
+
 // Helper to extract text from UIMessage
 function getMessageText(message: UIMessage): string {
   if (!message) return ""
@@ -175,6 +206,26 @@ All prices + GST. Deposit: $200 (deducted from final invoice).
 
 export async function POST(req: Request) {
   try {
+    const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0] || req.headers.get("x-real-ip") || "anonymous"
+
+    const rateLimit = checkRateLimit(clientIp)
+
+    if (!rateLimit.allowed) {
+      return new Response(
+        JSON.stringify({
+          error: `Too many requests. Please wait a moment before trying again, or call us at ${M2M_PHONE}.`,
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset": String(Date.now() + RATE_LIMIT_WINDOW),
+          },
+        },
+      )
+    }
+
     const body = await req.json()
     const messages: UIMessage[] = body.messages || []
 
@@ -213,7 +264,10 @@ export async function POST(req: Request) {
       },
     })
 
-    return result.toUIMessageStreamResponse()
+    const response = result.toUIMessageStreamResponse()
+    response.headers.set("X-RateLimit-Remaining", String(rateLimit.remaining))
+
+    return response
   } catch (error) {
     console.error("[v0] Quote assistant error:", error)
 

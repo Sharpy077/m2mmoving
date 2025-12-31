@@ -32,12 +32,49 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Protect admin routes - redirect to login if not authenticated
-  if (request.nextUrl.pathname.startsWith("/admin") && !user) {
-    const url = request.nextUrl.clone()
-    url.pathname = "/auth/login"
-    url.searchParams.set("redirect", request.nextUrl.pathname)
-    return NextResponse.redirect(url)
+  if (request.nextUrl.pathname.startsWith("/admin")) {
+    // Check if user is authenticated
+    if (!user) {
+      const url = request.nextUrl.clone()
+      url.pathname = "/auth/login"
+      url.searchParams.set("redirect", request.nextUrl.pathname)
+      return NextResponse.redirect(url)
+    }
+
+    // Check if user has admin access (check admin_users table)
+    const { data: adminUser } = await supabase.from("admin_users").select("role, is_active").eq("id", user.id).single()
+
+    // If no admin record exists, auto-create one for the first admin user
+    // Or deny access if admin_users table has records
+    if (!adminUser) {
+      // Check if any admin users exist
+      const { count } = await supabase.from("admin_users").select("*", { count: "exact", head: true })
+
+      if (count === 0) {
+        // First user becomes admin - auto-create record
+        await supabase.from("admin_users").insert({
+          id: user.id,
+          email: user.email,
+          full_name: user.user_metadata?.full_name || user.email?.split("@")[0],
+          role: "admin",
+          is_active: true,
+          last_login_at: new Date().toISOString(),
+        })
+      } else {
+        // Deny access - user not in admin_users
+        const url = request.nextUrl.clone()
+        url.pathname = "/auth/unauthorized"
+        return NextResponse.redirect(url)
+      }
+    } else if (!adminUser.is_active) {
+      // User is deactivated
+      const url = request.nextUrl.clone()
+      url.pathname = "/auth/unauthorized"
+      return NextResponse.redirect(url)
+    } else {
+      // Update last login
+      await supabase.from("admin_users").update({ last_login_at: new Date().toISOString() }).eq("id", user.id)
+    }
   }
 
   return supabaseResponse

@@ -3,12 +3,12 @@ import type {
   AgentIdentity,
   AgentConfig,
   InterAgentMessage,
-  SupportTicket,
   TicketStatus,
   TicketPriority,
   TicketCategory,
   AgentMessage,
 } from "../types"
+import { SentinelDB } from "./db"
 
 // =============================================================================
 // SENTINEL AGENT
@@ -35,6 +35,7 @@ export class SentinelAgent extends BaseAgent {
         "sendNotification",
         "offerCompensation",
         "escalateToHuman",
+        "scheduleFollowUp",
       ],
       triggers: [
         { event: "support_request", action: "handle_inquiry", priority: 1 },
@@ -143,6 +144,7 @@ export class SentinelAgent extends BaseAgent {
           subject: { type: "string", description: "Ticket subject" },
           description: { type: "string", description: "Detailed description" },
           bookingId: { type: "string", description: "Related booking ID" },
+          conversationId: { type: "string", description: "Related conversation ID" },
         },
         required: ["category", "subject", "description"],
       },
@@ -305,6 +307,7 @@ export class SentinelAgent extends BaseAgent {
           subject: `${intent.charAt(0).toUpperCase() + intent.slice(1)} - Auto-generated`,
           description: content,
           priority: escalationCheck.priority as TicketPriority,
+          conversationId: input.conversationId,
         })
 
         // Escalate to human
@@ -496,25 +499,39 @@ export class SentinelAgent extends BaseAgent {
   }
 
   // =============================================================================
-  // TOOL IMPLEMENTATIONS
+  // TOOL IMPLEMENTATIONS - Now using real database queries
   // =============================================================================
 
   private async getBookingStatus(params: BookingLookup) {
-    // In production, query database
     this.log("info", "getBookingStatus", `Looking up booking`, params)
 
-    // Mock response
+    const booking = await SentinelDB.getBooking({
+      bookingId: params.bookingId,
+      email: params.email,
+      phone: params.phone,
+    })
+
+    if (!booking) {
+      return {
+        success: false,
+        error: "Booking not found. Please check your reference number or email.",
+      }
+    }
+
     return {
       success: true,
       data: {
-        id: params.bookingId || "BK-2024-001",
-        status: "confirmed",
-        scheduledDate: "2025-01-15",
-        originSuburb: "Richmond",
-        destinationSuburb: "South Yarra",
-        estimatedDuration: "4-6 hours",
-        crewSize: 3,
-        depositPaid: true,
+        id: booking.id,
+        status: booking.status,
+        scheduledDate: booking.scheduled_date || booking.target_move_date,
+        originSuburb: booking.origin_suburb,
+        destinationSuburb: booking.destination_suburb,
+        contactName: booking.contact_name,
+        moveType: booking.move_type,
+        estimatedTotal: booking.estimated_total,
+        depositPaid: booking.deposit_paid,
+        depositAmount: booking.deposit_amount,
+        specialRequirements: booking.special_requirements,
       },
     }
   }
@@ -534,11 +551,19 @@ export class SentinelAgent extends BaseAgent {
 
     switch (params.action) {
       case "reschedule":
+        const rescheduleResult = await SentinelDB.updateBooking(params.bookingId, {
+          scheduled_date: params.newDate,
+          internal_notes: `Rescheduled via Sentinel. Reason: ${params.reason || "Customer request"}`,
+        })
+
+        if (!rescheduleResult.success) {
+          return { success: false, error: rescheduleResult.error }
+        }
+
         return {
           success: true,
           data: {
             bookingId: params.bookingId,
-            previousDate: "2025-01-15",
             newDate: params.newDate,
             status: "rescheduled",
             message: "Your move has been successfully rescheduled.",
@@ -546,12 +571,20 @@ export class SentinelAgent extends BaseAgent {
         }
 
       case "cancel":
+        const cancelResult = await SentinelDB.updateBooking(params.bookingId, {
+          status: "cancelled",
+          internal_notes: `Cancelled via Sentinel. Reason: ${params.reason || "Customer request"}`,
+        })
+
+        if (!cancelResult.success) {
+          return { success: false, error: cancelResult.error }
+        }
+
         return {
           success: true,
           data: {
             bookingId: params.bookingId,
             status: "cancelled",
-            refundAmount: 500, // Mock refund amount
             message: "Your booking has been cancelled. Refund will be processed within 5-7 business days.",
           },
         }
@@ -569,25 +602,27 @@ export class SentinelAgent extends BaseAgent {
   }
 
   private async createTicket(params: CreateTicketParams) {
-    const ticket: SupportTicket = {
-      id: `TKT-${Date.now()}`,
-      customerId: params.customerId || "unknown",
+    const result = await SentinelDB.createTicket({
+      customer_name: params.customerId,
+      customer_email: params.email,
+      customer_phone: params.phone,
+      booking_id: params.bookingId,
       category: params.category,
       priority: params.priority || "medium",
-      status: "open",
       subject: params.subject,
       description: params.description,
-      assignedAgent: "SENTINEL_CS",
-      messages: [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      conversation_id: params.conversationId,
+    })
+
+    if (!result.success) {
+      this.log("error", "createTicket", `Failed to create ticket: ${result.error}`)
+      return {
+        success: false,
+        error: result.error,
+      }
     }
 
-    if (params.bookingId) {
-      ticket.bookingId = params.bookingId
-    }
-
-    this.log("info", "createTicket", `Ticket created: ${ticket.id}`, {
+    this.log("info", "createTicket", `Ticket created: ${result.ticketNumber}`, {
       category: params.category,
       priority: params.priority,
     })
@@ -595,8 +630,9 @@ export class SentinelAgent extends BaseAgent {
     return {
       success: true,
       data: {
-        ticketId: ticket.id,
-        status: ticket.status,
+        ticketId: result.ticketId,
+        ticketNumber: result.ticketNumber,
+        status: "open",
         message: "Support ticket created successfully.",
       },
     }
@@ -604,6 +640,20 @@ export class SentinelAgent extends BaseAgent {
 
   private async updateTicket(params: UpdateTicketParams) {
     this.log("info", "updateTicket", `Updating ticket: ${params.ticketId}`, params)
+
+    const result = await SentinelDB.updateTicket({
+      ticket_id: params.ticketId,
+      status: params.status as any,
+      resolution: params.resolution,
+      internal_notes: params.note,
+    })
+
+    if (!result.success) {
+      return {
+        success: false,
+        error: result.error,
+      }
+    }
 
     return {
       success: true,
@@ -691,6 +741,20 @@ export class SentinelAgent extends BaseAgent {
   }
 
   private async scheduleFollowUp(params: FollowUpParams) {
+    const result = await SentinelDB.updateTicket({
+      ticket_id: params.ticketId,
+      follow_up_date: params.followUpDate,
+      follow_up_channel: params.channel as any,
+      follow_up_notes: params.notes,
+    })
+
+    if (!result.success) {
+      return {
+        success: false,
+        error: result.error,
+      }
+    }
+
     return {
       success: true,
       data: {
@@ -700,6 +764,62 @@ export class SentinelAgent extends BaseAgent {
         channel: params.channel || "email",
         status: "scheduled",
       },
+    }
+  }
+
+  // =============================================================================
+  // =============================================================================
+
+  /**
+   * Process tickets needing follow-up (called by cron job)
+   */
+  public async processFollowUps(): Promise<{
+    processed: number
+    errors: string[]
+  }> {
+    const tickets = await SentinelDB.getTicketsNeedingFollowUp()
+    const errors: string[] = []
+    let processed = 0
+
+    for (const ticket of tickets as any[]) {
+      try {
+        // Send follow-up notification
+        await this.sendNotification({
+          customerId: ticket.customer_id,
+          channel: ticket.follow_up_channel || "email",
+          type: "follow_up",
+          message: `Following up on your support request: ${ticket.subject}`,
+        })
+
+        // Update ticket status
+        await SentinelDB.updateTicket({
+          ticket_id: ticket.id,
+          status: "pending",
+          internal_notes: `Follow-up sent on ${new Date().toISOString()}`,
+        })
+
+        processed++
+      } catch (error) {
+        errors.push(`Failed to process ticket ${ticket.ticket_number}: ${error}`)
+      }
+    }
+
+    return { processed, errors }
+  }
+
+  /**
+   * Get support dashboard stats
+   */
+  public async getDashboardStats(): Promise<{
+    openByPriority: { urgent: number; high: number; medium: number; low: number }
+    needingFollowUp: number
+  }> {
+    const openByPriority = await SentinelDB.getOpenTicketsByPriority()
+    const followUps = await SentinelDB.getTicketsNeedingFollowUp()
+
+    return {
+      openByPriority,
+      needingFollowUp: followUps.length,
     }
   }
 
@@ -1002,6 +1122,7 @@ interface CreateTicketParams {
   subject: string
   description: string
   bookingId?: string
+  conversationId?: string
 }
 
 interface UpdateTicketParams {

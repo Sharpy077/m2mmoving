@@ -1,5 +1,6 @@
 import { BaseAgent, type AgentInput, type AgentOutput } from "../base-agent"
 import type { AgentIdentity, AgentConfig, InterAgentMessage } from "../types"
+import * as db from "./db"
 
 // =============================================================================
 // PHOENIX AGENT
@@ -7,7 +8,6 @@ import type { AgentIdentity, AgentConfig, InterAgentMessage } from "../types"
 
 export class PhoenixAgent extends BaseAgent {
   private retentionConfig: RetentionConfig
-  private customerJourneys: Map<string, CustomerJourney> = new Map()
 
   constructor(config?: Partial<AgentConfig>) {
     super({
@@ -73,12 +73,13 @@ export class PhoenixAgent extends BaseAgent {
       parameters: {
         type: "object",
         properties: {
-          customerId: { type: "string", description: "Customer ID" },
+          customerEmail: { type: "string", description: "Customer email" },
+          customerName: { type: "string", description: "Customer name" },
           bookingId: { type: "string", description: "Booking/Job ID" },
           channel: { type: "string", enum: ["email", "sms"], description: "Delivery channel" },
           surveyType: { type: "string", enum: ["csat", "nps", "detailed"], description: "Survey type" },
         },
-        required: ["customerId"],
+        required: ["customerEmail"],
       },
       handler: async (params) => this.sendSatisfactionSurvey(params as SurveyParams),
     })
@@ -89,11 +90,12 @@ export class PhoenixAgent extends BaseAgent {
       parameters: {
         type: "object",
         properties: {
-          customerId: { type: "string", description: "Customer ID" },
+          customerEmail: { type: "string", description: "Customer email" },
+          customerName: { type: "string", description: "Customer name" },
           platform: { type: "string", enum: ["google", "facebook", "productreview"], description: "Review platform" },
           incentive: { type: "string", description: "Optional incentive to offer" },
         },
-        required: ["customerId", "platform"],
+        required: ["customerEmail", "platform"],
       },
       handler: async (params) => this.requestReview(params as ReviewParams),
     })
@@ -104,11 +106,11 @@ export class PhoenixAgent extends BaseAgent {
       parameters: {
         type: "object",
         properties: {
-          customerId: { type: "string", description: "Customer ID" },
+          customerEmail: { type: "string", description: "Customer email" },
+          customerName: { type: "string", description: "Customer name" },
           programType: { type: "string", enum: ["standard", "vip", "business"], description: "Referral program tier" },
-          referralCode: { type: "string", description: "Custom referral code" },
         },
-        required: ["customerId"],
+        required: ["customerEmail"],
       },
       handler: async (params) => this.sendReferralInvite(params as ReferralParams),
     })
@@ -119,12 +121,13 @@ export class PhoenixAgent extends BaseAgent {
       parameters: {
         type: "object",
         properties: {
-          customerId: { type: "string", description: "Customer ID" },
+          customerEmail: { type: "string", description: "Customer email" },
+          customerName: { type: "string", description: "Customer name" },
           rewardType: { type: "string", enum: ["discount", "credit", "upgrade", "gift"], description: "Reward type" },
           value: { type: "number", description: "Reward value" },
           reason: { type: "string", description: "Reason for reward" },
         },
-        required: ["customerId", "rewardType"],
+        required: ["customerEmail", "rewardType", "reason"],
       },
       handler: async (params) => this.offerLoyaltyReward(params as RewardParams),
     })
@@ -135,7 +138,8 @@ export class PhoenixAgent extends BaseAgent {
       parameters: {
         type: "object",
         properties: {
-          customerIds: { type: "array", description: "List of customer IDs" },
+          name: { type: "string", description: "Campaign name" },
+          customerEmails: { type: "array", description: "List of customer emails" },
           campaignType: {
             type: "string",
             enum: ["discount", "personal_outreach", "new_service"],
@@ -143,7 +147,7 @@ export class PhoenixAgent extends BaseAgent {
           },
           offerValue: { type: "number", description: "Discount/offer value" },
         },
-        required: ["customerIds", "campaignType"],
+        required: ["name", "campaignType"],
       },
       handler: async (params) => this.createWinBackCampaign(params as WinBackParams),
     })
@@ -154,12 +158,13 @@ export class PhoenixAgent extends BaseAgent {
       parameters: {
         type: "object",
         properties: {
-          customerId: { type: "string", description: "Customer ID" },
+          customerEmail: { type: "string", description: "Customer email" },
+          customerName: { type: "string", description: "Customer name" },
           score: { type: "number", description: "NPS score (0-10)" },
           feedback: { type: "string", description: "Customer feedback" },
           bookingId: { type: "string", description: "Related booking" },
         },
-        required: ["customerId", "score"],
+        required: ["customerEmail", "score"],
       },
       handler: async (params) => this.trackNPS(params as NPSParams),
     })
@@ -170,7 +175,8 @@ export class PhoenixAgent extends BaseAgent {
       parameters: {
         type: "object",
         properties: {
-          customerId: { type: "string", description: "Customer ID" },
+          customerEmail: { type: "string", description: "Customer email" },
+          customerName: { type: "string", description: "Customer name" },
           anniversaryType: {
             type: "string",
             enum: ["move", "first_contact", "referral"],
@@ -178,7 +184,7 @@ export class PhoenixAgent extends BaseAgent {
           },
           message: { type: "string", description: "Custom message" },
         },
-        required: ["customerId", "anniversaryType"],
+        required: ["customerEmail", "anniversaryType"],
       },
       handler: async (params) => this.scheduleAnniversaryOutreach(params as AnniversaryParams),
     })
@@ -189,11 +195,12 @@ export class PhoenixAgent extends BaseAgent {
       parameters: {
         type: "object",
         properties: {
-          customerId: { type: "string", description: "Customer ID" },
+          customerEmail: { type: "string", description: "Customer email" },
+          customerName: { type: "string", description: "Customer name" },
           format: { type: "string", enum: ["written", "video", "case_study"], description: "Testimonial format" },
           incentive: { type: "string", description: "Optional incentive" },
         },
-        required: ["customerId"],
+        required: ["customerEmail"],
       },
       handler: async (params) => this.generateTestimonialRequest(params as TestimonialParams),
     })
@@ -252,6 +259,8 @@ export class PhoenixAgent extends BaseAgent {
         return await this.runDailyRetentionCheck()
       case "win_back_sequence":
         return await this.processWinBackSequence()
+      case "process_pending_actions":
+        return await this.processPendingActions()
       default:
         return { success: false, error: `Unknown task: ${taskType}` }
     }
@@ -261,7 +270,6 @@ export class PhoenixAgent extends BaseAgent {
     const handoff = input.handoff
     if (!handoff) return { success: false, error: "No handoff data" }
 
-    // Handle handoffs from SENTINEL (positive feedback) or MAYA (deal won)
     if (handoff.fromAgent === "SENTINEL_CS" || handoff.fromAgent === "MAYA_SALES") {
       return await this.initiatePostMoveSequence(handoff.context)
     }
@@ -274,89 +282,169 @@ export class PhoenixAgent extends BaseAgent {
   }
 
   // =============================================================================
-  // RETENTION WORKFLOWS
+  // RETENTION WORKFLOWS - Using Database
   // =============================================================================
 
   private async initiatePostMoveSequence(data: Record<string, unknown>): Promise<AgentOutput> {
-    const customerId = data.customerId as string
+    const customerEmail = data.customerEmail as string
+    const customerName = data.customerName as string
     const bookingId = data.bookingId as string
 
-    const journey: CustomerJourney = {
-      customerId,
-      bookingId,
+    const journey = await db.createJourney({
+      customer_email: customerEmail,
+      customer_name: customerName,
+      booking_id: bookingId,
       stage: "post_move",
-      startedAt: new Date(),
-      actions: [],
+      metadata: { source: "move_completed_event" },
+    })
+
+    if (!journey) {
+      return { success: false, error: "Failed to create customer journey" }
     }
 
-    // Schedule sequence
+    // Schedule sequence actions
     const sequence = this.retentionConfig.postMoveSequence
+    for (const step of sequence) {
+      const scheduledDate = new Date()
+      scheduledDate.setDate(scheduledDate.getDate() + step.day)
 
-    // Day 1: Thank you
-    journey.actions.push({ type: "thank_you_email", scheduledFor: new Date(), status: "pending" })
+      await db.scheduleJourneyAction({
+        journey_id: journey.id,
+        action_type: step.action,
+        scheduled_for: scheduledDate,
+      })
+    }
 
-    // Day 7: Satisfaction survey
-    const day7 = new Date()
-    day7.setDate(day7.getDate() + 7)
-    journey.actions.push({ type: "satisfaction_survey", scheduledFor: day7, status: "pending" })
+    // Update journey with next action
+    const nextAction = sequence[0]
+    const nextActionDate = new Date()
+    nextActionDate.setDate(nextActionDate.getDate() + nextAction.day)
 
-    // Day 30: Review request
-    const day30 = new Date()
-    day30.setDate(day30.getDate() + 30)
-    journey.actions.push({ type: "review_request", scheduledFor: day30, status: "pending" })
+    await db.updateJourney(journey.id, {
+      next_action_at: nextActionDate.toISOString(),
+      next_action_type: nextAction.action,
+    })
 
-    // Day 90: Referral invite
-    const day90 = new Date()
-    day90.setDate(day90.getDate() + 90)
-    journey.actions.push({ type: "referral_invite", scheduledFor: day90, status: "pending" })
-
-    this.customerJourneys.set(customerId, journey)
-
-    // Hand off to AURORA for content
-    await this.requestHandoff("AURORA_MKT", "Create thank you email content", { customerId, bookingId }, "low")
+    this.log("info", "initiatePostMoveSequence", `Created journey ${journey.id} for ${customerEmail}`)
 
     return {
       success: true,
       response: "Post-move retention sequence initiated",
-      data: { journey },
+      data: { journeyId: journey.id, customerId: customerEmail },
     }
   }
 
   private async processNPSResponse(data: Record<string, unknown>): Promise<AgentOutput> {
     const score = data.score as number
-    const customerId = data.customerId as string
+    const customerEmail = data.customerEmail as string
+    const customerName = data.customerName as string
+    const feedback = data.feedback as string
+
+    const nps = await db.recordNPSScore({
+      customer_email: customerEmail,
+      customer_name: customerName,
+      score,
+      feedback,
+    })
+
+    if (!nps) {
+      return { success: false, error: "Failed to record NPS score" }
+    }
 
     if (score >= 9) {
       // Promoter - request review and referral
-      await this.requestReview({ customerId, platform: "google" })
-      await this.sendReferralInvite({ customerId })
+      await this.requestReview({ customerEmail, customerName, platform: "google" })
+      await this.sendReferralInvite({ customerEmail, customerName })
+      await db.updateNPSFollowUp(nps.id, "promoter_flow", "review_and_referral_sent")
       return { success: true, response: "Promoter flow initiated" }
     } else if (score >= 7) {
       // Passive - offer incentive
-      await this.offerLoyaltyReward({ customerId, rewardType: "discount", value: 10, reason: "loyalty" })
+      await this.offerLoyaltyReward({
+        customerEmail,
+        customerName,
+        rewardType: "discount",
+        value: 10,
+        reason: "Thank you for your feedback",
+      })
+      await db.updateNPSFollowUp(nps.id, "passive_flow", "loyalty_reward_sent")
       return { success: true, response: "Passive customer incentive sent" }
     } else {
       // Detractor - escalate
       await this.escalateToHuman("negative_sentiment", `Detractor NPS: ${score}`, data, "high")
+      await db.updateNPSFollowUp(nps.id, "detractor_flow", "escalated_to_human")
       return { success: true, response: "Detractor escalated for recovery" }
     }
   }
 
   private async handleAnniversary(data: Record<string, unknown>): Promise<AgentOutput> {
-    const customerId = data.customerId as string
-    await this.scheduleAnniversaryOutreach({ customerId, anniversaryType: "move" })
+    const customerEmail = data.customerEmail as string
+    const customerName = data.customerName as string
+    await this.scheduleAnniversaryOutreach({ customerEmail, customerName, anniversaryType: "move" })
     return { success: true, response: "Anniversary outreach scheduled" }
   }
 
   private async handleReferralCompleted(data: Record<string, unknown>): Promise<AgentOutput> {
-    const referrerId = data.referrerId as string
-    await this.offerLoyaltyReward({ customerId: referrerId, rewardType: "credit", value: 100, reason: "referral" })
+    const referralCode = data.referralCode as string
+    const referredEmail = data.referredEmail as string
+    const referredName = data.referredName as string
+
+    const referral = await db.convertReferral(referralCode, referredEmail, referredName)
+
+    if (referral) {
+      // Issue reward to referrer
+      await db.issueReferralReward(referral.id, "credit", this.retentionConfig.referralReward)
+
+      // Also issue loyalty reward
+      await this.offerLoyaltyReward({
+        customerEmail: referral.referrer_email,
+        customerName: referral.referrer_name,
+        rewardType: "credit",
+        value: this.retentionConfig.referralReward,
+        reason: "Successful referral",
+      })
+    }
+
     return { success: true, response: "Referral reward issued" }
   }
 
   private async runDailyRetentionCheck(): Promise<AgentOutput> {
-    // Check for customers due for outreach
-    return { success: true, response: "Daily retention check completed" }
+    // Process any pending journey actions
+    return await this.processPendingActions()
+  }
+
+  private async processPendingActions(): Promise<AgentOutput> {
+    const pendingActions = await db.getPendingActions()
+
+    let processed = 0
+    for (const action of pendingActions) {
+      try {
+        // Execute action based on type
+        switch (action.action_type) {
+          case "thank_you":
+            // Send thank you email (would integrate with email service)
+            break
+          case "satisfaction_survey":
+            // Send survey
+            break
+          case "review_request":
+            // Send review request
+            break
+          case "referral_invite":
+            // Send referral invite
+            break
+          case "anniversary":
+            // Send anniversary message
+            break
+        }
+
+        await db.completeAction(action.id, { status: "executed" })
+        processed++
+      } catch (error) {
+        this.log("error", "processPendingActions", `Failed to process action ${action.id}: ${error}`)
+      }
+    }
+
+    return { success: true, response: `Processed ${processed} pending actions` }
   }
 
   private async processWinBackSequence(): Promise<AgentOutput> {
@@ -364,73 +452,215 @@ export class PhoenixAgent extends BaseAgent {
   }
 
   // =============================================================================
-  // TOOL IMPLEMENTATIONS
+  // TOOL IMPLEMENTATIONS - Using Database
   // =============================================================================
 
   private async sendSatisfactionSurvey(params: SurveyParams) {
-    this.log("info", "sendSatisfactionSurvey", `Sending ${params.surveyType || "nps"} survey`, params)
+    this.log(
+      "info",
+      "sendSatisfactionSurvey",
+      `Sending ${params.surveyType || "nps"} survey to ${params.customerEmail}`,
+    )
+
+    // Get or create customer journey
+    let journey = await db.getJourneyByCustomer(params.customerEmail)
+    if (!journey) {
+      journey = await db.createJourney({
+        customer_email: params.customerEmail,
+        customer_name: params.customerName,
+        stage: "survey",
+      })
+    }
+
     return {
       success: true,
-      data: { surveyId: this.generateId(), status: "sent", channel: params.channel || "email" },
+      data: {
+        surveyId: this.generateId(),
+        journeyId: journey?.id,
+        status: "sent",
+        channel: params.channel || "email",
+      },
     }
   }
 
   private async requestReview(params: ReviewParams) {
-    this.log("info", "requestReview", `Requesting ${params.platform} review`, params)
+    this.log("info", "requestReview", `Requesting ${params.platform} review from ${params.customerEmail}`)
+
+    const request = await db.createReviewRequest({
+      customer_email: params.customerEmail,
+      customer_name: params.customerName,
+      platform: params.platform,
+      incentive_offered: params.incentive,
+    })
+
     return {
       success: true,
-      data: { requestId: this.generateId(), platform: params.platform, status: "sent" },
+      data: {
+        requestId: request?.id || this.generateId(),
+        platform: params.platform,
+        status: "sent",
+      },
     }
   }
 
   private async sendReferralInvite(params: ReferralParams) {
-    const referralCode = params.referralCode || `REF-${params.customerId.slice(0, 8).toUpperCase()}`
-    this.log("info", "sendReferralInvite", `Sending referral invite`, params)
+    this.log("info", "sendReferralInvite", `Sending referral invite to ${params.customerEmail}`)
+
+    const referral = await db.createReferral({
+      referrer_email: params.customerEmail,
+      referrer_name: params.customerName,
+      program_type: params.programType,
+    })
+
     return {
       success: true,
-      data: { referralCode, programType: params.programType || "standard", status: "sent" },
+      data: {
+        referralCode: referral?.referral_code || `REF-${params.customerEmail.slice(0, 8).toUpperCase()}`,
+        programType: params.programType || "standard",
+        status: "sent",
+      },
     }
   }
 
   private async offerLoyaltyReward(params: RewardParams) {
-    this.log("info", "offerLoyaltyReward", `Offering ${params.rewardType} reward`, params)
+    this.log("info", "offerLoyaltyReward", `Offering ${params.rewardType} reward to ${params.customerEmail}`)
+
+    const reward = await db.issueReward({
+      customer_email: params.customerEmail,
+      customer_name: params.customerName,
+      reward_type: params.rewardType,
+      reward_value: params.value || 0,
+      reason: params.reason,
+    })
+
     return {
       success: true,
-      data: { rewardId: this.generateId(), type: params.rewardType, value: params.value, status: "issued" },
+      data: {
+        rewardId: reward?.id || this.generateId(),
+        code: reward?.code,
+        type: params.rewardType,
+        value: params.value,
+        status: "issued",
+      },
     }
   }
 
   private async createWinBackCampaign(params: WinBackParams) {
-    this.log("info", "createWinBackCampaign", `Creating win-back campaign for ${params.customerIds.length} customers`)
+    this.log("info", "createWinBackCampaign", `Creating win-back campaign: ${params.name}`)
+
+    const campaign = await db.createWinBackCampaign({
+      name: params.name,
+      campaign_type: params.campaignType,
+      offer_value: params.offerValue,
+      target_customer_ids: params.customerEmails,
+    })
+
     return {
       success: true,
-      data: { campaignId: this.generateId(), customersTargeted: params.customerIds.length, status: "created" },
+      data: {
+        campaignId: campaign?.id || this.generateId(),
+        customersTargeted: params.customerEmails?.length || 0,
+        status: "created",
+      },
     }
   }
 
   private async trackNPS(params: NPSParams) {
     const category = params.score >= 9 ? "promoter" : params.score >= 7 ? "passive" : "detractor"
-    this.log("info", "trackNPS", `NPS ${params.score} (${category})`, params)
+    this.log("info", "trackNPS", `NPS ${params.score} (${category}) from ${params.customerEmail}`)
+
+    const nps = await db.recordNPSScore({
+      customer_email: params.customerEmail,
+      customer_name: params.customerName,
+      score: params.score,
+      feedback: params.feedback,
+      booking_id: params.bookingId,
+    })
+
+    // Trigger follow-up based on category
+    if (nps) {
+      await this.processNPSResponse({
+        score: params.score,
+        customerEmail: params.customerEmail,
+        customerName: params.customerName,
+        feedback: params.feedback,
+        npsId: nps.id,
+      })
+    }
+
     return {
       success: true,
-      data: { score: params.score, category, feedback: params.feedback },
+      data: {
+        npsId: nps?.id,
+        score: params.score,
+        category,
+        feedback: params.feedback,
+      },
     }
   }
 
   private async scheduleAnniversaryOutreach(params: AnniversaryParams) {
-    this.log("info", "scheduleAnniversaryOutreach", `Scheduling ${params.anniversaryType} anniversary`, params)
+    this.log(
+      "info",
+      "scheduleAnniversaryOutreach",
+      `Scheduling ${params.anniversaryType} anniversary for ${params.customerEmail}`,
+    )
+
+    // Get or create journey
+    let journey = await db.getJourneyByCustomer(params.customerEmail)
+    if (!journey) {
+      journey = await db.createJourney({
+        customer_email: params.customerEmail,
+        customer_name: params.customerName,
+        stage: "anniversary",
+      })
+    }
+
+    if (journey) {
+      // Schedule anniversary action for next year
+      const anniversaryDate = new Date()
+      anniversaryDate.setFullYear(anniversaryDate.getFullYear() + 1)
+
+      await db.scheduleJourneyAction({
+        journey_id: journey.id,
+        action_type: `anniversary_${params.anniversaryType}`,
+        scheduled_for: anniversaryDate,
+      })
+    }
+
     return {
       success: true,
-      data: { outreachId: this.generateId(), type: params.anniversaryType, status: "scheduled" },
+      data: {
+        outreachId: this.generateId(),
+        type: params.anniversaryType,
+        status: "scheduled",
+      },
     }
   }
 
   private async generateTestimonialRequest(params: TestimonialParams) {
-    this.log("info", "generateTestimonialRequest", `Requesting ${params.format || "written"} testimonial`, params)
+    this.log(
+      "info",
+      "generateTestimonialRequest",
+      `Requesting ${params.format || "written"} testimonial from ${params.customerEmail}`,
+    )
+
     return {
       success: true,
-      data: { requestId: this.generateId(), format: params.format || "written", status: "sent" },
+      data: {
+        requestId: this.generateId(),
+        format: params.format || "written",
+        status: "sent",
+      },
     }
+  }
+
+  public async getRetentionStats(): Promise<{
+    nps: Awaited<ReturnType<typeof db.getNPSStats>>
+    referrals: Awaited<ReturnType<typeof db.getReferralStats>>
+  }> {
+    const [nps, referrals] = await Promise.all([db.getNPSStats(), db.getReferralStats()])
+    return { nps, referrals }
   }
 }
 
@@ -462,7 +692,7 @@ Maximize customer lifetime value through:
 
 interface RetentionConfig {
   postMoveSequence: SequenceStep[]
-  winBackThreshold: number // Days inactive
+  winBackThreshold: number
   referralReward: number
   npsTarget: number
 }
@@ -486,61 +716,53 @@ const DEFAULT_RETENTION_CONFIG: RetentionConfig = {
   npsTarget: 50,
 }
 
-interface CustomerJourney {
-  customerId: string
-  bookingId?: string
-  stage: string
-  startedAt: Date
-  actions: JourneyAction[]
-}
-
-interface JourneyAction {
-  type: string
-  scheduledFor: Date
-  completedAt?: Date
-  status: "pending" | "completed" | "skipped"
-}
-
 interface SurveyParams {
-  customerId: string
+  customerEmail: string
+  customerName?: string
   bookingId?: string
   channel?: string
   surveyType?: string
 }
 interface ReviewParams {
-  customerId: string
+  customerEmail: string
+  customerName?: string
   platform: string
   incentive?: string
 }
 interface ReferralParams {
-  customerId: string
+  customerEmail: string
+  customerName?: string
   programType?: string
-  referralCode?: string
 }
 interface RewardParams {
-  customerId: string
+  customerEmail: string
+  customerName?: string
   rewardType: string
   value?: number
-  reason?: string
+  reason: string
 }
 interface WinBackParams {
-  customerIds: string[]
+  name: string
+  customerEmails?: string[]
   campaignType: string
   offerValue?: number
 }
 interface NPSParams {
-  customerId: string
+  customerEmail: string
+  customerName?: string
   score: number
   feedback?: string
   bookingId?: string
 }
 interface AnniversaryParams {
-  customerId: string
+  customerEmail: string
+  customerName?: string
   anniversaryType: string
   message?: string
 }
 interface TestimonialParams {
-  customerId: string
+  customerEmail: string
+  customerName?: string
   format?: string
   incentive?: string
 }
