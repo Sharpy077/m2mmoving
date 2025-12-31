@@ -1,8 +1,7 @@
 "use client"
 
 import type React from "react"
-
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -22,7 +21,14 @@ import {
 import { loadStripe } from "@stripe/stripe-js"
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js"
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
+const getStripePromise = () => {
+  const key = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+  if (!key) {
+    console.error("[v0] Missing NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY")
+    return null
+  }
+  return loadStripe(key)
+}
 
 interface TestState {
   status: "idle" | "creating" | "paying" | "verifying" | "complete" | "error"
@@ -42,9 +48,25 @@ interface TestState {
 export default function WebhookTestPage() {
   const [state, setState] = useState<TestState>({ status: "idle" })
   const [polling, setPolling] = useState(false)
+  const [stripePromise, setStripePromise] = useState<ReturnType<typeof loadStripe> | null>(null)
+
+  useEffect(() => {
+    const promise = getStripePromise()
+    if (promise) {
+      setStripePromise(promise)
+    }
+  }, [])
 
   // Start the test
   async function startTest() {
+    if (!stripePromise) {
+      setState({
+        status: "error",
+        error: "Stripe is not configured. Please check NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY environment variable.",
+      })
+      return
+    }
+
     setState({ status: "creating" })
 
     try {
@@ -77,7 +99,7 @@ export default function WebhookTestPage() {
   }
 
   // Check verification status
-  async function checkVerification() {
+  const checkVerification = useCallback(async () => {
     if (!state.leadId) return
 
     try {
@@ -96,9 +118,9 @@ export default function WebhookTestPage() {
         }
       }
     } catch (error) {
-      console.error("Verification check failed:", error)
+      console.error("[v0] Verification check failed:", error)
     }
-  }
+  }, [state.leadId])
 
   // Start polling after payment
   function onPaymentComplete() {
@@ -112,7 +134,7 @@ export default function WebhookTestPage() {
 
     const interval = setInterval(checkVerification, 2000)
     return () => clearInterval(interval)
-  }, [polling, state.leadId])
+  }, [polling, state.leadId, checkVerification])
 
   // Cleanup test data
   async function cleanup() {
@@ -124,7 +146,7 @@ export default function WebhookTestPage() {
       })
       setState({ status: "idle" })
     } catch (error) {
-      console.error("Cleanup failed:", error)
+      console.error("[v0] Cleanup failed:", error)
     }
   }
 
@@ -132,6 +154,25 @@ export default function WebhookTestPage() {
   function reset() {
     setPolling(false)
     setState({ status: "idle" })
+  }
+
+  if (!stripePromise && state.status === "idle") {
+    return (
+      <div className="container mx-auto py-8 max-w-4xl">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold">Stripe Webhook Verification</h1>
+          <p className="text-muted-foreground mt-2">Automated end-to-end test of the Stripe webhook integration</p>
+        </div>
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Stripe Not Configured</AlertTitle>
+          <AlertDescription>
+            The NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY environment variable is not set. Please configure Stripe in your
+            environment variables.
+          </AlertDescription>
+        </Alert>
+      </div>
+    )
   }
 
   return (
@@ -142,7 +183,7 @@ export default function WebhookTestPage() {
       </div>
 
       {/* Status Overview */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <StatusCard
           title="Create Session"
           icon={<CreditCard className="h-5 w-5" />}
@@ -223,7 +264,7 @@ export default function WebhookTestPage() {
           )}
 
           {/* Payment State */}
-          {state.status === "paying" && state.clientSecret && (
+          {state.status === "paying" && state.clientSecret && stripePromise && (
             <div className="space-y-4">
               <Alert>
                 <AlertTriangle className="h-4 w-4" />
