@@ -4,10 +4,6 @@ const nextConfig = {
     // Type errors are still shown in the IDE
     ignoreBuildErrors: true,
   },
-  eslint: {
-    // Linting is still done in the IDE
-    ignoreDuringBuilds: true,
-  },
   images: {
     unoptimized: true,
   },
@@ -19,7 +15,7 @@ const nextConfig = {
     })
     return config
   },
-  // Exclude problematic directories
+  // Exclude problematic packages from bundling
   serverExternalPackages: ["stripe", "twilio"],
   // Use Turbopack (default in Next.js 16) without webpack
   turbopack: {},
