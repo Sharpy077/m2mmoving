@@ -46,6 +46,29 @@ Use this checklist to track your progress through all setup steps:
 - [ ] Agents respond correctly
 - [ ] **Verification:** Run E2E tests: `npx playwright test`
 
+### Step 7: Twilio Configuration (Optional - Voice/SMS)
+- [ ] Go to Twilio Console: https://console.twilio.com
+- [ ] Get your Account SID and Auth Token
+- [ ] Purchase a phone number if needed
+- [ ] Set environment variables:
+  - `TWILIO_ACCOUNT_SID`
+  - `TWILIO_AUTH_TOKEN`
+  - `TWILIO_PHONE_NUMBER`
+  - `TWILIO_FORWARD_NUMBER_1`
+  - `TWILIO_FORWARD_NUMBER_2`
+- [ ] Configure webhook URL for incoming calls:
+  - `https://your-domain.com/api/voice/incoming`
+
+### Step 8: Final Verification
+- [ ] **Step 1 Complete:** Database migrations ran successfully (41 new tables exist)
+- [ ] **Step 2 Complete:** Stripe webhook tested via `/admin/webhook-test` - all 4 cards green
+- [ ] **Step 3 Complete:** Admin user can access `/admin` dashboard
+- [ ] **Step 4 Complete:** Test email received in inbox
+- [ ] **Step 5 Complete:** All required environment variables set and deployed
+- [ ] **Step 6 Complete:** E2E tests pass (`npx playwright test`)
+- [ ] **Step 7 Complete:** Full booking flow works end-to-end
+- [ ] **Step 8 Complete:** All admin pages accessible and functional
+
 ---
 
 ## 1. Database Migrations (Required)
@@ -312,18 +335,86 @@ Expected result: All tests pass
 
 ---
 
-## Final Verification Checklist
+## Appendix A: Deployment Troubleshooting
 
-Before marking setup as complete, verify:
+If your Vercel deployment fails or hangs, follow this troubleshooting guide.
 
-- [ ] **Step 1 Complete:** Database migrations ran successfully (41 new tables exist)
-- [ ] **Step 2 Complete:** Stripe webhook tested via `/admin/webhook-test` - all 4 cards green
-- [ ] **Step 3 Complete:** Admin user can access `/admin` dashboard
-- [ ] **Step 4 Complete:** Test email received in inbox
-- [ ] **Step 5 Complete:** All required environment variables set and deployed
-- [ ] **Step 6 Complete:** E2E tests pass (`npx playwright test`)
-- [ ] **Step 7 Complete:** Full booking flow works end-to-end
-- [ ] **Step 8 Complete:** All admin pages accessible and functional
+### Common Issues and Fixes
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| Build hangs indefinitely | Scripts folder included in build | Exclude `/scripts` from tsconfig.json |
+| TypeScript errors | Test files being compiled | Exclude `/e2e` and `/tests` from tsconfig.json |
+| Missing env vars at build | Env vars not available during static analysis | Use runtime checks with fallbacks |
+| Stripe import errors | Server-only code in client bundle | Use `"server-only"` import |
+| Supabase middleware fails | DB tables don't exist yet | Add try-catch to middleware |
+
+### Applied Fixes (This Session)
+
+The following fixes have been applied to resolve deployment issues:
+
+1. **tsconfig.json** - Excluded problematic directories:
+   ```json
+   "exclude": ["node_modules", "scripts", "e2e", "tests"]
+   ```
+
+2. **next.config.mjs** - Added webpack ignore rules and external packages:
+   ```javascript
+   experimental: {
+     serverComponentsExternalPackages: ["stripe", "twilio"],
+   }
+   ```
+
+3. **lib/supabase/middleware.ts** - Added try-catch blocks to prevent crashes when:
+   - `admin_users` table doesn't exist
+   - Database is unreachable
+
+4. **lib/stripe.ts** - Added graceful fallback when `STRIPE_SECRET_KEY` is missing
+
+5. **lib/supabase/server.ts** - Added mock client fallback when Supabase is not configured
+
+### If Deployment Still Fails
+
+1. **Check Vercel Build Logs:**
+   - Go to Vercel Dashboard > Deployments > Click on failed deployment
+   - Expand "Building" step to see detailed logs
+   - Look for specific error messages
+
+2. **Verify Environment Variables:**
+   - Go to Vercel Dashboard > Project > Settings > Environment Variables
+   - Ensure all required variables are set for Production
+   - **Redeploy after adding any new variables**
+
+3. **Test Locally First:**
+   ```bash
+   npm run build
+   npm run start
+   ```
+
+4. **Check for Missing Dependencies:**
+   ```bash
+   npm ls --depth=0
+   ```
+
+5. **Clear Vercel Build Cache:**
+   - Go to Vercel Dashboard > Project > Settings > General
+   - Scroll to "Build Cache"
+   - Click "Clear Build Cache"
+   - Redeploy
+
+### Required Environment Variables
+
+These must be set in Vercel for the build to succeed:
+
+| Variable | Required At | Description |
+|----------|-------------|-------------|
+| `SUPABASE_URL` | Runtime | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Runtime | Supabase anonymous key |
+| `STRIPE_SECRET_KEY` | Runtime | Stripe secret key |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Build + Runtime | Stripe publishable key |
+| `RESEND_API_KEY` | Runtime | Resend email API key |
+
+**Note:** Variables without `NEXT_PUBLIC_` prefix are only available server-side and don't need to exist at build time with the current configuration.
 
 ---
 

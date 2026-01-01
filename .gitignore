@@ -6,6 +6,8 @@ node_modules/
 # Testing
 coverage/
 .nyc_output
+playwright-report/
+test-results/
 
 # Next.js
 .next/
@@ -52,3 +54,6 @@ next-env.d.ts
 # OS
 .DS_Store
 Thumbs.db
+
+# Scripts (development only)
+scripts/*.mts

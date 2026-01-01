@@ -9,7 +9,22 @@ export const createClient = cache(async () => {
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY
 
   if (!supabaseUrl || !supabaseKey) {
-    throw new Error("Missing Supabase configuration")
+    // Return a mock client that throws helpful errors at runtime
+    console.warn("[supabase] Missing configuration - database features disabled")
+    return {
+      from: () => ({
+        select: () => ({ data: null, error: new Error("Supabase not configured") }),
+        insert: () => ({ data: null, error: new Error("Supabase not configured") }),
+        update: () => ({ data: null, error: new Error("Supabase not configured") }),
+        delete: () => ({ data: null, error: new Error("Supabase not configured") }),
+      }),
+      auth: {
+        getUser: async () => ({ data: { user: null }, error: null }),
+        signInWithPassword: async () => ({ data: null, error: new Error("Supabase not configured") }),
+        signUp: async () => ({ data: null, error: new Error("Supabase not configured") }),
+        signOut: async () => ({ error: null }),
+      },
+    } as unknown as ReturnType<typeof createServerClient>
   }
 
   return createServerClient(supabaseUrl, supabaseKey, {
