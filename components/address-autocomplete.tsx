@@ -1,10 +1,9 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect, useRef, useCallback } from "react"
 import { Input } from "@/components/ui/input"
-import { MapPin, Loader2, X, Navigation } from "lucide-react"
+import { MapPin, Loader2, X, Navigation, Search, AlertCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface AddressComponents {
@@ -40,7 +39,7 @@ export function AddressAutocomplete({
   value,
   onChange,
   onAddressSelect,
-  placeholder = "Start typing an address...",
+  placeholder = "Start typing suburb or postcode...",
   label,
   className,
   disabled = false,
@@ -50,6 +49,8 @@ export function AddressAutocomplete({
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const [sessionToken] = useState(() => crypto.randomUUID())
+  const [dataSource, setDataSource] = useState<string | null>(null)
+  const [apiError, setApiError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const suggestionsRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<NodeJS.Timeout>()
@@ -57,24 +58,40 @@ export function AddressAutocomplete({
   // Fetch predictions when input changes
   const fetchPredictions = useCallback(
     async (input: string) => {
-      if (input.length < 3) {
+      if (input.length < 2) {
         setPredictions([])
+        setDataSource(null)
+        setApiError(null)
         return
       }
 
       setIsLoading(true)
+      setApiError(null)
       try {
         const response = await fetch(
           `/api/places/autocomplete?input=${encodeURIComponent(input)}&sessionToken=${sessionToken}`,
         )
         const data = await response.json()
 
+        // Track data source for debugging
+        if (data._source) {
+          setDataSource(data._source)
+        }
+        if (data._apiError) {
+          setApiError(data._apiError)
+          console.warn("[v0] API Error:", data._apiError)
+        }
+
         if (data.predictions) {
           setPredictions(data.predictions)
           setShowSuggestions(true)
+        } else {
+          setPredictions([])
         }
       } catch (error) {
-        console.error("Error fetching predictions:", error)
+        console.error("[v0] Error fetching predictions:", error)
+        setPredictions([])
+        setApiError("Network error - please check your connection")
       } finally {
         setIsLoading(false)
       }
@@ -112,11 +129,32 @@ export function AddressAutocomplete({
       if (data.result) {
         const components = parseAddressComponents(data.result)
         onAddressSelect(components)
+      } else {
+        // If no details available, parse from prediction description
+        const fallbackComponents = parseFromDescription(prediction.description)
+        onAddressSelect(fallbackComponents)
       }
     } catch (error) {
-      console.error("Error fetching place details:", error)
+      console.error("[v0] Error fetching place details:", error)
+      // Fallback: parse from description
+      const fallbackComponents = parseFromDescription(prediction.description)
+      onAddressSelect(fallbackComponents)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  // Parse address from description string as fallback
+  const parseFromDescription = (description: string): AddressComponents => {
+    const parts = description.split(",").map((p) => p.trim())
+    const statePostcodeMatch = parts[1]?.match(/([A-Z]{2,3})\s*(\d{4})/)
+
+    return {
+      street: "",
+      suburb: parts[0] || "",
+      state: statePostcodeMatch?.[1] || "",
+      postcode: statePostcodeMatch?.[2] || "",
+      fullAddress: description,
     }
   }
 
@@ -206,6 +244,8 @@ export function AddressAutocomplete({
     onChange("")
     setPredictions([])
     setShowSuggestions(false)
+    setDataSource(null)
+    setApiError(null)
     inputRef.current?.focus()
   }
 
@@ -214,7 +254,7 @@ export function AddressAutocomplete({
       {label && <label className="text-sm font-medium text-foreground mb-1.5 block">{label}</label>}
 
       <div className="relative">
-        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           ref={inputRef}
           type="text"
@@ -239,6 +279,33 @@ export function AddressAutocomplete({
           </button>
         ) : null}
       </div>
+
+      {/* Guidance text when empty */}
+      {!value && (
+        <div className="mt-2 p-2 bg-muted/50 rounded-md">
+          <p className="text-xs text-muted-foreground flex items-start gap-1.5">
+            <MapPin className="h-3 w-3 mt-0.5 flex-shrink-0" />
+            <span>
+              <strong>Tip:</strong> Enter your suburb name or postcode first for best results.
+              <br />
+              <span className="text-[10px]">Examples: "Richmond", "3121", "Mount Gambier SA"</span>
+            </span>
+          </p>
+        </div>
+      )}
+
+      {/* API error indicator - only shown in development */}
+      {apiError && process.env.NODE_ENV === "development" && (
+        <div className="mt-1 p-2 bg-destructive/10 rounded text-xs text-destructive flex items-start gap-1.5">
+          <AlertCircle className="h-3 w-3 mt-0.5 flex-shrink-0" />
+          <span>API Issue: {apiError}</span>
+        </div>
+      )}
+
+      {/* Data source indicator - only shown in development */}
+      {dataSource && process.env.NODE_ENV === "development" && predictions.length > 0 && (
+        <div className="absolute right-0 -top-5 text-[10px] text-muted-foreground">Data: {dataSource}</div>
+      )}
 
       {/* Suggestions Dropdown */}
       {showSuggestions && predictions.length > 0 && (
@@ -273,9 +340,17 @@ export function AddressAutocomplete({
       )}
 
       {/* No results message */}
-      {showSuggestions && value.length >= 3 && predictions.length === 0 && !isLoading && (
-        <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-md shadow-lg p-3 text-center text-sm text-muted-foreground">
-          No addresses found. Try a different search.
+      {showSuggestions && value.length >= 2 && predictions.length === 0 && !isLoading && (
+        <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-md shadow-lg p-4">
+          <p className="text-sm text-muted-foreground text-center mb-2">No locations found</p>
+          <ul className="text-xs text-muted-foreground space-y-1">
+            <li>• Try a suburb name (e.g. "Richmond")</li>
+            <li>• Try a postcode (e.g. "3121")</li>
+            <li>• Add state for clarity (e.g. "Mount Gambier SA")</li>
+          </ul>
+          <p className="text-xs text-muted-foreground mt-3 pt-2 border-t border-border text-center">
+            Can&apos;t find your location? Type it in the chat and we&apos;ll help.
+          </p>
         </div>
       )}
     </div>

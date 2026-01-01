@@ -26,7 +26,6 @@ import {
   ShoppingBag,
   Monitor,
   Stethoscope,
-  Factory,
   Truck,
   CalendarIcon,
   Clock,
@@ -37,6 +36,7 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
+  RotateCcw,
 } from "lucide-react"
 import { createCheckoutSession } from "@/app/actions/create-checkout-session"
 import { sendBookingConfirmation } from "@/app/actions/send-confirmation"
@@ -51,22 +51,26 @@ const StripeCheckoutWrapper = lazy(() => import("@/components/stripe-checkout-wr
 
 // Service options for the picker
 const serviceOptions = [
-  { id: "office", label: "Office Relocation", icon: Building2, description: "Corporate office moves" },
-  { id: "warehouse", label: "Warehouse Move", icon: Warehouse, description: "Industrial relocations" },
-  { id: "datacentre", label: "Data Centre", icon: Server, description: "IT infrastructure" },
-  { id: "retail", label: "Retail Fit-out", icon: ShoppingBag, description: "Shop relocations" },
-  { id: "it-equipment", label: "IT Equipment", icon: Monitor, description: "Tech & electronics" },
-  { id: "medical", label: "Medical & Lab", icon: Stethoscope, description: "Healthcare moves" },
-  { id: "factory", label: "Factory & Plant", icon: Factory, description: "Manufacturing" },
-  { id: "logistics", label: "Logistics Hub", icon: Truck, description: "Distribution centres" },
+  { id: "office", label: "Office Relocation", icon: Building2 },
+  { id: "warehouse", label: "Warehouse Move", icon: Warehouse },
+  { id: "datacentre", label: "Data Centre", icon: Server },
+  { id: "retail", label: "Retail Fit-out", icon: ShoppingBag },
+  { id: "it-equipment", label: "IT Equipment", icon: Monitor },
+  { id: "medical", label: "Medical & Lab", icon: Stethoscope },
 ]
 
 // Types
 interface BusinessInfo {
   name: string
   abn: string
+  acn?: string
+  tradingName?: string
   entityType?: string
+  status?: string
   state?: string
+  postcode?: string
+  gstRegistered?: boolean
+  score?: number
 }
 
 interface AddressInfo {
@@ -180,7 +184,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     [],
   )
 
-  const { messages, sendMessage, status, error } = useChat({
+  const { messages, sendMessage, setMessages, status, error } = useChat({
     transport,
     onError: (err) => {
       console.error("[v0] Chat error:", err)
@@ -438,19 +442,16 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
       <p className="text-foreground mb-4">
         Hi! I'm Maya, your commercial moving specialist. What type of move can I help you with today?
       </p>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
         {serviceOptions.map((service) => (
-          <Card
+          <button
             key={service.id}
-            className="cursor-pointer hover:border-orange-500 transition-colors"
+            className="flex items-center gap-2 p-2 rounded-lg border border-border/50 hover:border-primary hover:bg-primary/5 transition-colors text-left"
             onClick={() => handleServiceSelect(service.id, service.label)}
           >
-            <CardContent className="p-3 flex flex-col items-center text-center">
-              <service.icon className="h-6 w-6 text-orange-500 mb-2" />
-              <p className="text-sm font-medium text-foreground">{service.label}</p>
-              <p className="text-xs text-muted-foreground">{service.description}</p>
-            </CardContent>
-          </Card>
+            <service.icon className="h-4 w-4 text-primary shrink-0" />
+            <span className="text-xs font-medium text-foreground truncate">{service.label}</span>
+          </button>
         ))}
       </div>
     </div>
@@ -458,46 +459,120 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
 
   // Render ABN Lookup
   const renderABNLookup = () => (
-    <Card className="m-4 border-orange-500/30 bg-card">
+    <Card className="m-4 border-primary/30 bg-card">
       <CardContent className="p-4">
         <div className="flex items-center gap-2 mb-3">
-          <Search className="h-5 w-5 text-orange-500" />
+          <Search className="h-5 w-5 text-primary" />
           <p className="font-medium text-foreground">Business Lookup</p>
         </div>
-        <p className="text-sm text-muted-foreground mb-3">Search by ABN or business name to auto-fill your details</p>
+        <p className="text-sm text-muted-foreground mb-3">
+          Search by ABN (11 digits) or business name to find your company
+        </p>
         <div className="flex gap-2 mb-3">
           <Input
             value={abnSearchQuery}
             onChange={(e) => setAbnSearchQuery(e.target.value)}
-            placeholder="Enter ABN or business name..."
+            placeholder="e.g. 71661027309 or Acme Pty Ltd"
             onKeyDown={(e) => e.key === "Enter" && handleABNSearch()}
             className="bg-background text-foreground placeholder:text-muted-foreground border-input"
           />
           <Button
             onClick={handleABNSearch}
             disabled={isSearchingABN}
-            className="bg-orange-500 hover:bg-orange-600 text-white"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
           >
             {isSearchingABN ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
           </Button>
         </div>
+
+        {/* Search Results */}
         {abnSearchResults.length > 0 && (
-          <div className="space-y-2 max-h-40 overflow-y-auto">
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            <p className="text-xs text-muted-foreground mb-2">
+              {abnSearchResults.length} result{abnSearchResults.length !== 1 ? "s" : ""} found - click to select
+            </p>
             {abnSearchResults.map((biz, idx) => (
               <div
                 key={idx}
-                className="p-2 bg-muted rounded border border-border cursor-pointer hover:border-orange-500 hover:bg-muted/80 transition-colors"
+                className="p-3 bg-muted rounded-lg border border-border cursor-pointer hover:border-primary hover:bg-muted/80 transition-colors"
                 onClick={() => handleSelectBusiness(biz)}
               >
-                <p className="font-medium text-sm text-foreground">{biz.name}</p>
-                <p className="text-xs text-muted-foreground">ABN: {biz.abn}</p>
+                {/* Business Name & Trading Name */}
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm text-foreground truncate">{biz.name}</p>
+                    {biz.tradingName && biz.tradingName !== biz.name && (
+                      <p className="text-xs text-muted-foreground truncate">Trading as: {biz.tradingName}</p>
+                    )}
+                  </div>
+                  {/* Status Badge */}
+                  <span
+                    className={`px-2 py-0.5 text-xs font-medium rounded-full shrink-0 ${
+                      biz.status === "Active" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+                    }`}
+                  >
+                    {biz.status || "Unknown"}
+                  </span>
+                </div>
+
+                {/* ABN & ACN Row */}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <div>
+                    <span className="text-muted-foreground">ABN: </span>
+                    <span className="text-foreground font-mono">
+                      {biz.abn.replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, "$1 $2 $3 $4")}
+                    </span>
+                  </div>
+                  {biz.acn && (
+                    <div>
+                      <span className="text-muted-foreground">ACN: </span>
+                      <span className="text-foreground font-mono">
+                        {biz.acn.replace(/(\d{3})(\d{3})(\d{3})/, "$1 $2 $3")}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Entity Type & Location Row */}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mt-1">
+                  {biz.entityType && (
+                    <div>
+                      <span className="text-muted-foreground">Type: </span>
+                      <span className="text-foreground">{biz.entityType}</span>
+                    </div>
+                  )}
+                  {(biz.state || biz.postcode) && (
+                    <div>
+                      <span className="text-muted-foreground">Location: </span>
+                      <span className="text-foreground">{[biz.state, biz.postcode].filter(Boolean).join(" ")}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* GST Status */}
+                {biz.gstRegistered !== undefined && (
+                  <div className="text-xs mt-1">
+                    <span className="text-muted-foreground">GST: </span>
+                    <span className={biz.gstRegistered ? "text-green-400" : "text-muted-foreground"}>
+                      {biz.gstRegistered ? "Registered" : "Not Registered"}
+                    </span>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
+
+        {/* No Results Message */}
+        {abnSearchResults.length === 0 && abnSearchQuery.length > 2 && !isSearchingABN && (
+          <p className="text-sm text-muted-foreground text-center py-2">
+            No businesses found. Try a different search term.
+          </p>
+        )}
+
         <Button
           variant="ghost"
-          className="mt-2 text-sm text-muted-foreground hover:text-foreground"
+          className="mt-3 text-sm text-muted-foreground hover:text-foreground w-full"
           onClick={() => {
             setShowABNLookup(false)
             sendMessage({ text: "I'll provide my business details manually" })
@@ -525,7 +600,11 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
           value={addressSearchQuery}
           onChange={setAddressSearchQuery}
           onAddressSelect={handleAddressAutoComplete}
-          placeholder="Search for an address..."
+          placeholder={
+            showAddressInput === "origin"
+              ? "Where are you moving from? (suburb or postcode)"
+              : "Where are you moving to? (suburb or postcode)"
+          }
           className="w-full"
         />
 
@@ -859,6 +938,62 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     }
   }, [messages, showPayment, paymentClientSecret])
 
+  const resetChat = useCallback(() => {
+    // Clear messages
+    setMessages([])
+
+    // Reset booking data
+    setBookingData({
+      serviceType: "",
+      business: null,
+      originAddress: null,
+      destinationAddress: null,
+      preferredDate: null,
+      preferredTime: "",
+      inventory: "",
+      specialRequirements: "",
+      contactName: "",
+      contactEmail: "",
+      contactPhone: "",
+      quoteAmount: 0,
+      quoteReference: "",
+    })
+
+    // Reset UI state
+    setShowServicePicker(true)
+    setShowDatePicker(false)
+    setShowTimePicker(false)
+    setShowABNLookup(false)
+    setShowAddressInput(null)
+    setShowPayment(false)
+    setShowConfirmation(false)
+
+    // Reset search/input state
+    setAbnSearchQuery("")
+    setAbnSearchResults([])
+    setAddressSearchQuery("")
+    setAddressInput({
+      street: "",
+      suburb: "",
+      state: "VIC",
+      postcode: "",
+      fullAddress: "",
+      lat: undefined,
+      lng: undefined,
+    })
+
+    // Reset coordinates
+    setOriginCoords({})
+    setDestCoords({})
+
+    // Reset payment state
+    setPaymentClientSecret(null)
+    setIsProcessingPayment(false)
+
+    // Clear input
+    setInput("")
+  }, [setMessages])
+
   if (!isVisible) return null
 
   return (
@@ -872,9 +1007,23 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
           <Truck className="h-5 w-5 text-white" />
           <span className="font-semibold text-white text-sm sm:text-base">M&M Moving</span>
         </div>
-        <Badge variant="secondary" className="bg-white/20 text-white text-xs">
-          {isLoading ? "Maya is typing..." : "Online"}
-        </Badge>
+        <div className="flex items-center gap-2">
+          {messages.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={resetChat}
+              className="h-7 px-2 text-white hover:bg-white/20 hover:text-white"
+              title="Start new conversation"
+            >
+              <RotateCcw className="h-4 w-4 mr-1" />
+              <span className="text-xs hidden sm:inline">Reset</span>
+            </Button>
+          )}
+          <Badge variant="secondary" className="bg-white/20 text-white text-xs">
+            {isLoading ? "Maya is typing..." : "Online"}
+          </Badge>
+        </div>
       </div>
 
       {/* Messages */}

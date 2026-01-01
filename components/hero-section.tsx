@@ -2,7 +2,7 @@
 
 import { useRef } from "react"
 import { Button } from "@/components/ui/button"
-import { Shield, Zap, Target, Phone, MessageSquare } from "lucide-react"
+import { Shield, Zap, Target, Phone, MessageSquare, Award, Clock, Users } from "lucide-react"
 import { QuoteAssistant } from "@/components/quote-assistant"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { Card, CardContent } from "@/components/ui/card"
@@ -69,72 +69,112 @@ export function HeroSection() {
       </div>
 
       <div className="w-full h-full flex-grow flex flex-col px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 relative z-10">
-        <div className="flex flex-col gap-6 lg:gap-8 h-full flex-grow w-full">
-          {/* Hero content - full width on desktop, uses grid for better space utilization */}
-          <div className="w-full flex-shrink-0 text-center flex flex-col items-center justify-center">
-            {/* Status badge */}
-            <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 bg-card border border-border mb-4 sm:mb-6 transition-all duration-300">
-              <div className="w-2 h-2 bg-secondary animate-pulse" />
-              <span className="text-[10px] sm:text-xs uppercase tracking-widest text-muted-foreground font-mono">
-                System Active // Commercial Operations Online
-              </span>
+        <div className="flex flex-col gap-4 lg:gap-6 h-full flex-grow w-full">
+          <div className="w-full flex-shrink-0 grid grid-cols-1 lg:grid-cols-[1fr_2fr_1fr] gap-4 lg:gap-8 items-center">
+            {/* Left column - Stats (hidden on mobile, visible on lg+) */}
+            <div className="hidden lg:flex flex-col gap-4 items-end">
+              <div className="flex items-center gap-3 p-4 bg-card/50 border border-border/50 rounded-lg hover:border-primary/50 transition-all duration-300">
+                <div className="w-12 h-12 bg-primary/20 border border-primary/50 flex items-center justify-center rounded-md">
+                  <Shield className="w-6 h-6 text-primary" aria-hidden="true" />
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Fully Insured</div>
+                  <div className="text-lg font-bold text-foreground">$10M+ Coverage</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-4 bg-card/50 border border-border/50 rounded-lg hover:border-secondary/50 transition-all duration-300">
+                <div className="w-12 h-12 bg-secondary/20 border border-secondary/50 flex items-center justify-center rounded-md">
+                  <Zap className="w-6 h-6 text-secondary" aria-hidden="true" />
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Fast Turnaround</div>
+                  <div className="text-lg font-bold text-foreground">24-48 Hours</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-4 bg-card/50 border border-border/50 rounded-lg hover:border-accent/50 transition-all duration-300">
+                <div className="w-12 h-12 bg-accent/20 border border-accent/50 flex items-center justify-center rounded-md">
+                  <Target className="w-6 h-6 text-accent" aria-hidden="true" />
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Track Record</div>
+                  <div className="text-lg font-bold text-foreground">$0 Damage Claims</div>
+                </div>
+              </div>
             </div>
 
-            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold leading-tight mb-4 sm:mb-6 text-balance transition-all duration-300">
-              <span className="text-foreground">Get Your Office</span>
-              <br />
-              <span className="text-primary">Moved Fast</span>
-              <span className="text-foreground">_</span>
-            </h1>
+            {/* Center column - Main heading */}
+            <div className="flex flex-col items-center justify-center text-center">
+              {/* Status badge */}
+              <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 bg-card border border-border mb-4 sm:mb-6 transition-all duration-300">
+                <div className="w-2 h-2 bg-secondary animate-pulse" />
+                <span className="text-[10px] sm:text-xs uppercase tracking-widest text-muted-foreground font-mono">
+                  System Active // Commercial Operations Online
+                </span>
+              </div>
 
-            <p className="text-sm sm:text-base lg:text-lg xl:text-xl text-muted-foreground max-w-2xl mx-auto mb-4 sm:mb-6 leading-relaxed transition-all duration-300">
-              Melbourne's commercial moving specialists. Office relocations, data centres, and IT equipment handled with
-              precision. <span className="text-foreground font-semibold">Free instant quotes via AI or phone.</span>
-            </p>
+              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-5xl xl:text-6xl 2xl:text-7xl font-bold leading-tight mb-4 sm:mb-6 text-balance transition-all duration-300">
+                <span className="text-foreground">Get Your Office</span>
+                <br />
+                <span className="text-primary">Moved Fast</span>
+                <span className="text-foreground">_</span>
+              </h1>
 
-            <div className="flex flex-wrap justify-center gap-4 sm:gap-6 lg:gap-8 mb-4 transition-all duration-300">
-              <div className="flex items-center gap-2 sm:gap-3">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-primary/20 border border-primary/50 flex items-center justify-center transition-all duration-300">
-                  <Shield className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-primary" aria-hidden="true" />
+              <p className="text-sm sm:text-base lg:text-lg text-muted-foreground max-w-xl mx-auto mb-4 sm:mb-6 leading-relaxed transition-all duration-300">
+                Melbourne's commercial moving specialists. Office relocations, data centres, and IT equipment handled
+                with precision.{" "}
+                <span className="text-foreground font-semibold">Free instant quotes via AI or phone.</span>
+              </p>
+
+              {/* Mobile-only stats row */}
+              <div className="flex lg:hidden flex-wrap justify-center gap-3 mb-4">
+                <div className="flex items-center gap-2 px-3 py-2 bg-card/50 border border-border/50 rounded-lg">
+                  <Shield className="w-4 h-4 text-primary" />
+                  <span className="text-xs font-medium">$10M+ Insured</span>
                 </div>
-                <div className="text-left">
-                  <div className="text-[9px] sm:text-xs lg:text-sm text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                    Fully Insured
-                  </div>
-                  <div className="text-xs sm:text-sm lg:text-base font-bold text-foreground whitespace-nowrap">
-                    $10M+ Coverage
-                  </div>
+                <div className="flex items-center gap-2 px-3 py-2 bg-card/50 border border-border/50 rounded-lg">
+                  <Zap className="w-4 h-4 text-secondary" />
+                  <span className="text-xs font-medium">24-48 Hours</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-2 bg-card/50 border border-border/50 rounded-lg">
+                  <Target className="w-4 h-4 text-accent" />
+                  <span className="text-xs font-medium">$0 Claims</span>
                 </div>
               </div>
-              <div className="flex items-center gap-2 sm:gap-3">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-secondary/20 border border-secondary/50 flex items-center justify-center transition-all duration-300">
-                  <Zap className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-secondary" aria-hidden="true" />
-                </div>
+            </div>
+
+            {/* Right column - More stats (hidden on mobile, visible on lg+) */}
+            <div className="hidden lg:flex flex-col gap-4 items-start">
+              <div className="flex items-center gap-3 p-4 bg-card/50 border border-border/50 rounded-lg hover:border-primary/50 transition-all duration-300">
                 <div className="text-left">
-                  <div className="text-[9px] sm:text-xs lg:text-sm text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                    Fast Turnaround
-                  </div>
-                  <div className="text-xs sm:text-sm lg:text-base font-bold text-foreground whitespace-nowrap">
-                    24-48 Hours
-                  </div>
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Commercial Moves</div>
+                  <div className="text-lg font-bold text-foreground">500+ Completed</div>
+                </div>
+                <div className="w-12 h-12 bg-primary/20 border border-primary/50 flex items-center justify-center rounded-md">
+                  <Award className="w-6 h-6 text-primary" aria-hidden="true" />
                 </div>
               </div>
-              <div className="flex items-center gap-2 sm:gap-3">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-accent/20 border border-accent/50 flex items-center justify-center transition-all duration-300">
-                  <Target className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-accent" aria-hidden="true" />
-                </div>
+              <div className="flex items-center gap-3 p-4 bg-card/50 border border-border/50 rounded-lg hover:border-secondary/50 transition-all duration-300">
                 <div className="text-left">
-                  <div className="text-[9px] sm:text-xs lg:text-sm text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                    Track Record
-                  </div>
-                  <div className="text-xs sm:text-sm lg:text-base font-bold text-foreground whitespace-nowrap">
-                    $0 Damage Claims
-                  </div>
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Customer Satisfaction</div>
+                  <div className="text-lg font-bold text-foreground">98% Rating</div>
+                </div>
+                <div className="w-12 h-12 bg-secondary/20 border border-secondary/50 flex items-center justify-center rounded-md">
+                  <Users className="w-6 h-6 text-secondary" aria-hidden="true" />
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-4 bg-card/50 border border-border/50 rounded-lg hover:border-accent/50 transition-all duration-300">
+                <div className="text-left">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Years Experience</div>
+                  <div className="text-lg font-bold text-foreground">15+ Years</div>
+                </div>
+                <div className="w-12 h-12 bg-accent/20 border border-accent/50 flex items-center justify-center rounded-md">
+                  <Clock className="w-6 h-6 text-accent" aria-hidden="true" />
                 </div>
               </div>
             </div>
           </div>
 
+          {/* Maya chat - full width below */}
           <div
             ref={assistantContainerRef}
             className="w-full flex-grow flex flex-col transition-all duration-300 ease-in-out"
@@ -143,23 +183,6 @@ export function HeroSection() {
               <ErrorBoundary fallback={<QuoteAssistantFallback />}>
                 <QuoteAssistant embedded />
               </ErrorBoundary>
-            </div>
-          </div>
-
-          <div className="hidden sm:block w-full flex-shrink-0 pt-4 border-t border-border/50 transition-all duration-300">
-            <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 lg:gap-8 text-xs sm:text-sm lg:text-base text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-foreground">500+</span>
-                <span>Commercial Moves</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-foreground">98%</span>
-                <span>Customer Satisfaction</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-foreground">15+</span>
-                <span>Years Experience</span>
-              </div>
             </div>
           </div>
         </div>
