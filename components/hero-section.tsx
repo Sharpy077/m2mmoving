@@ -44,7 +44,7 @@ export function HeroSection() {
   return (
     <section
       id="quote-assistant"
-      className="relative w-full min-h-screen pt-20 pb-8 sm:pt-24 sm:pb-12 lg:pt-28 lg:pb-16 overflow-hidden"
+      className="relative w-full min-h-screen flex flex-col pt-20 pb-8 sm:pt-24 sm:pb-12 lg:pt-28 lg:pb-16 overflow-hidden"
     >
       {/* Grid background */}
       <div className="absolute inset-0 opacity-10">
@@ -68,10 +68,10 @@ export function HeroSection() {
         />
       </div>
 
-      <div className="w-full px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 relative z-10 h-full">
-        <div className="flex flex-col gap-6 lg:gap-8 h-full">
+      <div className="w-full h-full flex-grow flex flex-col px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 relative z-10">
+        <div className="flex flex-col gap-6 lg:gap-8 h-full flex-grow w-full">
           {/* Hero content - full width on desktop, uses grid for better space utilization */}
-          <div className="w-full max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto lg:mx-0 text-center lg:text-left">
+          <div className="w-full flex-shrink-0 text-center flex flex-col items-center justify-center">
             {/* Status badge */}
             <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 bg-card border border-border mb-4 sm:mb-6 transition-all duration-300">
               <div className="w-2 h-2 bg-secondary animate-pulse" />
@@ -87,12 +87,12 @@ export function HeroSection() {
               <span className="text-foreground">_</span>
             </h1>
 
-            <p className="text-sm sm:text-base lg:text-lg xl:text-xl text-muted-foreground max-w-xl lg:max-w-2xl mx-auto lg:mx-0 mb-4 sm:mb-6 leading-relaxed transition-all duration-300">
+            <p className="text-sm sm:text-base lg:text-lg xl:text-xl text-muted-foreground max-w-2xl mx-auto mb-4 sm:mb-6 leading-relaxed transition-all duration-300">
               Melbourne's commercial moving specialists. Office relocations, data centres, and IT equipment handled with
               precision. <span className="text-foreground font-semibold">Free instant quotes via AI or phone.</span>
             </p>
 
-            <div className="flex flex-wrap justify-center lg:justify-start gap-4 sm:gap-6 lg:gap-8 mb-4 transition-all duration-300">
+            <div className="flex flex-wrap justify-center gap-4 sm:gap-6 lg:gap-8 mb-4 transition-all duration-300">
               <div className="flex items-center gap-2 sm:gap-3">
                 <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-primary/20 border border-primary/50 flex items-center justify-center transition-all duration-300">
                   <Shield className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-primary" aria-hidden="true" />
@@ -137,17 +137,17 @@ export function HeroSection() {
 
           <div
             ref={assistantContainerRef}
-            className="w-full max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto lg:mx-0 flex-grow transition-all duration-300 ease-in-out"
+            className="w-full flex-grow flex flex-col transition-all duration-300 ease-in-out"
           >
-            <div className="w-full h-full min-h-[50vh] sm:min-h-[450px] lg:min-h-[500px] xl:min-h-[550px]">
+            <div className="w-full flex-grow min-h-[400px] sm:min-h-[450px] lg:min-h-[500px]">
               <ErrorBoundary fallback={<QuoteAssistantFallback />}>
                 <QuoteAssistant embedded />
               </ErrorBoundary>
             </div>
           </div>
 
-          <div className="hidden sm:block w-full max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto lg:mx-0 pt-4 border-t border-border/50 transition-all duration-300">
-            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4 sm:gap-6 lg:gap-8 text-xs sm:text-sm lg:text-base text-muted-foreground">
+          <div className="hidden sm:block w-full flex-shrink-0 pt-4 border-t border-border/50 transition-all duration-300">
+            <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 lg:gap-8 text-xs sm:text-sm lg:text-base text-muted-foreground">
               <div className="flex items-center gap-2">
                 <span className="font-bold text-foreground">500+</span>
                 <span>Commercial Moves</span>
