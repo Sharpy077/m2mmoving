@@ -41,6 +41,8 @@ import {
 import { createCheckoutSession } from "@/app/actions/create-checkout-session"
 import { sendBookingConfirmation } from "@/app/actions/send-confirmation"
 import { formatDate } from "@/utils/date-utils" // Import formatDate function
+import { AddressAutocomplete } from "@/components/address-autocomplete"
+import { AddressMap } from "@/components/address-map"
 
 const M2M_PHONE = "03 8820 1801"
 const M2M_PHONE_LINK = "tel:0388201801"
@@ -74,11 +76,17 @@ interface AddressInfo {
   postcode: string
 }
 
+interface AddressInfoWithCoords extends AddressInfo {
+  fullAddress?: string
+  lat?: number
+  lng?: number
+}
+
 interface BookingData {
   serviceType: string
   business: BusinessInfo | null
-  originAddress: AddressInfo | null
-  destinationAddress: AddressInfo | null
+  originAddress: AddressInfoWithCoords | null
+  destinationAddress: AddressInfoWithCoords | null
   preferredDate: Date | null
   preferredTime: string
   inventory: string
@@ -141,12 +149,20 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
 
   // Address input state
-  const [addressInput, setAddressInput] = useState<AddressInfo>({
+  const [addressInput, setAddressInput] = useState<AddressInfoWithCoords>({
     street: "",
     suburb: "",
     state: "VIC",
     postcode: "",
+    fullAddress: "",
+    lat: undefined,
+    lng: undefined,
   })
+
+  const [addressSearchQuery, setAddressSearchQuery] = useState("")
+
+  const [originCoords, setOriginCoords] = useState<{ lat?: number; lng?: number; label?: string }>({})
+  const [destCoords, setDestCoords] = useState<{ lat?: number; lng?: number; label?: string }>({})
 
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
@@ -279,20 +295,53 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
   // Address handling
   const handleAddressSubmit = (type: "origin" | "destination") => {
     const address = { ...addressInput }
-    const addressString = `${address.street}, ${address.suburb} ${address.state} ${address.postcode}`
+    const fullAddress = `${address.street}, ${address.suburb} ${address.state} ${address.postcode}`
 
     if (type === "origin") {
       setBookingData((prev) => ({ ...prev, originAddress: address }))
-      sendMessage({ text: `Moving FROM: ${addressString}` })
+      // Store coordinates for map
+      setOriginCoords({ lat: address.lat, lng: address.lng, label: fullAddress })
+      sendMessage(`Moving FROM: ${fullAddress}`)
       setShowAddressInput("destination")
     } else {
       setBookingData((prev) => ({ ...prev, destinationAddress: address }))
-      sendMessage({ text: `Moving TO: ${addressString}` })
+      // Store coordinates for map
+      setDestCoords({ lat: address.lat, lng: address.lng, label: fullAddress })
+      sendMessage(`Moving TO: ${fullAddress}`)
       setShowAddressInput(null)
-      // Show date picker after addresses
-      setTimeout(() => setShowDatePicker(true), 1000)
+      setTimeout(() => setShowDatePicker(true), 500)
     }
-    setAddressInput({ street: "", suburb: "", state: "VIC", postcode: "" })
+    // Reset for next input
+    setAddressInput({
+      street: "",
+      suburb: "",
+      state: "VIC",
+      postcode: "",
+      fullAddress: "",
+      lat: undefined,
+      lng: undefined,
+    })
+    setAddressSearchQuery("")
+  }
+
+  const handleAddressAutoComplete = (address: {
+    street: string
+    suburb: string
+    state: string
+    postcode: string
+    fullAddress: string
+    lat?: number
+    lng?: number
+  }) => {
+    setAddressInput({
+      street: address.street,
+      suburb: address.suburb,
+      state: address.state || "VIC",
+      postcode: address.postcode,
+      fullAddress: address.fullAddress,
+      lat: address.lat,
+      lng: address.lng,
+    })
   }
 
   // Date/Time handling
@@ -409,7 +458,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
 
   // Render ABN Lookup
   const renderABNLookup = () => (
-    <Card className="m-4 border-orange-200 bg-orange-50 dark:bg-orange-950/20">
+    <Card className="m-4 border-orange-500/30 bg-card">
       <CardContent className="p-4">
         <div className="flex items-center gap-2 mb-3">
           <Search className="h-5 w-5 text-orange-500" />
@@ -422,8 +471,13 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
             onChange={(e) => setAbnSearchQuery(e.target.value)}
             placeholder="Enter ABN or business name..."
             onKeyDown={(e) => e.key === "Enter" && handleABNSearch()}
+            className="bg-background text-foreground placeholder:text-muted-foreground border-input"
           />
-          <Button onClick={handleABNSearch} disabled={isSearchingABN} className="bg-orange-500 hover:bg-orange-600">
+          <Button
+            onClick={handleABNSearch}
+            disabled={isSearchingABN}
+            className="bg-orange-500 hover:bg-orange-600 text-white"
+          >
             {isSearchingABN ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
           </Button>
         </div>
@@ -432,7 +486,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
             {abnSearchResults.map((biz, idx) => (
               <div
                 key={idx}
-                className="p-2 bg-background rounded border cursor-pointer hover:border-orange-500"
+                className="p-2 bg-muted rounded border border-border cursor-pointer hover:border-orange-500 hover:bg-muted/80 transition-colors"
                 onClick={() => handleSelectBusiness(biz)}
               >
                 <p className="font-medium text-sm text-foreground">{biz.name}</p>
@@ -443,7 +497,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
         )}
         <Button
           variant="ghost"
-          className="mt-2 text-sm"
+          className="mt-2 text-sm text-muted-foreground hover:text-foreground"
           onClick={() => {
             setShowABNLookup(false)
             sendMessage({ text: "I'll provide my business details manually" })
@@ -457,55 +511,97 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
 
   // Render Address Input
   const renderAddressInput = () => (
-    <Card className="m-4 border-blue-200 bg-blue-50 dark:bg-blue-950/20">
-      <CardContent className="p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <MapPin className="h-5 w-5 text-blue-500" />
-          <p className="font-medium text-foreground">{showAddressInput === "origin" ? "Moving FROM" : "Moving TO"}</p>
-        </div>
-        <div className="space-y-3">
-          <Input
-            value={addressInput.street}
-            onChange={(e) => setAddressInput((prev) => ({ ...prev, street: e.target.value }))}
-            placeholder="Street address (e.g., 123 Main Street)"
-          />
-          <div className="grid grid-cols-2 gap-2">
-            <Input
-              value={addressInput.suburb}
-              onChange={(e) => setAddressInput((prev) => ({ ...prev, suburb: e.target.value }))}
-              placeholder="Suburb"
-            />
-            <select
-              value={addressInput.state}
-              onChange={(e) => setAddressInput((prev) => ({ ...prev, state: e.target.value }))}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
-              <option value="VIC">VIC</option>
-              <option value="NSW">NSW</option>
-              <option value="QLD">QLD</option>
-              <option value="SA">SA</option>
-              <option value="WA">WA</option>
-              <option value="TAS">TAS</option>
-              <option value="NT">NT</option>
-              <option value="ACT">ACT</option>
-            </select>
+    <div className="mx-2 sm:mx-4 my-2 p-3 sm:p-4 rounded-lg border border-blue-500/30 bg-card overflow-hidden">
+      <div className="flex items-center gap-2 mb-3">
+        <MapPin className="h-5 w-5 text-blue-500 flex-shrink-0" />
+        <p className="font-medium text-foreground text-sm sm:text-base">
+          {showAddressInput === "origin" ? "Moving FROM" : "Moving TO"}
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        {/* Address Autocomplete Search */}
+        <AddressAutocomplete
+          value={addressSearchQuery}
+          onChange={setAddressSearchQuery}
+          onAddressSelect={handleAddressAutoComplete}
+          placeholder="Search for an address..."
+          className="w-full"
+        />
+
+        {/* Show parsed address fields when selected */}
+        {addressInput.street && (
+          <div className="space-y-2 pt-2 border-t border-border">
+            <p className="text-xs text-muted-foreground">Selected address:</p>
+            <div className="grid grid-cols-1 gap-2">
+              <Input
+                value={addressInput.street}
+                onChange={(e) => setAddressInput((prev) => ({ ...prev, street: e.target.value }))}
+                placeholder="Street address"
+                className="bg-background text-foreground text-sm"
+              />
+              <div className="grid grid-cols-3 gap-2">
+                <Input
+                  value={addressInput.suburb}
+                  onChange={(e) => setAddressInput((prev) => ({ ...prev, suburb: e.target.value }))}
+                  placeholder="Suburb"
+                  className="bg-background text-foreground text-sm col-span-1"
+                />
+                <select
+                  value={addressInput.state}
+                  onChange={(e) => setAddressInput((prev) => ({ ...prev, state: e.target.value }))}
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm col-span-1"
+                >
+                  <option value="VIC">VIC</option>
+                  <option value="NSW">NSW</option>
+                  <option value="QLD">QLD</option>
+                  <option value="SA">SA</option>
+                  <option value="WA">WA</option>
+                  <option value="TAS">TAS</option>
+                  <option value="NT">NT</option>
+                  <option value="ACT">ACT</option>
+                </select>
+                <Input
+                  value={addressInput.postcode}
+                  onChange={(e) => setAddressInput((prev) => ({ ...prev, postcode: e.target.value }))}
+                  placeholder="Postcode"
+                  maxLength={4}
+                  className="bg-background text-foreground text-sm col-span-1"
+                />
+              </div>
+            </div>
           </div>
-          <Input
-            value={addressInput.postcode}
-            onChange={(e) => setAddressInput((prev) => ({ ...prev, postcode: e.target.value }))}
-            placeholder="Postcode"
-            maxLength={4}
+        )}
+
+        {/* Map Preview (only show when we have coordinates) */}
+        {(addressInput.lat || originCoords.lat) && (
+          <AddressMap
+            originLat={showAddressInput === "destination" ? originCoords.lat : addressInput.lat}
+            originLng={showAddressInput === "destination" ? originCoords.lng : addressInput.lng}
+            destinationLat={showAddressInput === "destination" ? addressInput.lat : undefined}
+            destinationLng={showAddressInput === "destination" ? addressInput.lng : undefined}
+            originLabel={originCoords.label || addressInput.fullAddress}
+            destinationLabel={showAddressInput === "destination" ? addressInput.fullAddress : undefined}
+            className="mt-2"
           />
-          <Button
-            onClick={() => handleAddressSubmit(showAddressInput!)}
-            className="w-full bg-blue-500 hover:bg-blue-600"
-            disabled={!addressInput.street || !addressInput.suburb || !addressInput.postcode}
-          >
-            Confirm Address
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+        )}
+
+        <Button
+          onClick={() => handleAddressSubmit(showAddressInput!)}
+          className="w-full bg-blue-500 hover:bg-blue-600 text-white text-sm"
+          disabled={!addressInput.street || !addressInput.suburb || !addressInput.postcode}
+        >
+          Confirm {showAddressInput === "origin" ? "Pickup" : "Delivery"} Address
+        </Button>
+
+        {/* Manual entry toggle */}
+        {!addressInput.street && (
+          <p className="text-xs text-center text-muted-foreground">
+            Can&apos;t find your address? Type it in the search box and we&apos;ll help you.
+          </p>
+        )}
+      </div>
+    </div>
   )
 
   // Render Date Picker
@@ -526,7 +622,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
       "November",
       "December",
     ]
-    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    const dayNames = ["S", "M", "T", "W", "T", "F", "S"]
 
     const days: (number | null)[] = []
     for (let i = 0; i < firstDayOfMonth; i++) {
@@ -567,77 +663,85 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     }
 
     return (
-      <Card className="m-4 border-green-200 bg-green-50 dark:bg-green-950/20">
-        <CardContent className="p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <CalendarIcon className="h-5 w-5 text-green-500" />
-            <p className="font-medium text-foreground">Select Move Date</p>
-          </div>
-          <div className="bg-background rounded-md border p-3">
-            <div className="flex items-center justify-between mb-4">
-              <Button variant="ghost" size="icon" onClick={handlePrevMonth}>
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <span className="font-medium">
-                {monthNames[currentMonth]} {currentYear}
-              </span>
-              <Button variant="ghost" size="icon" onClick={handleNextMonth}>
-                <ChevronRight className="h-4 w-4" />
-              </Button>
+      <div className="mx-2 my-2 p-3 rounded-lg border border-primary/30 bg-card">
+        {/* Header */}
+        <div className="flex items-center gap-2 mb-2">
+          <CalendarIcon className="h-4 w-4 text-primary flex-shrink-0" />
+          <p className="font-medium text-sm text-foreground">Select Move Date</p>
+        </div>
+
+        {/* Month Navigation */}
+        <div className="flex items-center justify-between mb-2 px-1">
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={handlePrevMonth}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="font-medium text-sm">
+            {monthNames[currentMonth]} {currentYear}
+          </span>
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={handleNextMonth}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* Day Names Header */}
+        <div className="grid grid-cols-7 mb-1">
+          {dayNames.map((day, idx) => (
+            <div key={idx} className="text-center text-xs text-muted-foreground py-1 font-medium">
+              {day}
             </div>
-            <div className="grid grid-cols-7 gap-1 text-center text-xs text-muted-foreground mb-2">
-              {dayNames.map((day) => (
-                <div key={day}>{day}</div>
-              ))}
+          ))}
+        </div>
+
+        {/* Calendar Grid */}
+        <div className="grid grid-cols-7 gap-px">
+          {days.map((day, index) => (
+            <div key={index} className="flex items-center justify-center">
+              {day ? (
+                <button
+                  className={`w-8 h-8 text-sm rounded-md transition-colors ${
+                    isDateDisabled(day)
+                      ? "text-muted-foreground/40 cursor-not-allowed"
+                      : "hover:bg-primary/20 text-foreground cursor-pointer"
+                  }`}
+                  onClick={() => handleDayClick(day)}
+                  disabled={isDateDisabled(day)}
+                >
+                  {day}
+                </button>
+              ) : (
+                <div className="w-8 h-8" />
+              )}
             </div>
-            <div className="grid grid-cols-7 gap-1">
-              {days.map((day, index) => (
-                <div key={index} className="aspect-square">
-                  {day && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className={`w-full h-full p-0 ${isDateDisabled(day) ? "opacity-30 cursor-not-allowed" : "hover:bg-green-100 dark:hover:bg-green-900/30"}`}
-                      onClick={() => handleDayClick(day)}
-                      disabled={isDateDisabled(day)}
-                    >
-                      {day}
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          ))}
+        </div>
+      </div>
     )
   }
 
   // Render Time Picker
   const renderTimePicker = () => (
-    <Card className="m-4 border-green-200 bg-green-50 dark:bg-green-950/20 overflow-hidden">
-      <CardContent className="p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Clock className="h-5 w-5 text-green-500" />
-          <p className="font-medium text-foreground">Select Time Slot</p>
-        </div>
-        <p className="text-sm text-muted-foreground mb-3">
-          {bookingData.preferredDate && formatDate(bookingData.preferredDate, "short")}
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {["7:00 AM - 12:00 PM", "12:00 PM - 5:00 PM", "Custom Time"].map((time) => (
-            <Button
-              key={time}
-              variant="outline"
-              className="justify-center bg-transparent whitespace-nowrap flex-shrink-0"
-              onClick={() => handleTimeSelect(time)}
-            >
-              {time}
-            </Button>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+    <div className="mx-2 my-2 p-3 rounded-lg border border-primary/30 bg-card">
+      <div className="flex items-center gap-2 mb-2">
+        <Clock className="h-4 w-4 text-primary flex-shrink-0" />
+        <p className="font-medium text-sm text-foreground">Select Time Slot</p>
+      </div>
+      <p className="text-xs text-muted-foreground mb-2">
+        {bookingData.preferredDate && formatDate(bookingData.preferredDate, "short")}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {["7:00 AM - 12:00 PM", "12:00 PM - 5:00 PM", "Custom Time"].map((time) => (
+          <Button
+            key={time}
+            variant="outline"
+            size="sm"
+            className="text-xs bg-transparent"
+            onClick={() => handleTimeSelect(time)}
+          >
+            {time}
+          </Button>
+        ))}
+      </div>
+    </div>
   )
 
   // Render Payment
@@ -838,7 +942,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
           <Button
             type="submit"
             disabled={!input.trim() || isLoading}
-            className="bg-orange-500 hover:bg-orange-600 px-3 sm:px-4"
+            className="bg-orange-500 hover:bg-orange-600 px-3 sm:px-4 text-white"
           >
             <Send className="h-4 w-4" />
           </Button>
