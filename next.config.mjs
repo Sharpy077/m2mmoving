@@ -20,9 +20,9 @@ const nextConfig = {
     return config
   },
   // Exclude problematic directories
-  experimental: {
-    serverComponentsExternalPackages: ["stripe", "twilio"],
-  },
+  serverExternalPackages: ["stripe", "twilio"],
+  // Use Turbopack (default in Next.js 16) without webpack
+  turbopack: {},
 }
 
 export default nextConfig
