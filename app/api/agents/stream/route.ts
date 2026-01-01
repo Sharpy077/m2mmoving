@@ -5,7 +5,6 @@
 
 import { getCortex } from "@/lib/agents"
 
-export const runtime = "edge"
 export const maxDuration = 60
 
 export async function POST(request: Request) {
@@ -34,7 +33,7 @@ export async function POST(request: Request) {
     }
 
     const agentIdentity = targetAgent.getAgentIdentity()
-    
+
     // Process the message through the agent
     const result = await targetAgent.process({
       type: "message",
@@ -49,26 +48,29 @@ export async function POST(request: Request) {
     })
 
     // Simulate streaming by sending the response in chunks
-    const responseText = result.response || "I'm here to help with your commercial moving needs. How can I assist you today?"
-    
+    const responseText =
+      result.response || "I'm here to help with your commercial moving needs. How can I assist you today?"
+
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder()
-        
+
         try {
           // Simulate streaming by sending words with small delays
           const words = responseText.split(" ")
           for (let i = 0; i < words.length; i++) {
             const word = words[i] + (i < words.length - 1 ? " " : "")
             controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ content: word, agent: agentIdentity.codename })}\n\n`)
+              encoder.encode(`data: ${JSON.stringify({ content: word, agent: agentIdentity.codename })}\n\n`),
             )
-            // Small delay to simulate streaming (edge runtime compatible)
-            await new Promise(resolve => setTimeout(resolve, 20))
+            // Small delay to simulate streaming (Node.js runtime compatible)
+            await new Promise((resolve) => setTimeout(resolve, 20))
           }
-          
+
           // Send completion message
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, agent: agentIdentity.codename })}\n\n`))
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ done: true, agent: agentIdentity.codename })}\n\n`),
+          )
           controller.close()
         } catch (error) {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "Stream error" })}\n\n`))
@@ -81,7 +83,7 @@ export async function POST(request: Request) {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
+        Connection: "keep-alive",
         "X-Agent-Id": agentIdentity.codename,
         "X-Agent-Name": agentIdentity.name,
       },
