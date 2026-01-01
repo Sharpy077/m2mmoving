@@ -418,5 +418,65 @@ These must be set in Vercel for the build to succeed:
 
 ---
 
-**Last Updated:** December 31, 2025  
-**Version:** 2.1.0
+## Appendix B: Vercel Deployment Cancellation (Unverified Commits)
+
+If Vercel cancels deployments due to "unverified commits", follow this guide.
+
+### Root Cause
+
+Vercel may be configured to require cryptographically signed (verified) commits before allowing deployments. Commits from v0 are not GPG/SSH signed by default, causing deployment cancellation.
+
+### Remediation Options
+
+#### Option A: Disable Commit Verification in Vercel (Recommended)
+
+1. Go to **Vercel Dashboard**: `https://vercel.com/[team]/[project]/settings/git`
+2. Find **"Git Integration"** or **"Deployment Protection"** section
+3. Look for **"Verified Commits"** or **"Require Signed Commits"** setting
+4. Set to **"Disabled"** or **"No protection"**
+5. Save changes
+6. Retry deployment
+
+#### Option B: Disable in GitHub Repository
+
+1. Go to **GitHub Repository Settings**: `https://github.com/[owner]/[repo]/settings/branches`
+2. Find branch protection rules for `main` or `master`
+3. Click **Edit** on the protection rule
+4. **Uncheck** "Require signed commits"
+5. Save changes
+6. Retry deployment from Vercel
+
+#### Option C: Configure Vercel to Trust v0 Deployments
+
+1. Go to **Vercel Dashboard** > Project > **Settings** > **Deployment Protection**
+2. Under "Vercel Authentication", select **"Only Preview Deployments"** or **"Disabled"**
+3. Under "Trusted Metadata", ensure v0 is allowed
+4. Save and redeploy
+
+### Verification Checklist
+
+- [ ] Vercel "Require Verified Commits" is disabled
+- [ ] GitHub "Require signed commits" is unchecked (if applicable)
+- [ ] Vercel Deployment Protection allows unsigned commits
+- [ ] Deployment no longer shows "Canceled" status
+- [ ] Build completes successfully
+
+### If Issues Persist
+
+1. **Check Vercel Team Settings:**
+   - Go to Vercel Dashboard > Team Settings > Security
+   - Review any team-wide commit verification policies
+
+2. **Check GitHub App Permissions:**
+   - Go to GitHub > Settings > Applications > Vercel
+   - Ensure Vercel has correct repository permissions
+
+3. **Manual Deployment Workaround:**
+   - Download code from v0 (three dots menu > "Download ZIP")
+   - Extract and commit locally with your own GPG key
+   - Push to GitHub to trigger Vercel deployment
+
+---
+
+**Last Updated:** January 1, 2026  
+**Version:** 2.2.0
