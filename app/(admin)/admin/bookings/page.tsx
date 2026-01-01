@@ -85,7 +85,9 @@ async function BookingsCalendar() {
                     <div className="text-lg font-bold text-emerald-400">
                       ${booking.estimated_total?.toLocaleString() || "TBC"}
                     </div>
-                    <div className="text-xs text-white/40">Deposit: ${booking.deposit_amount || 200}</div>
+                    <div className="text-xs text-white/40">
+                      Deposit: ${booking.deposit_amount || Math.round((booking.estimated_total || 0) * 0.5)}
+                    </div>
                   </div>
                 </div>
 

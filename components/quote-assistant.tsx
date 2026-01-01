@@ -313,32 +313,27 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
 
   // Payment handling
   const initiatePayment = async () => {
+    if (isProcessingPayment) return // Prevent duplicate calls
     setIsProcessingPayment(true)
-    try {
-      // Calculate 50% deposit - if quoteAmount is 0, default to minimum $500 quote = $250 deposit
-      const quoteTotal = bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 500
-      const depositAmount = Math.round(quoteTotal * 0.5 * 100) // 50% in cents
+    // Calculate 50% deposit - if quoteAmount is 0, default to minimum $500 quote = $250 deposit
+    const quoteTotal = bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 500
+    const depositAmount = Math.round(quoteTotal * 0.5 * 100) // 50% in cents
 
-      const result = await createCheckoutSession({
-        amount: depositAmount,
-        description: `M&M Moving 50% Deposit - ${bookingData.serviceType} (Total Quote: $${quoteTotal})`,
-        metadata: {
-          serviceType: bookingData.serviceType,
-          businessName: bookingData.business?.name || "",
-          contactEmail: bookingData.contactEmail,
-          quoteTotal: quoteTotal.toString(),
-          depositPercent: "50",
-        },
-      })
+    const result = await createCheckoutSession({
+      amount: depositAmount,
+      description: `M&M Moving 50% Deposit - ${bookingData.serviceType} (Total Quote: $${quoteTotal})`,
+      metadata: {
+        serviceType: bookingData.serviceType,
+        businessName: bookingData.business?.name || "",
+        contactEmail: bookingData.contactEmail,
+        quoteTotal: quoteTotal.toString(),
+        depositPercent: "50",
+      },
+    })
 
-      if (result.clientSecret) {
-        setPaymentClientSecret(result.clientSecret)
-        setShowPayment(true)
-      }
-    } catch (err) {
-      console.error("Payment initiation failed:", err)
-    } finally {
-      setIsProcessingPayment(false)
+    if (result.clientSecret) {
+      setPaymentClientSecret(result.clientSecret)
+      setShowPayment(true)
     }
   }
 
@@ -620,7 +615,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
 
   // Render Time Picker
   const renderTimePicker = () => (
-    <Card className="m-4 border-green-200 bg-green-50 dark:bg-green-950/20">
+    <Card className="m-4 border-green-200 bg-green-50 dark:bg-green-950/20 overflow-hidden">
       <CardContent className="p-4">
         <div className="flex items-center gap-2 mb-3">
           <Clock className="h-5 w-5 text-green-500" />
@@ -629,12 +624,12 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
         <p className="text-sm text-muted-foreground mb-3">
           {bookingData.preferredDate && formatDate(bookingData.preferredDate, "short")}
         </p>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="flex flex-wrap gap-2">
           {["7:00 AM - 12:00 PM", "12:00 PM - 5:00 PM", "Custom Time"].map((time) => (
             <Button
               key={time}
               variant="outline"
-              className="justify-start bg-transparent"
+              className="justify-center bg-transparent whitespace-nowrap flex-shrink-0"
               onClick={() => handleTimeSelect(time)}
             >
               {time}
@@ -729,20 +724,51 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     }
   }
 
+  useEffect(() => {
+    const lastMessage = messages[messages.length - 1]
+    if (lastMessage && lastMessage.role === "assistant") {
+      const messageText =
+        typeof lastMessage.content === "string"
+          ? lastMessage.content
+          : Array.isArray(lastMessage.parts)
+            ? lastMessage.parts.find((p: { type: string }) => p.type === "text")?.text || ""
+            : ""
+
+      // Check if Maya mentions payment/deposit and we should show the payment form
+      const paymentTriggers = [
+        "SHOW_PAYMENT_FORM",
+        "secure payment form",
+        "payment form to complete",
+        "require a 50% deposit",
+        "50% deposit of $",
+        "I'll now show you our secure payment",
+      ]
+
+      const shouldShowPayment = paymentTriggers.some((trigger) =>
+        messageText.toLowerCase().includes(trigger.toLowerCase()),
+      )
+
+      if (shouldShowPayment && !showPayment && !paymentClientSecret) {
+        // Auto-trigger payment form
+        initiatePayment()
+      }
+    }
+  }, [messages, showPayment, paymentClientSecret])
+
   if (!isVisible) return null
 
   return (
     <div
       ref={chatContainerRef}
-      className="flex flex-col h-[500px] max-h-[80dvh] md:max-h-[500px] bg-background rounded-lg border shadow-lg"
+      className="flex flex-col h-[500px] max-h-[80dvh] md:max-h-[500px] w-full bg-background rounded-lg border shadow-lg overflow-hidden"
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-orange-500 to-red-500 shrink-0">
+      <div className="flex items-center justify-between px-3 sm:px-4 py-3 border-b bg-gradient-to-r from-orange-500 to-red-500 shrink-0">
         <div className="flex items-center gap-2">
           <Truck className="h-5 w-5 text-white" />
-          <span className="font-semibold text-white">M&M Moving</span>
+          <span className="font-semibold text-white text-sm sm:text-base">M&M Moving</span>
         </div>
-        <Badge variant="secondary" className="bg-white/20 text-white">
+        <Badge variant="secondary" className="bg-white/20 text-white text-xs">
           {isLoading ? "Maya is typing..." : "Online"}
         </Badge>
       </div>
@@ -752,21 +778,21 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
         {showServicePicker && messages.length === 0 ? (
           renderServicePicker()
         ) : (
-          <div className="p-4 space-y-4">
+          <div className="p-3 sm:p-4 space-y-3 sm:space-y-4">
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
-                  className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                  className={`max-w-[85%] sm:max-w-[80%] rounded-lg px-3 sm:px-4 py-2 break-words ${
                     message.role === "user" ? "bg-orange-500 text-white" : "bg-muted text-foreground"
                   }`}
                 >
                   {message.role === "assistant" && (
                     <div className="flex items-center gap-2 mb-1">
-                      <Truck className="h-4 w-4 text-orange-500" />
+                      <Truck className="h-4 w-4 text-orange-500 flex-shrink-0" />
                       <span className="text-xs font-medium text-orange-500">Maya</span>
                     </div>
                   )}
-                  <p className="text-sm whitespace-pre-wrap">{getTextFromMessage(message)}</p>
+                  <p className="text-sm whitespace-pre-wrap break-words">{getTextFromMessage(message)}</p>
                 </div>
               </div>
             ))}
@@ -782,7 +808,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
             {/* Loading indicator */}
             {isLoading && (
               <div className="flex justify-start">
-                <div className="bg-muted rounded-lg px-4 py-2">
+                <div className="bg-muted rounded-lg px-3 sm:px-4 py-2">
                   <div className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin text-orange-500" />
                     <span className="text-sm text-muted-foreground">Maya is thinking...</span>
@@ -797,7 +823,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
       </div>
 
       {/* Input */}
-      <div className="p-4 border-t shrink-0 bg-background">
+      <div className="p-3 sm:p-4 border-t shrink-0 bg-background">
         <form onSubmit={handleSubmit} className="flex gap-2">
           <Input
             ref={inputRef}
@@ -805,11 +831,15 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type your message..."
             disabled={isLoading}
-            className="flex-1"
+            className="flex-1 text-base sm:text-sm"
             autoComplete="off"
             autoFocus={false}
           />
-          <Button type="submit" disabled={!input.trim() || isLoading} className="bg-orange-500 hover:bg-orange-600">
+          <Button
+            type="submit"
+            disabled={!input.trim() || isLoading}
+            className="bg-orange-500 hover:bg-orange-600 px-3 sm:px-4"
+          >
             <Send className="h-4 w-4" />
           </Button>
         </form>
