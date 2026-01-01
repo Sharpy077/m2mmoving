@@ -42,7 +42,10 @@ export function HeroSection() {
   }
 
   return (
-    <section id="quote-assistant" className="relative pt-16 pb-12 sm:pt-20 sm:pb-16 md:pt-28 md:pb-24 overflow-hidden">
+    <section
+      id="quote-assistant"
+      className="relative w-full pt-16 pb-12 sm:pt-20 sm:pb-16 md:pt-28 md:pb-24 overflow-hidden"
+    >
       {/* Grid background */}
       <div className="absolute inset-0 opacity-10">
         <div
@@ -65,9 +68,10 @@ export function HeroSection() {
         />
       </div>
 
-      <div className="container mx-auto px-3 sm:px-4 lg:px-6 relative z-10">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8 lg:gap-12 items-start">
-          <div className="order-2 lg:order-1">
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <div className="flex flex-col lg:flex-row gap-8 lg:gap-12 items-start">
+          {/* Left column - Hero content */}
+          <div className="flex-1 w-full lg:max-w-xl">
             {/* Status badge */}
             <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 bg-card border border-border mb-4 sm:mb-6">
               <div className="w-2 h-2 bg-secondary animate-pulse" />
@@ -88,13 +92,8 @@ export function HeroSection() {
               precision. <span className="text-foreground font-semibold">Free instant quotes via AI or phone.</span>
             </p>
 
-            <div ref={assistantContainerRef} className="mb-6 sm:mb-8">
-              <ErrorBoundary fallback={<QuoteAssistantFallback />}>
-                <QuoteAssistant embedded />
-              </ErrorBoundary>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-6 sm:mb-8">
+            {/* CTA Buttons - visible on mobile, hidden on desktop where chat is visible */}
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-6 sm:mb-8 lg:hidden">
               <Button
                 size="lg"
                 className="uppercase tracking-wider group text-base sm:text-lg min-h-[48px] sm:min-h-[52px] w-full sm:w-auto px-4 sm:px-6"
@@ -116,7 +115,8 @@ export function HeroSection() {
               </Button>
             </div>
 
-            <div className="flex flex-col xs:flex-row xs:flex-wrap gap-4 sm:gap-6">
+            {/* Feature badges */}
+            <div className="flex flex-col xs:flex-row xs:flex-wrap gap-4 sm:gap-6 mb-6 sm:mb-8">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 sm:w-10 sm:h-10 bg-primary/20 border border-primary/50 flex items-center justify-center flex-shrink-0">
                   <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-primary" aria-hidden="true" />
@@ -152,7 +152,8 @@ export function HeroSection() {
               </div>
             </div>
 
-            <div className="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-border/50">
+            {/* Stats bar */}
+            <div className="pt-4 sm:pt-6 border-t border-border/50">
               <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-xs sm:text-sm text-muted-foreground">
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-foreground">500+</span>
@@ -170,8 +171,12 @@ export function HeroSection() {
             </div>
           </div>
 
-          {/* Right column - hidden on mobile, visible on large screens for balance */}
-          <div className="hidden lg:block order-1 lg:order-2" />
+          {/* Right column - Quote Assistant */}
+          <div ref={assistantContainerRef} className="w-full lg:flex-1 lg:max-w-lg xl:max-w-xl">
+            <ErrorBoundary fallback={<QuoteAssistantFallback />}>
+              <QuoteAssistant embedded />
+            </ErrorBoundary>
+          </div>
         </div>
       </div>
     </section>

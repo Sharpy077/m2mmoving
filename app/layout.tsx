@@ -58,7 +58,7 @@ export default function RootLayout({
       lang="en"
       className={`dark ${oxaniumFont.variable} ${sourceCodeProFont.variable} ${sourceSerifFont.variable}`}
     >
-      <body className={`font-sans antialiased`}>
+      <body className="font-sans antialiased w-full min-h-screen">
         <SkipLink />
         {children}
         <Analytics />

@@ -12,7 +12,7 @@ import { ScrollToTop } from "@/components/scroll-to-top"
 
 export default function HomePage() {
   return (
-    <main id="main-content" className="min-h-screen bg-background pb-20 md:pb-0">
+    <main id="main-content" className="min-h-screen w-full bg-background pb-20 md:pb-0">
       <ScrollToTop />
       <Navbar />
       <HeroSection />
