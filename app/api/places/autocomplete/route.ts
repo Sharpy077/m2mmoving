@@ -6,6 +6,7 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const input = searchParams.get("input")
   const sessionToken = searchParams.get("sessionToken")
+  const types = searchParams.get("types")
 
   if (!input) {
     return NextResponse.json({ error: "Input is required" }, { status: 400 })
@@ -17,78 +18,97 @@ export async function GET(request: NextRequest) {
   if (!apiKey) {
     console.log("[v0] No GOOGLE_PLACES_API_KEY found, using mock data")
     return NextResponse.json({
-      predictions: getMockPredictions(input),
+      predictions: getMockPredictions(input, types),
       status: "OK",
       _source: "mock",
     })
   }
 
   try {
-    const url = new URL("https://maps.googleapis.com/maps/api/place/autocomplete/json")
-    url.searchParams.set("input", input)
-    url.searchParams.set("key", apiKey)
-    url.searchParams.set("components", "country:au") // Restrict to Australia
-    url.searchParams.set("types", "(regions)")
-    url.searchParams.set("location", "-37.8136,144.9631")
-    url.searchParams.set("radius", "500000") // 500km radius covers most of Victoria
-    if (sessionToken) {
-      url.searchParams.set("sessiontoken", sessionToken)
+    const url = "https://places.googleapis.com/v1/places:autocomplete"
+
+    let includedPrimaryTypes = ["locality", "sublocality", "postal_code", "street_address", "route"]
+    if (types === "address") {
+      includedPrimaryTypes = ["street_address", "premise", "subpremise", "route"]
     }
 
-    console.log("[v0] Fetching from Google Places API:", url.toString().replace(apiKey, "REDACTED"))
-    const response = await fetch(url.toString())
-    const data = await response.json()
+    const requestBody = {
+      input: input,
+      includedRegionCodes: ["au"], // Restrict to Australia
+      languageCode: "en",
+      locationBias: {
+        circle: {
+          center: {
+            latitude: -37.8136,
+            longitude: 144.9631,
+          },
+          radius: 50000.0, // 50km radius (maximum allowed)
+        },
+      },
+      includedPrimaryTypes,
+    }
 
-    console.log("[v0] Google Places API response:", {
-      status: data.status,
-      predictionsCount: data.predictions?.length || 0,
-      errorMessage: data.error_message,
+    console.log("[v0] Fetching from Google Places API (New):", url, { types, includedPrimaryTypes })
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        ...(sessionToken && { "X-Goog-Session-Token": sessionToken }),
+      },
+      body: JSON.stringify(requestBody),
     })
 
-    // Handle various API response statuses
-    if (data.status === "OK" || data.status === "ZERO_RESULTS") {
+    const data = await response.json()
+
+    console.log("[v0] Google Places API (New) response:", {
+      suggestionsCount: data.suggestions?.length || 0,
+      error: data.error?.message,
+    })
+
+    // Handle successful response - transform to legacy format for compatibility
+    if (data.suggestions && Array.isArray(data.suggestions)) {
+      const predictions = data.suggestions.map((suggestion: any) => ({
+        description:
+          suggestion.placePrediction?.text?.text || suggestion.placePrediction?.structuredFormat?.mainText?.text || "",
+        place_id: suggestion.placePrediction?.placeId || "",
+        structured_formatting: {
+          main_text: suggestion.placePrediction?.structuredFormat?.mainText?.text || "",
+          secondary_text: suggestion.placePrediction?.structuredFormat?.secondaryText?.text || "",
+        },
+      }))
+
       return NextResponse.json({
-        ...data,
+        predictions,
+        status: "OK",
         _source: "google",
       })
     }
 
-    // Log the error for debugging
-    console.error("[v0] Google Places API error:", data.status, data.error_message)
+    // Handle API errors
+    if (data.error) {
+      console.error("[v0] Google Places API (New) error:", data.error.code, data.error.message)
 
-    // If API returns error, fall back to mock data with error info
-    if (data.status === "REQUEST_DENIED") {
-      console.error("[v0] API Key issue - check if Places API is enabled and key has correct restrictions")
       return NextResponse.json({
-        predictions: getMockPredictions(input),
+        predictions: getMockPredictions(input, types),
         status: "OK",
         _source: "mock",
-        _apiError: `REQUEST_DENIED: ${data.error_message || "Check API key configuration"}`,
+        _apiError: `${data.error.code}: ${data.error.message}`,
       })
     }
 
-    if (data.status === "OVER_QUERY_LIMIT") {
-      console.error("[v0] Query limit exceeded")
-      return NextResponse.json({
-        predictions: getMockPredictions(input),
-        status: "OK",
-        _source: "mock",
-        _apiError: "OVER_QUERY_LIMIT: API quota exceeded",
-      })
-    }
-
-    // Unknown error - return mock data
+    // No suggestions found
     return NextResponse.json({
-      predictions: getMockPredictions(input),
-      status: "OK",
-      _source: "mock",
-      _apiError: `${data.status}: ${data.error_message || "Unknown error"}`,
+      predictions: [],
+      status: "ZERO_RESULTS",
+      _source: "google",
     })
   } catch (error) {
     console.error("[v0] Places API fetch error:", error)
     // Return mock data on network error
     return NextResponse.json({
-      predictions: getMockPredictions(input),
+      predictions: getMockPredictions(input, types),
       status: "OK",
       _source: "mock",
       _apiError: `Network error: ${error instanceof Error ? error.message : "Unknown"}`,
@@ -96,8 +116,61 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function getMockPredictions(input: string) {
-  const mockAddresses = [
+function getMockPredictions(input: string, types?: string | null) {
+  const mockStreetAddresses = [
+    {
+      description: "123 Collins Street, Melbourne VIC 3000, Australia",
+      place_id: "mock_collins_123",
+      structured_formatting: { main_text: "123 Collins Street", secondary_text: "Melbourne VIC 3000, Australia" },
+    },
+    {
+      description: "456 Bourke Street, Melbourne VIC 3000, Australia",
+      place_id: "mock_bourke_456",
+      structured_formatting: { main_text: "456 Bourke Street", secondary_text: "Melbourne VIC 3000, Australia" },
+    },
+    {
+      description: "789 Flinders Street, Melbourne VIC 3000, Australia",
+      place_id: "mock_flinders_789",
+      structured_formatting: { main_text: "789 Flinders Street", secondary_text: "Melbourne VIC 3000, Australia" },
+    },
+    {
+      description: "10 Main Street, Richmond VIC 3121, Australia",
+      place_id: "mock_main_10",
+      structured_formatting: { main_text: "10 Main Street", secondary_text: "Richmond VIC 3121, Australia" },
+    },
+    {
+      description: "25 Church Street, Richmond VIC 3121, Australia",
+      place_id: "mock_church_25",
+      structured_formatting: { main_text: "25 Church Street", secondary_text: "Richmond VIC 3121, Australia" },
+    },
+    {
+      description: "47 Blazey Street, Richmond VIC 3121, Australia",
+      place_id: "mock_blazey_47",
+      structured_formatting: { main_text: "47 Blazey Street", secondary_text: "Richmond VIC 3121, Australia" },
+    },
+    {
+      description: "100 High Street, Prahran VIC 3181, Australia",
+      place_id: "mock_high_100",
+      structured_formatting: { main_text: "100 High Street", secondary_text: "Prahran VIC 3181, Australia" },
+    },
+    {
+      description: "55 Chapel Street, South Yarra VIC 3141, Australia",
+      place_id: "mock_chapel_55",
+      structured_formatting: { main_text: "55 Chapel Street", secondary_text: "South Yarra VIC 3141, Australia" },
+    },
+    {
+      description: "200 Whitehorse Road, Nunawading VIC 3131, Australia",
+      place_id: "mock_whitehorse_200",
+      structured_formatting: { main_text: "200 Whitehorse Road", secondary_text: "Nunawading VIC 3131, Australia" },
+    },
+    {
+      description: "88 Station Street, Box Hill VIC 3128, Australia",
+      place_id: "mock_station_88",
+      structured_formatting: { main_text: "88 Station Street", secondary_text: "Box Hill VIC 3128, Australia" },
+    },
+  ]
+
+  const mockSuburbs = [
     // Melbourne CBD and surrounds
     {
       description: "Melbourne VIC 3000, Australia",
@@ -149,6 +222,52 @@ function getMockPredictions(input: string) {
       place_id: "mock_prahran",
       structured_formatting: { main_text: "Prahran", secondary_text: "VIC 3181, Australia" },
     },
+    // Eastern suburbs
+    {
+      description: "Nunawading VIC 3131, Australia",
+      place_id: "mock_nunawading",
+      structured_formatting: { main_text: "Nunawading", secondary_text: "VIC 3131, Australia" },
+    },
+    {
+      description: "Box Hill VIC 3128, Australia",
+      place_id: "mock_box_hill",
+      structured_formatting: { main_text: "Box Hill", secondary_text: "VIC 3128, Australia" },
+    },
+    {
+      description: "Ringwood VIC 3134, Australia",
+      place_id: "mock_ringwood",
+      structured_formatting: { main_text: "Ringwood", secondary_text: "VIC 3134, Australia" },
+    },
+    {
+      description: "Doncaster VIC 3108, Australia",
+      place_id: "mock_doncaster",
+      structured_formatting: { main_text: "Doncaster", secondary_text: "VIC 3108, Australia" },
+    },
+    {
+      description: "Mitcham VIC 3132, Australia",
+      place_id: "mock_mitcham",
+      structured_formatting: { main_text: "Mitcham", secondary_text: "VIC 3132, Australia" },
+    },
+    {
+      description: "Blackburn VIC 3130, Australia",
+      place_id: "mock_blackburn",
+      structured_formatting: { main_text: "Blackburn", secondary_text: "VIC 3130, Australia" },
+    },
+    {
+      description: "Burwood VIC 3125, Australia",
+      place_id: "mock_burwood",
+      structured_formatting: { main_text: "Burwood", secondary_text: "VIC 3125, Australia" },
+    },
+    {
+      description: "Glen Waverley VIC 3150, Australia",
+      place_id: "mock_glen_waverley",
+      structured_formatting: { main_text: "Glen Waverley", secondary_text: "VIC 3150, Australia" },
+    },
+    {
+      description: "Mount Waverley VIC 3149, Australia",
+      place_id: "mock_mount_waverley",
+      structured_formatting: { main_text: "Mount Waverley", secondary_text: "VIC 3149, Australia" },
+    },
     // Outer Melbourne
     {
       description: "Dandenong VIC 3175, Australia",
@@ -161,14 +280,24 @@ function getMockPredictions(input: string) {
       structured_formatting: { main_text: "Footscray", secondary_text: "VIC 3011, Australia" },
     },
     {
-      description: "Box Hill VIC 3128, Australia",
-      place_id: "mock_box_hill",
-      structured_formatting: { main_text: "Box Hill", secondary_text: "VIC 3128, Australia" },
+      description: "Sunshine VIC 3020, Australia",
+      place_id: "mock_sunshine",
+      structured_formatting: { main_text: "Sunshine", secondary_text: "VIC 3020, Australia" },
     },
     {
-      description: "Ringwood VIC 3134, Australia",
-      place_id: "mock_ringwood",
-      structured_formatting: { main_text: "Ringwood", secondary_text: "VIC 3134, Australia" },
+      description: "Werribee VIC 3030, Australia",
+      place_id: "mock_werribee",
+      structured_formatting: { main_text: "Werribee", secondary_text: "VIC 3030, Australia" },
+    },
+    {
+      description: "Cranbourne VIC 3977, Australia",
+      place_id: "mock_cranbourne",
+      structured_formatting: { main_text: "Cranbourne", secondary_text: "VIC 3977, Australia" },
+    },
+    {
+      description: "Frankston VIC 3199, Australia",
+      place_id: "mock_frankston",
+      structured_formatting: { main_text: "Frankston", secondary_text: "VIC 3199, Australia" },
     },
     // Regional Victoria
     {
@@ -215,6 +344,8 @@ function getMockPredictions(input: string) {
     },
   ]
 
+  const mockData = types === "address" ? mockStreetAddresses : mockSuburbs
+
   const lowerInput = input.toLowerCase()
-  return mockAddresses.filter((addr) => addr.description.toLowerCase().includes(lowerInput)).slice(0, 5)
+  return mockData.filter((addr) => addr.description.toLowerCase().includes(lowerInput)).slice(0, 5)
 }

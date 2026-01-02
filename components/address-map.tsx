@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
-import { MapPin, Navigation2, Loader2 } from "lucide-react"
+import { useEffect, useRef, useState, useCallback } from "react"
+import { MapPin, Loader2, Clock, Route } from "lucide-react"
 
 interface AddressMapProps {
   originLat?: number
@@ -12,6 +12,7 @@ interface AddressMapProps {
   destinationLabel?: string
   showRoute?: boolean
   className?: string
+  onDistanceCalculated?: (distance: { km: number; text: string; durationMinutes: number; durationText: string }) => void
 }
 
 export function AddressMap({
@@ -23,70 +24,120 @@ export function AddressMap({
   destinationLabel = "To",
   showRoute = true,
   className = "",
+  onDistanceCalculated,
 }: AddressMapProps) {
   const mapRef = useRef<HTMLDivElement>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isCalculatingRoute, setIsCalculatingRoute] = useState(false)
   const [distance, setDistance] = useState<string | null>(null)
+  const [distanceKm, setDistanceKm] = useState<number | null>(null)
   const [duration, setDuration] = useState<string | null>(null)
+  const [durationMinutes, setDurationMinutes] = useState<number | null>(null)
 
-  // Check if we have coordinates
   const hasOrigin = originLat !== undefined && originLng !== undefined
   const hasDestination = destinationLat !== undefined && destinationLng !== undefined
   const hasBoth = hasOrigin && hasDestination
 
   useEffect(() => {
-    // Simulate map loading
     const timer = setTimeout(() => setIsLoading(false), 500)
     return () => clearTimeout(timer)
   }, [])
 
-  // Calculate estimated distance (simplified haversine formula for display)
-  useEffect(() => {
-    if (hasBoth && originLat && originLng && destinationLat && destinationLng) {
-      const R = 6371 // Earth's radius in km
-      const dLat = ((destinationLat - originLat) * Math.PI) / 180
-      const dLon = ((destinationLng - originLng) * Math.PI) / 180
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos((originLat * Math.PI) / 180) *
-          Math.cos((destinationLat * Math.PI) / 180) *
-          Math.sin(dLon / 2) *
-          Math.sin(dLon / 2)
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-      const d = R * c
+  const calculateRouteDistance = useCallback(async () => {
+    if (!hasBoth || !originLat || !originLng || !destinationLat || !destinationLng) return
 
-      setDistance(`${Math.round(d)} km`)
-      // Rough estimate: 60km/h average speed for commercial moving
-      const hours = d / 60
-      if (hours < 1) {
-        setDuration(`${Math.round(hours * 60)} min`)
+    setIsCalculatingRoute(true)
+
+    try {
+      const response = await fetch("/api/places/distance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          originLat,
+          originLng,
+          destinationLat,
+          destinationLng,
+          originAddress: originLabel,
+          destinationAddress: destinationLabel,
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setDistanceKm(data.distanceKm)
+        setDistance(data.distanceText)
+        setDurationMinutes(data.durationMinutes)
+        setDuration(data.durationText)
+
+        // Notify parent component
+        if (onDistanceCalculated) {
+          onDistanceCalculated({
+            km: data.distanceKm,
+            text: data.distanceText,
+            durationMinutes: data.durationMinutes,
+            durationText: data.durationText,
+          })
+        }
       } else {
-        setDuration(`${Math.round(hours * 10) / 10} hrs`)
-      }
-    }
-  }, [hasBoth, originLat, originLng, destinationLat, destinationLng])
+        // Fallback to haversine
+        const d = calculateHaversineDistance(originLat, originLng, destinationLat, destinationLng)
+        const mins = Math.round((d / 50) * 60)
+        setDistanceKm(d)
+        setDistance(`${Math.round(d)} km`)
+        setDurationMinutes(mins)
+        setDuration(formatDuration(mins))
 
-  // Generate static map URL (works without API key for basic display)
+        if (onDistanceCalculated) {
+          onDistanceCalculated({
+            km: d,
+            text: `${Math.round(d)} km`,
+            durationMinutes: mins,
+            durationText: formatDuration(mins),
+          })
+        }
+      }
+    } catch (error) {
+      console.error("[v0] Error calculating route:", error)
+      // Fallback to haversine
+      const d = calculateHaversineDistance(originLat, originLng, destinationLat, destinationLng)
+      const mins = Math.round((d / 50) * 60)
+      setDistanceKm(d)
+      setDistance(`${Math.round(d)} km`)
+      setDurationMinutes(mins)
+      setDuration(formatDuration(mins))
+    } finally {
+      setIsCalculatingRoute(false)
+    }
+  }, [
+    hasBoth,
+    originLat,
+    originLng,
+    destinationLat,
+    destinationLng,
+    originLabel,
+    destinationLabel,
+    onDistanceCalculated,
+  ])
+
+  useEffect(() => {
+    if (hasBoth) {
+      calculateRouteDistance()
+    }
+  }, [hasBoth, calculateRouteDistance])
+
   const getMapUrl = () => {
     if (!hasOrigin && !hasDestination) return null
 
-    const markers: string[] = []
-    if (hasOrigin) {
-      markers.push(`markers=color:green%7Clabel:A%7C${originLat},${originLng}`)
-    }
-    if (hasDestination) {
-      markers.push(`markers=color:red%7Clabel:B%7C${destinationLat},${destinationLng}`)
-    }
-
-    // Use OpenStreetMap static image as fallback (no API key needed)
-    if (hasBoth) {
-      const centerLat = (originLat! + destinationLat!) / 2
-      const centerLng = (originLng! + destinationLng!) / 2
-      return `https://www.openstreetmap.org/export/embed.html?bbox=${Math.min(originLng!, destinationLng!) - 0.1}%2C${Math.min(originLat!, destinationLat!) - 0.1}%2C${Math.max(originLng!, destinationLng!) + 0.1}%2C${Math.max(originLat!, destinationLat!) + 0.1}&layer=mapnik&marker=${centerLat}%2C${centerLng}`
+    // Use OpenStreetMap for route display (no API key needed)
+    if (hasBoth && showRoute) {
+      const latDiff = Math.abs(originLat! - destinationLat!)
+      const lngDiff = Math.abs(originLng! - destinationLng!)
+      const padding = Math.max(latDiff, lngDiff) * 0.3 + 0.02
+      return `https://www.openstreetmap.org/export/embed.html?bbox=${Math.min(originLng!, destinationLng!) - padding}%2C${Math.min(originLat!, destinationLat!) - padding}%2C${Math.max(originLng!, destinationLng!) + padding}%2C${Math.max(originLat!, destinationLat!) + padding}&layer=mapnik&marker=${originLat}%2C${originLng}`
     } else if (hasOrigin) {
-      return `https://www.openstreetmap.org/export/embed.html?bbox=${originLng! - 0.05}%2C${originLat! - 0.05}%2C${originLng! + 0.05}%2C${originLat! + 0.05}&layer=mapnik&marker=${originLat}%2C${originLng}`
+      return `https://www.openstreetmap.org/export/embed.html?bbox=${originLng! - 0.02}%2C${originLat! - 0.02}%2C${originLng! + 0.02}%2C${originLat! + 0.02}&layer=mapnik&marker=${originLat}%2C${originLng}`
     } else if (hasDestination) {
-      return `https://www.openstreetmap.org/export/embed.html?bbox=${destinationLng! - 0.05}%2C${destinationLat! - 0.05}%2C${destinationLng! + 0.05}%2C${destinationLat! + 0.05}&layer=mapnik&marker=${destinationLat}%2C${destinationLng}`
+      return `https://www.openstreetmap.org/export/embed.html?bbox=${destinationLng! - 0.02}%2C${destinationLat! - 0.02}%2C${destinationLng! + 0.02}%2C${destinationLat! + 0.02}&layer=mapnik&marker=${destinationLat}%2C${destinationLng}`
     }
     return null
   }
@@ -103,7 +154,7 @@ export function AddressMap({
   return (
     <div className={`rounded-lg overflow-hidden border border-border ${className}`}>
       {/* Map Display */}
-      <div ref={mapRef} className="relative w-full h-40 bg-muted">
+      <div ref={mapRef} className="relative w-full h-44 bg-muted">
         {isLoading ? (
           <div className="absolute inset-0 flex items-center justify-center">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -120,7 +171,7 @@ export function AddressMap({
             <div className="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
               <span className="text-xs font-bold text-green-600">A</span>
             </div>
-            <span className="text-foreground truncate">{originLabel}</span>
+            <span className="text-foreground truncate text-xs sm:text-sm">{originLabel}</span>
           </div>
         )}
 
@@ -129,23 +180,53 @@ export function AddressMap({
             <div className="w-6 h-6 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0">
               <span className="text-xs font-bold text-red-600">B</span>
             </div>
-            <span className="text-foreground truncate">{destinationLabel}</span>
+            <span className="text-foreground truncate text-xs sm:text-sm">{destinationLabel}</span>
           </div>
         )}
 
-        {/* Distance and Duration */}
-        {hasBoth && showRoute && distance && duration && (
+        {/* Distance and Duration with loading state */}
+        {hasBoth && showRoute && (
           <div className="flex items-center gap-4 pt-2 border-t border-border mt-2">
-            <div className="flex items-center gap-1.5 text-sm">
-              <Navigation2 className="h-4 w-4 text-primary" />
-              <span className="font-medium text-foreground">{distance}</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <span>~{duration} drive</span>
-            </div>
+            {isCalculatingRoute ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Calculating route...</span>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-1.5 text-sm">
+                  <Route className="h-4 w-4 text-primary" />
+                  <span className="font-medium text-foreground">{distance || "..."}</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Clock className="h-4 w-4" />
+                  <span>{duration ? `~${duration}` : "..."}</span>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
     </div>
   )
+}
+
+// Haversine formula
+function calculateHaversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371
+  const dLat = ((lat2 - lat1) * Math.PI) / 180
+  const dLng = ((lng2 - lng1) * Math.PI) / 180
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) * Math.sin(dLng / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c * 1.3 // Multiply by 1.3 to approximate road distance
+}
+
+function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  if (mins === 0) return `${hours} hr${hours > 1 ? "s" : ""}`
+  return `${hours} hr ${mins} min`
 }

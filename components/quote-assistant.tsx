@@ -43,6 +43,8 @@ import { sendBookingConfirmation } from "@/app/actions/send-confirmation"
 import { formatDate } from "@/utils/date-utils" // Import formatDate function
 import { AddressAutocomplete } from "@/components/address-autocomplete"
 import { AddressMap } from "@/components/address-map"
+import { PriceEstimate } from "./price-estimate"
+import { StreetAutocomplete } from "@/components/street-autocomplete"
 
 const M2M_PHONE = "03 8820 1801"
 const M2M_PHONE_LINK = "tel:0388201801"
@@ -100,6 +102,9 @@ interface BookingData {
   contactPhone: string
   quoteAmount: number
   quoteReference: string
+  estimatedTotal?: number
+  depositAmount?: number
+  squareMeters?: number
 }
 
 export interface QuoteAssistantRef {
@@ -174,6 +179,15 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const chatContainerRef = useRef<HTMLDivElement>(null)
+
+  // State for distance and price tracking
+  const [routeDistance, setRouteDistance] = useState<{
+    km: number
+    text: string
+    durationMinutes: number
+    durationText: string
+  } | null>(null)
+  const [estimatedPrice, setEstimatedPrice] = useState<{ total: number; deposit: number } | null>(null)
 
   // Memoize transport to prevent recreation
   const transport = useMemo(
@@ -337,6 +351,9 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     lat?: number
     lng?: number
   }) => {
+    console.log("[v0] handleAddressAutoComplete received:", address)
+
+    // Update the address input state with all components
     setAddressInput({
       street: address.street,
       suburb: address.suburb,
@@ -346,6 +363,12 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
       lat: address.lat,
       lng: address.lng,
     })
+
+    if (address.suburb) {
+      setAddressSearchQuery(address.suburb)
+    }
+
+    console.log("[v0] Updated addressInput with postcode:", address.postcode)
   }
 
   // Date/Time handling
@@ -427,6 +450,27 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     setShowConfirmation(true)
   }
 
+  // Handler for distance calculation callback
+  const handleDistanceCalculated = (distance: {
+    km: number
+    text: string
+    durationMinutes: number
+    durationText: string
+  }) => {
+    setRouteDistance(distance)
+  }
+
+  // Handler for price calculation callback
+  const handlePriceCalculated = (total: number, deposit: number) => {
+    setEstimatedPrice({ total, deposit })
+    // Update booking data with the price
+    setBookingData((prev) => ({
+      ...prev,
+      estimatedTotal: total,
+      depositAmount: deposit,
+    }))
+  }
+
   // Render service picker
   const renderServicePicker = () => (
     <div className="p-4">
@@ -442,15 +486,15 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
       <p className="text-foreground mb-4">
         Hi! I'm Maya, your commercial moving specialist. What type of move can I help you with today?
       </p>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
         {serviceOptions.map((service) => (
           <button
             key={service.id}
-            className="flex items-center gap-2 p-2 rounded-lg border border-border/50 hover:border-primary hover:bg-primary/5 transition-colors text-left"
+            className="flex items-center gap-3 p-3 sm:p-4 rounded-xl border border-border/50 hover:border-primary hover:bg-primary/5 transition-all duration-200 text-left group"
             onClick={() => handleServiceSelect(service.id, service.label)}
           >
-            <service.icon className="h-4 w-4 text-primary shrink-0" />
-            <span className="text-xs font-medium text-foreground truncate">{service.label}</span>
+            <service.icon className="h-5 w-5 sm:h-6 sm:w-6 text-primary shrink-0 group-hover:scale-110 transition-transform" />
+            <span className="text-sm sm:text-base font-medium text-foreground">{service.label}</span>
           </button>
         ))}
       </div>
@@ -586,7 +630,8 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
 
   // Render Address Input
   const renderAddressInput = () => (
-    <div className="mx-2 sm:mx-4 my-2 p-3 sm:p-4 rounded-lg border border-blue-500/30 bg-card overflow-hidden">
+    <div className="mx-2 sm:mx-4 my-2 space-y-3">
+      {/* Header */}
       <div className="flex items-center gap-2 mb-3">
         <MapPin className="h-5 w-5 text-blue-500 flex-shrink-0" />
         <p className="font-medium text-foreground text-sm sm:text-base">
@@ -594,92 +639,106 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
         </p>
       </div>
 
-      <div className="space-y-3">
-        {/* Address Autocomplete Search */}
-        <AddressAutocomplete
-          value={addressSearchQuery}
-          onChange={setAddressSearchQuery}
-          onAddressSelect={handleAddressAutoComplete}
-          placeholder={
-            showAddressInput === "origin"
-              ? "Where are you moving from? (suburb or postcode)"
-              : "Where are you moving to? (suburb or postcode)"
-          }
-          className="w-full"
-        />
+      {/* Address Autocomplete Search */}
+      <AddressAutocomplete
+        value={addressSearchQuery}
+        onChange={setAddressSearchQuery}
+        onAddressSelect={handleAddressAutoComplete}
+        placeholder={
+          showAddressInput === "origin" ? "Start typing suburb or postcode..." : "Start typing suburb or postcode..."
+        }
+        className="w-full"
+      />
 
-        {/* Show parsed address fields when selected */}
-        {addressInput.street && (
-          <div className="space-y-2 pt-2 border-t border-border">
-            <p className="text-xs text-muted-foreground">Selected address:</p>
-            <div className="grid grid-cols-1 gap-2">
-              <Input
-                value={addressInput.street}
-                onChange={(e) => setAddressInput((prev) => ({ ...prev, street: e.target.value }))}
-                placeholder="Street address"
-                className="bg-background text-foreground text-sm"
-              />
-              <div className="grid grid-cols-3 gap-2">
-                <Input
-                  value={addressInput.suburb}
-                  onChange={(e) => setAddressInput((prev) => ({ ...prev, suburb: e.target.value }))}
-                  placeholder="Suburb"
-                  className="bg-background text-foreground text-sm col-span-1"
-                />
-                <select
-                  value={addressInput.state}
-                  onChange={(e) => setAddressInput((prev) => ({ ...prev, state: e.target.value }))}
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm col-span-1"
-                >
-                  <option value="VIC">VIC</option>
-                  <option value="NSW">NSW</option>
-                  <option value="QLD">QLD</option>
-                  <option value="SA">SA</option>
-                  <option value="WA">WA</option>
-                  <option value="TAS">TAS</option>
-                  <option value="NT">NT</option>
-                  <option value="ACT">ACT</option>
-                </select>
-                <Input
-                  value={addressInput.postcode}
-                  onChange={(e) => setAddressInput((prev) => ({ ...prev, postcode: e.target.value }))}
-                  placeholder="Postcode"
-                  maxLength={4}
-                  className="bg-background text-foreground text-sm col-span-1"
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Map Preview (only show when we have coordinates) */}
-        {(addressInput.lat || originCoords.lat) && (
-          <AddressMap
-            originLat={showAddressInput === "destination" ? originCoords.lat : addressInput.lat}
-            originLng={showAddressInput === "destination" ? originCoords.lng : addressInput.lng}
-            destinationLat={showAddressInput === "destination" ? addressInput.lat : undefined}
-            destinationLng={showAddressInput === "destination" ? addressInput.lng : undefined}
-            originLabel={originCoords.label || addressInput.fullAddress}
-            destinationLabel={showAddressInput === "destination" ? addressInput.fullAddress : undefined}
-            className="mt-2"
-          />
-        )}
-
-        <Button
-          onClick={() => handleAddressSubmit(showAddressInput!)}
-          className="w-full bg-blue-500 hover:bg-blue-600 text-white text-sm"
-          disabled={!addressInput.street || !addressInput.suburb || !addressInput.postcode}
-        >
-          Confirm {showAddressInput === "origin" ? "Pickup" : "Delivery"} Address
-        </Button>
-
-        {/* Manual entry toggle */}
-        {!addressInput.street && (
-          <p className="text-xs text-center text-muted-foreground">
-            Can&apos;t find your address? Type it in the search box and we&apos;ll help you.
+      {/* Selected Location */}
+      {(addressInput.suburb || addressInput.fullAddress) && (
+        <div className="bg-muted/50 rounded-lg p-3 mb-3">
+          <p className="text-xs text-muted-foreground mb-1">Selected location:</p>
+          <p className="text-sm font-medium text-foreground">
+            {addressInput.suburb
+              ? `${addressInput.suburb}, ${addressInput.state || ""}${addressInput.postcode ? `, ${addressInput.postcode}` : ""}`
+              : addressInput.fullAddress}
           </p>
-        )}
+        </div>
+      )}
+
+      {/* Street Address Dropdown */}
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-foreground">
+          Street Address <span className="text-destructive">*</span>
+        </label>
+        <StreetAutocomplete
+          value={addressInput.street}
+          onChange={(street) => setAddressInput((prev) => ({ ...prev, street }))}
+          onStreetSelect={(street, fullAddress, lat, lng) => {
+            setAddressInput((prev) => ({
+              ...prev,
+              street,
+              fullAddress: fullAddress || prev.fullAddress,
+              lat: lat ?? prev.lat,
+              lng: lng ?? prev.lng,
+            }))
+          }}
+          suburb={addressInput.suburb}
+          state={addressInput.state}
+          postcode={addressInput.postcode}
+          placeholder="Start typing your street address..."
+          autoFocus
+        />
+        <p className="text-xs text-muted-foreground">
+          Type your street number and name - suggestions will appear as you type
+        </p>
       </div>
+
+      {/* State Dropdown */}
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-foreground">State</label>
+        <select
+          value={addressInput.state}
+          onChange={(e) => setAddressInput((prev) => ({ ...prev, state: e.target.value }))}
+          className="flex h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
+        >
+          <option value="VIC">VIC</option>
+          <option value="NSW">NSW</option>
+          <option value="QLD">QLD</option>
+          <option value="SA">SA</option>
+          <option value="WA">WA</option>
+          <option value="TAS">TAS</option>
+          <option value="NT">NT</option>
+          <option value="ACT">ACT</option>
+        </select>
+      </div>
+
+      {/* Postcode Input */}
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-foreground">Postcode</label>
+        <Input
+          value={addressInput.postcode}
+          onChange={(e) => setAddressInput((prev) => ({ ...prev, postcode: e.target.value }))}
+          placeholder="Postcode"
+          maxLength={4}
+          className="bg-background text-foreground text-sm"
+        />
+      </div>
+
+      {/* Submit Button */}
+      <Button
+        onClick={() => handleAddressSubmit(showAddressInput!)}
+        className="w-full bg-blue-500 hover:bg-blue-600 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+        disabled={!addressInput.street || !addressInput.suburb}
+      >
+        {showAddressInput === "origin" ? "Confirm Pickup Address" : "Confirm Delivery Address"}
+      </Button>
+
+      {/* Street Address Input Validation */}
+      {!addressInput.street && (
+        <p className="text-xs text-center text-amber-500">Please enter your street address above to continue</p>
+      )}
+
+      {/* Address Not Found Message */}
+      <p className="text-xs text-center text-muted-foreground">
+        Can't find your address? Type it in the search box and we'll help you.
+      </p>
     </div>
   )
 
@@ -899,6 +958,37 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     </Card>
   )
 
+  // Render Route Summary with Price Estimate
+  const renderRouteSummary = () => {
+    if (!originCoords.lat || !destCoords.lat) return null
+
+    return (
+      <div className="mx-2 sm:mx-4 my-2 space-y-3">
+        {/* Route Map */}
+        <AddressMap
+          originLat={originCoords.lat}
+          originLng={originCoords.lng}
+          destinationLat={destCoords.lat}
+          destinationLng={destCoords.lng}
+          originLabel={originCoords.label}
+          destinationLabel={destCoords.label}
+          showRoute={true}
+          onDistanceCalculated={handleDistanceCalculated}
+        />
+
+        {/* Price Estimate */}
+        {routeDistance && (
+          <PriceEstimate
+            distanceKm={routeDistance.km}
+            squareMeters={bookingData.squareMeters}
+            moveDate={bookingData.preferredDate}
+            onPriceCalculated={handlePriceCalculated}
+          />
+        )}
+      </div>
+    )
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (input.trim()) {
@@ -1053,6 +1143,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
             {/* Interactive Components */}
             {showABNLookup && renderABNLookup()}
             {showAddressInput && renderAddressInput()}
+            {!showAddressInput && originCoords.lat && destCoords.lat && renderRouteSummary()}
             {showDatePicker && renderDatePicker()}
             {showTimePicker && renderTimePicker()}
             {showPayment && renderPayment()}

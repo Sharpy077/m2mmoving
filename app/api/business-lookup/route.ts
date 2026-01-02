@@ -36,50 +36,98 @@ async function fetchABNDetails(abn: string) {
       Message?: string
     }
 
-    console.log("[v0] ABR API response for ABN", cleanABN, ":", JSON.stringify(data, null, 2))
+    console.log("[v0] ABR API raw response for ABN", cleanABN, ":", JSON.stringify(data, null, 2))
 
     if (data.Message) {
       console.log("[v0] ABR API message:", data.Message)
       return null
     }
 
+    // EntityStatusCode: "ACT" = Active, "CAN" = Cancelled
+    // AbnStatus can be "Active" or "Cancelled"
     const isActive =
-      data.EntityStatusCode === "ACT" || data.AbnStatus === "Active" || (data.AbnStatusEffectiveFrom && !data.Message)
+      data.EntityStatusCode === "ACT" ||
+      data.AbnStatus === "Active" ||
+      (data.AbnStatusEffectiveFrom && !data.EntityStatusCode) // Has effective date but no cancellation
 
-    const gstRegistered =
-      data.Gst !== undefined &&
-      data.Gst !== null &&
-      data.Gst !== "" &&
-      data.GstEffectiveFrom !== undefined &&
-      data.GstEffectiveFrom !== null &&
-      data.GstEffectiveFrom !== ""
+    // GST: if Gst field has a date, the entity is GST registered
+    // The date format is typically "DD MMM YYYY" e.g. "01 Jul 2000"
+    const gstRegistered = !!(data.Gst && data.Gst.trim() !== "" && data.Gst.trim().length > 0)
 
-    console.log("[v0] Parsed status:", {
+    console.log("[v0] Parsed status for", cleanABN, ":", {
       EntityStatusCode: data.EntityStatusCode,
       AbnStatus: data.AbnStatus,
       isActive,
       Gst: data.Gst,
-      GstEffectiveFrom: data.GstEffectiveFrom,
       gstRegistered,
     })
+
+    const tradingNames = (data.BusinessName || [])
+      .map((bn) => bn.Value)
+      .filter((v): v is string => !!v && v.trim() !== "")
 
     return {
       abn: data.Abn || cleanABN,
       acn: data.Acn || undefined,
       name: data.EntityName || "Unknown",
-      tradingName: data.BusinessName?.[0]?.Value || undefined,
-      tradingNames: (data.BusinessName || []).map((bn) => bn.Value).filter(Boolean) as string[],
+      tradingName: tradingNames[0] || undefined,
+      tradingNames,
       entityType: data.EntityTypeName || "Unknown",
       status: isActive ? "Active" : "Inactive",
       state: data.AddressState || "Unknown",
       postcode: data.AddressPostcode || "Unknown",
       gstRegistered,
-      gstRegisteredDate: data.GstEffectiveFrom || undefined,
+      gstRegisteredDate: data.Gst || data.GstEffectiveFrom || undefined,
     }
   } catch (error) {
     console.error("[v0] fetchABNDetails error:", error)
     return null
   }
+}
+
+function calculateNameRelevance(
+  searchQuery: string,
+  entityName: string,
+  tradingName?: string,
+  nameType?: string,
+): number {
+  const query = searchQuery.toLowerCase().trim()
+  const name = entityName.toLowerCase()
+  const trading = tradingName?.toLowerCase() || ""
+
+  // Exact match on entity name = highest score
+  if (name === query) return 100
+
+  // Entity name starts with query
+  if (name.startsWith(query)) return 90
+
+  // Entity name contains query as a word
+  if (name.includes(` ${query}`) || name.includes(`${query} `)) return 80
+
+  // Entity name contains query
+  if (name.includes(query)) return 70
+
+  // Match was on trading name (NameType from ABR API)
+  if (nameType === "Trading Name") {
+    if (trading === query) return 50
+    if (trading.startsWith(query)) return 45
+    if (trading.includes(query)) return 40
+  }
+
+  // Partial match
+  return 30
+}
+
+function getEntityTypePriority(entityType: string): number {
+  const type = entityType.toLowerCase()
+  // Australian Private Company should appear first
+  if (type.includes("private company") || type.includes("pty ltd") || type.includes("australian private")) return 0
+  if (type.includes("public company")) return 1
+  if (type.includes("company")) return 2
+  if (type.includes("trust")) return 3
+  if (type.includes("partnership")) return 4
+  if (type.includes("individual") || type.includes("sole trader")) return 5
+  return 6
 }
 
 export async function GET(req: Request) {
@@ -108,7 +156,7 @@ export async function GET(req: Request) {
     }
 
     // For name searches - use name search endpoint
-    const nameUrl = `https://abr.business.gov.au/json/MatchingNames.aspx?name=${encodeURIComponent(query)}&maxResults=10&callback=callback&guid=${ABN_LOOKUP_GUID}`
+    const nameUrl = `https://abr.business.gov.au/json/MatchingNames.aspx?name=${encodeURIComponent(query)}&maxResults=20&callback=callback&guid=${ABN_LOOKUP_GUID}`
     const response = await fetch(nameUrl)
     const text = await response.text()
 
@@ -133,12 +181,14 @@ export async function GET(req: Request) {
 
     const nameResults = data.Names || []
 
+    console.log("[v0] Name search returned", nameResults.length, "results")
     console.log(
-      "[v0] Name results:",
-      nameResults.map((r) => ({
-        name: r.Name,
-        abn: r.Abn,
-        isCurrentIndicator: r.IsCurrentIndicator,
+      "[v0] First few results:",
+      nameResults.slice(0, 3).map((r) => ({
+        Name: r.Name,
+        NameType: r.NameType,
+        IsCurrentIndicator: r.IsCurrentIndicator,
+        Score: r.Score,
       })),
     )
 
@@ -147,38 +197,72 @@ export async function GET(req: Request) {
         if (item.Abn) {
           const details = await fetchABNDetails(item.Abn)
           if (details) {
+            const statusFromDetails = details.status
+            const statusFromNameSearch =
+              item.IsCurrentIndicator === "Y" ? "Active" : item.IsCurrentIndicator === "N" ? "Inactive" : null
+
+            // Prefer details status, but use name search indicator if details says Unknown
+            const finalStatus = statusFromDetails !== "Unknown" ? statusFromDetails : statusFromNameSearch || "Unknown"
+
             return {
               ...details,
-              // Use the name from search if it's a trading name
+              status: finalStatus,
               tradingName: item.NameType === "Trading Name" ? item.Name : details.tradingName,
+              nameType: item.NameType, // "Entity Name" or "Trading Name"
               score: item.Score || 0,
+              nameRelevance: calculateNameRelevance(query, details.name, details.tradingName, item.NameType),
             }
           }
         }
-        // Fallback to basic info if detailed fetch fails
         return {
           abn: item.Abn || "",
           name: item.Name || "Unknown",
           tradingName: item.NameType === "Trading Name" ? item.Name : undefined,
+          nameType: item.NameType,
           entityType: item.NameType || "Unknown",
-          status: "Unknown" as const,
+          status: item.IsCurrentIndicator === "Y" ? "Active" : item.IsCurrentIndicator === "N" ? "Inactive" : "Unknown",
           state: item.State || "Unknown",
           postcode: item.Postcode || "Unknown",
           score: item.Score || 0,
+          nameRelevance: calculateNameRelevance(query, item.Name || "", undefined, item.NameType),
           gstRegistered: false,
         }
       }),
     )
 
+    // 1. Name relevance (closest match to entity NAME, not trading name)
+    // 2. Active status (Active > Unknown > Inactive)
+    // 3. Entity type (Australian Private Company first)
+    // 4. Original score from ABR
     const sortedResults = detailedResults.sort((a, b) => {
-      const statusOrder = { Active: 0, Unknown: 1, Inactive: 2 }
-      const aOrder = statusOrder[a.status as keyof typeof statusOrder] ?? 1
-      const bOrder = statusOrder[b.status as keyof typeof statusOrder] ?? 1
+      // 1. Name relevance - higher is better
+      const relevanceDiff = (b.nameRelevance || 0) - (a.nameRelevance || 0)
+      if (relevanceDiff !== 0) return relevanceDiff
 
-      if (aOrder !== bOrder) return aOrder - bOrder
-      // Then sort by score (higher score first)
+      // 2. Status - Active first
+      const statusOrder = { Active: 0, Unknown: 1, Inactive: 2 }
+      const aStatusOrder = statusOrder[a.status as keyof typeof statusOrder] ?? 1
+      const bStatusOrder = statusOrder[b.status as keyof typeof statusOrder] ?? 1
+      if (aStatusOrder !== bStatusOrder) return aStatusOrder - bStatusOrder
+
+      // 3. Entity type - Private Company first
+      const aTypeOrder = getEntityTypePriority(a.entityType)
+      const bTypeOrder = getEntityTypePriority(b.entityType)
+      if (aTypeOrder !== bTypeOrder) return aTypeOrder - bTypeOrder
+
+      // 4. Original ABR score
       return (b.score || 0) - (a.score || 0)
     })
+
+    console.log(
+      "[v0] Sorted results:",
+      sortedResults.slice(0, 5).map((r) => ({
+        name: r.name,
+        status: r.status,
+        entityType: r.entityType,
+        nameRelevance: r.nameRelevance,
+      })),
+    )
 
     return NextResponse.json({ results: sortedResults })
   } catch (error) {
