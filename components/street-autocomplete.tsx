@@ -18,7 +18,15 @@ interface StreetPrediction {
 interface StreetAutocompleteProps {
   value: string
   onChange: (value: string) => void
-  onStreetSelect?: (street: string, fullAddress: string, lat?: number, lng?: number) => void
+  onStreetSelect?: (data: {
+    street: string
+    fullAddress: string
+    lat?: number
+    lng?: number
+    postcode?: string
+    suburb?: string
+    state?: string
+  }) => void
   suburb?: string
   state?: string
   postcode?: string
@@ -49,7 +57,6 @@ export function StreetAutocomplete({
   const suggestionsRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<NodeJS.Timeout>()
 
-  // Build location bias string for the API
   const getLocationBias = useCallback(() => {
     const parts = []
     if (suburb) parts.push(suburb)
@@ -58,10 +65,8 @@ export function StreetAutocomplete({
     return parts.join(" ")
   }, [suburb, state, postcode])
 
-  // Fetch street predictions
   const fetchPredictions = useCallback(
     async (input: string) => {
-      // Require at least 3 characters for street search
       if (input.length < 3) {
         setPredictions([])
         return
@@ -69,7 +74,6 @@ export function StreetAutocomplete({
 
       setIsLoading(true)
       try {
-        // Combine user input with suburb context for better results
         const locationBias = getLocationBias()
         const searchQuery = locationBias ? `${input}, ${locationBias}` : input
 
@@ -79,10 +83,8 @@ export function StreetAutocomplete({
         const data = await response.json()
 
         if (data.predictions) {
-          // Filter to show only addresses that match the suburb context
           const filtered = data.predictions.filter((p: StreetPrediction) => {
             const desc = p.description.toLowerCase()
-            // If we have suburb context, prefer results containing it
             if (suburb) {
               return desc.includes(suburb.toLowerCase())
             }
@@ -103,7 +105,6 @@ export function StreetAutocomplete({
     [sessionToken, getLocationBias, suburb],
   )
 
-  // Debounced input handler
   useEffect(() => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current)
@@ -120,7 +121,6 @@ export function StreetAutocomplete({
     }
   }, [value, fetchPredictions])
 
-  // Handle selecting a prediction
   const handleSelectPrediction = async (prediction: StreetPrediction) => {
     setIsLoading(true)
     setShowSuggestions(false)
@@ -130,10 +130,12 @@ export function StreetAutocomplete({
       const data = await response.json()
 
       if (data.result) {
-        // Extract street address from components
         const components = data.result.address_components || []
         let streetNumber = ""
         let route = ""
+        let extractedPostcode = ""
+        let extractedSuburb = ""
+        let extractedState = ""
 
         for (const component of components) {
           const types = component.types
@@ -141,6 +143,12 @@ export function StreetAutocomplete({
             streetNumber = component.long_name
           } else if (types.includes("route")) {
             route = component.long_name
+          } else if (types.includes("postal_code")) {
+            extractedPostcode = component.long_name
+          } else if (types.includes("locality") || types.includes("sublocality")) {
+            extractedSuburb = component.long_name
+          } else if (types.includes("administrative_area_level_1")) {
+            extractedState = component.short_name
           }
         }
 
@@ -148,32 +156,61 @@ export function StreetAutocomplete({
         const lat = data.result.geometry?.location?.lat
         const lng = data.result.geometry?.location?.lng
 
+        console.log("[v0] Street selection extracted:", {
+          streetAddress,
+          extractedPostcode,
+          extractedSuburb,
+          extractedState,
+        })
+
         onChange(streetAddress || prediction.structured_formatting?.main_text || prediction.description.split(",")[0])
 
         if (onStreetSelect) {
-          onStreetSelect(streetAddress, data.result.formatted_address || prediction.description, lat, lng)
+          onStreetSelect({
+            street: streetAddress,
+            fullAddress: data.result.formatted_address || prediction.description,
+            lat,
+            lng,
+            postcode: extractedPostcode,
+            suburb: extractedSuburb,
+            state: extractedState,
+          })
         }
       } else {
-        // Fallback: use the main text from the prediction
         const streetText = prediction.structured_formatting?.main_text || prediction.description.split(",")[0]
+        const postcodeMatch = prediction.description.match(/\b(\d{4})\b/)
+        const fallbackPostcode = postcodeMatch ? postcodeMatch[1] : ""
+
+        console.log("[v0] Street selection fallback - postcode from description:", fallbackPostcode)
+
         onChange(streetText)
         if (onStreetSelect) {
-          onStreetSelect(streetText, prediction.description)
+          onStreetSelect({
+            street: streetText,
+            fullAddress: prediction.description,
+            postcode: fallbackPostcode,
+          })
         }
       }
     } catch (error) {
       console.error("[v0] Error fetching street details:", error)
       const streetText = prediction.structured_formatting?.main_text || prediction.description.split(",")[0]
+      const postcodeMatch = prediction.description.match(/\b(\d{4})\b/)
+      const fallbackPostcode = postcodeMatch ? postcodeMatch[1] : ""
+
       onChange(streetText)
       if (onStreetSelect) {
-        onStreetSelect(streetText, prediction.description)
+        onStreetSelect({
+          street: streetText,
+          fullAddress: prediction.description,
+          postcode: fallbackPostcode,
+        })
       }
     } finally {
       setIsLoading(false)
     }
   }
 
-  // Keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!showSuggestions || predictions.length === 0) return
 
@@ -199,7 +236,6 @@ export function StreetAutocomplete({
     }
   }
 
-  // Close suggestions when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -253,7 +289,6 @@ export function StreetAutocomplete({
         ) : null}
       </div>
 
-      {/* Suggestions Dropdown */}
       {showSuggestions && predictions.length > 0 && (
         <div
           ref={suggestionsRef}

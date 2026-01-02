@@ -670,13 +670,19 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
         <StreetAutocomplete
           value={addressInput.street}
           onChange={(street) => setAddressInput((prev) => ({ ...prev, street }))}
-          onStreetSelect={(street, fullAddress, lat, lng) => {
+          onStreetSelect={(data) => {
+            console.log("[v0] Street selected with data:", data)
             setAddressInput((prev) => ({
               ...prev,
-              street,
-              fullAddress: fullAddress || prev.fullAddress,
-              lat: lat ?? prev.lat,
-              lng: lng ?? prev.lng,
+              street: data.street,
+              fullAddress: data.fullAddress || prev.fullAddress,
+              lat: data.lat ?? prev.lat,
+              lng: data.lng ?? prev.lng,
+              // Update postcode if provided from street selection
+              postcode: data.postcode || prev.postcode,
+              // Update suburb and state if provided and not already set
+              suburb: data.suburb || prev.suburb,
+              state: data.state || prev.state,
             }))
           }}
           suburb={addressInput.suburb}
