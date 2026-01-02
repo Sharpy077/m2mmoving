@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Calculator, ChevronDown, ChevronUp, Loader2, DollarSign, Info } from "lucide-react"
+import { Calculator, ChevronDown, ChevronUp, Loader2, DollarSign, Info, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface PriceBreakdown {
@@ -23,6 +23,7 @@ interface PriceEstimateProps {
   moveDate?: Date
   className?: string
   onPriceCalculated?: (total: number, deposit: number) => void
+  isReady?: boolean // Only calculate when addresses are fully confirmed
 }
 
 export function PriceEstimate({
@@ -34,6 +35,7 @@ export function PriceEstimate({
   moveDate,
   className = "",
   onPriceCalculated,
+  isReady = true,
 }: PriceEstimateProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [showBreakdown, setShowBreakdown] = useState(false)
@@ -44,14 +46,23 @@ export function PriceEstimate({
     config: { name: string; baseDistanceKm: number; perKmRate: number }
   } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
 
   // Determine if weekend/holiday
   const isWeekend = moveDate ? [0, 6].includes(moveDate.getDay()) : false
 
   useEffect(() => {
-    if (distanceKm <= 0) return
+    if (!isReady || distanceKm <= 0) {
+      return
+    }
 
-    const calculatePrice = async () => {
+    const debounceTimer = setTimeout(() => {
+      calculatePrice()
+    }, 500)
+
+    return () => clearTimeout(debounceTimer)
+
+    async function calculatePrice() {
       setIsLoading(true)
       setError(null)
 
@@ -71,27 +82,54 @@ export function PriceEstimate({
         })
 
         if (!response.ok) {
-          throw new Error("Failed to calculate price")
+          const errorData = await response.json().catch(() => ({}))
+          throw new Error(errorData.error || "Failed to calculate price")
         }
 
         const data = await response.json()
+
+        if (!data || typeof data.total !== "number") {
+          throw new Error("Invalid pricing response")
+        }
+
         setPricing(data)
+        setRetryCount(0)
 
         if (onPriceCalculated) {
           onPriceCalculated(data.total, data.depositAmount)
         }
       } catch (err) {
         console.error("[v0] Price calculation error:", err)
-        setError("Unable to calculate price. Please try again.")
+        setError("We're preparing your quote. This may take a moment...")
+
+        if (retryCount < 2) {
+          setTimeout(
+            () => {
+              setRetryCount((prev) => prev + 1)
+            },
+            1000 * (retryCount + 1),
+          )
+        } else {
+          setError("Unable to calculate price at this time. Your quote will be finalized when you confirm the booking.")
+        }
       } finally {
         setIsLoading(false)
       }
     }
+  }, [
+    distanceKm,
+    squareMeters,
+    stairsFlights,
+    specialItems,
+    packingHours,
+    moveDate,
+    isWeekend,
+    onPriceCalculated,
+    isReady,
+    retryCount,
+  ])
 
-    calculatePrice()
-  }, [distanceKm, squareMeters, stairsFlights, specialItems, packingHours, moveDate, isWeekend, onPriceCalculated])
-
-  if (distanceKm <= 0) {
+  if (!isReady || distanceKm <= 0) {
     return null
   }
 
@@ -111,16 +149,22 @@ export function PriceEstimate({
             <span className="text-muted-foreground">Calculating your quote...</span>
           </div>
         ) : error ? (
-          <div className="text-center py-4">
-            <p className="text-destructive text-sm">{error}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-2 bg-transparent"
-              onClick={() => window.location.reload()}
-            >
-              Retry
-            </Button>
+          <div className="text-center py-4 space-y-3">
+            <div className="flex items-center justify-center gap-2 text-amber-500">
+              <AlertCircle className="h-5 w-5" />
+              <p className="text-sm font-medium">Quote Pending</p>
+            </div>
+            <p className="text-xs text-muted-foreground px-4">{error}</p>
+            {retryCount >= 2 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2 bg-transparent text-xs"
+                onClick={() => setRetryCount(0)}
+              >
+                Try Again
+              </Button>
+            )}
           </div>
         ) : pricing ? (
           <div className="space-y-4">

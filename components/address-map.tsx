@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState, useCallback } from "react"
-import { MapPin, Loader2, Clock, Route } from "lucide-react"
+import { MapPin, Loader2, Clock, Route, AlertCircle } from "lucide-react"
 
 interface AddressMapProps {
   originLat?: number
@@ -13,6 +13,7 @@ interface AddressMapProps {
   showRoute?: boolean
   className?: string
   onDistanceCalculated?: (distance: { km: number; text: string; durationMinutes: number; durationText: string }) => void
+  onRouteStatusChange?: (status: "idle" | "calculating" | "success" | "error") => void
 }
 
 export function AddressMap({
@@ -25,6 +26,7 @@ export function AddressMap({
   showRoute = true,
   className = "",
   onDistanceCalculated,
+  onRouteStatusChange,
 }: AddressMapProps) {
   const mapRef = useRef<HTMLDivElement>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -33,6 +35,7 @@ export function AddressMap({
   const [distanceKm, setDistanceKm] = useState<number | null>(null)
   const [duration, setDuration] = useState<string | null>(null)
   const [durationMinutes, setDurationMinutes] = useState<number | null>(null)
+  const [routeError, setRouteError] = useState<string | null>(null)
 
   const hasOrigin = originLat !== undefined && originLng !== undefined
   const hasDestination = destinationLat !== undefined && destinationLng !== undefined
@@ -47,6 +50,8 @@ export function AddressMap({
     if (!hasBoth || !originLat || !originLng || !destinationLat || !destinationLng) return
 
     setIsCalculatingRoute(true)
+    setRouteError(null)
+    onRouteStatusChange?.("calculating")
 
     try {
       const response = await fetch("/api/places/distance", {
@@ -68,6 +73,7 @@ export function AddressMap({
         setDistance(data.distanceText)
         setDurationMinutes(data.durationMinutes)
         setDuration(data.durationText)
+        onRouteStatusChange?.("success")
 
         // Notify parent component
         if (onDistanceCalculated) {
@@ -83,9 +89,10 @@ export function AddressMap({
         const d = calculateHaversineDistance(originLat, originLng, destinationLat, destinationLng)
         const mins = Math.round((d / 50) * 60)
         setDistanceKm(d)
-        setDistance(`${Math.round(d)} km`)
+        setDistance(`${Math.round(d)} km (est.)`)
         setDurationMinutes(mins)
         setDuration(formatDuration(mins))
+        onRouteStatusChange?.("success")
 
         if (onDistanceCalculated) {
           onDistanceCalculated({
@@ -98,13 +105,22 @@ export function AddressMap({
       }
     } catch (error) {
       console.error("[v0] Error calculating route:", error)
-      // Fallback to haversine
       const d = calculateHaversineDistance(originLat, originLng, destinationLat, destinationLng)
       const mins = Math.round((d / 50) * 60)
       setDistanceKm(d)
-      setDistance(`${Math.round(d)} km`)
+      setDistance(`${Math.round(d)} km (est.)`)
       setDurationMinutes(mins)
       setDuration(formatDuration(mins))
+      onRouteStatusChange?.("error")
+
+      if (onDistanceCalculated) {
+        onDistanceCalculated({
+          km: d,
+          text: `${Math.round(d)} km`,
+          durationMinutes: mins,
+          durationText: formatDuration(mins),
+        })
+      }
     } finally {
       setIsCalculatingRoute(false)
     }
@@ -117,6 +133,7 @@ export function AddressMap({
     originLabel,
     destinationLabel,
     onDistanceCalculated,
+    onRouteStatusChange,
   ])
 
   useEffect(() => {
@@ -128,7 +145,6 @@ export function AddressMap({
   const getMapUrl = () => {
     if (!hasOrigin && !hasDestination) return null
 
-    // Use OpenStreetMap for route display (no API key needed)
     if (hasBoth && showRoute) {
       const latDiff = Math.abs(originLat! - destinationLat!)
       const lngDiff = Math.abs(originLng! - destinationLng!)
@@ -192,6 +208,11 @@ export function AddressMap({
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span>Calculating route...</span>
               </div>
+            ) : routeError ? (
+              <div className="flex items-center gap-2 text-sm text-amber-500">
+                <AlertCircle className="h-4 w-4" />
+                <span>Route estimate pending</span>
+              </div>
             ) : (
               <>
                 <div className="flex items-center gap-1.5 text-sm">
@@ -220,7 +241,7 @@ function calculateHaversineDistance(lat1: number, lng1: number, lat2: number, ln
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) * Math.sin(dLng / 2)
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  return R * c * 1.3 // Multiply by 1.3 to approximate road distance
+  return R * c * 1.3
 }
 
 function formatDuration(minutes: number): string {

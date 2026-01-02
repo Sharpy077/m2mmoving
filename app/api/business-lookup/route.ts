@@ -6,12 +6,23 @@ function parseJSONP(text: string): unknown {
   const prefix = "callback("
   const suffix = ")"
 
-  if (!text.startsWith(prefix) || !text.endsWith(suffix)) {
-    throw new Error(`Invalid JSONP response: ${text.slice(0, 100)}`)
+  if (text.includes("A server error has occurred") || text.includes("server error")) {
+    console.log("[v0] ABR API server error detected, returning null")
+    return null
   }
 
-  const jsonContent = text.slice(prefix.length, -suffix.length)
-  return JSON.parse(jsonContent)
+  if (!text.startsWith(prefix) || !text.endsWith(suffix)) {
+    console.log("[v0] Invalid JSONP format, response:", text.slice(0, 200))
+    return null
+  }
+
+  try {
+    const jsonContent = text.slice(prefix.length, -suffix.length)
+    return JSON.parse(jsonContent)
+  } catch {
+    console.log("[v0] Failed to parse JSONP content")
+    return null
+  }
 }
 
 async function fetchABNDetails(abn: string) {
@@ -20,6 +31,7 @@ async function fetchABNDetails(abn: string) {
     const abnUrl = `https://abr.business.gov.au/json/AbnDetails.aspx?abn=${cleanABN}&callback=callback&guid=${ABN_LOOKUP_GUID}`
     const response = await fetch(abnUrl)
     const text = await response.text()
+
     const data = parseJSONP(text) as {
       Abn?: string
       Acn?: string
@@ -34,6 +46,10 @@ async function fetchABNDetails(abn: string) {
       Gst?: string
       GstEffectiveFrom?: string
       Message?: string
+    } | null
+
+    if (!data) {
+      return null
     }
 
     console.log("[v0] ABR API raw response for ABN", cleanABN, ":", JSON.stringify(data, null, 2))
@@ -51,7 +67,6 @@ async function fetchABNDetails(abn: string) {
       (data.AbnStatusEffectiveFrom && !data.EntityStatusCode) // Has effective date but no cancellation
 
     // GST: if Gst field has a date, the entity is GST registered
-    // The date format is typically "DD MMM YYYY" e.g. "01 Jul 2000"
     const gstRegistered = !!(data.Gst && data.Gst.trim() !== "" && data.Gst.trim().length > 0)
 
     console.log("[v0] Parsed status for", cleanABN, ":", {
@@ -80,7 +95,7 @@ async function fetchABNDetails(abn: string) {
       gstRegisteredDate: data.Gst || data.GstEffectiveFrom || undefined,
     }
   } catch (error) {
-    console.error("[v0] fetchABNDetails error:", error)
+    console.log("[v0] fetchABNDetails failed for ABN (rate limit or network issue):", abn)
     return null
   }
 }

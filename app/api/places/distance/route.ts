@@ -19,6 +19,7 @@ interface DistanceResponse {
   routePolyline?: string
   origin: string
   destination: string
+  source?: string
 }
 
 export async function POST(request: NextRequest) {
@@ -33,116 +34,121 @@ export async function POST(request: NextRequest) {
 
     if (!GOOGLE_API_KEY) {
       // Fallback to haversine calculation if no API key
-      const distance = calculateHaversineDistance(originLat, originLng, destinationLat, destinationLng)
-      const durationMinutes = Math.round((distance / 50) * 60) // Estimate 50km/h average
-
-      return NextResponse.json({
-        distanceKm: Math.round(distance * 10) / 10,
-        distanceText: `${Math.round(distance)} km`,
-        durationMinutes,
-        durationText: formatDuration(durationMinutes),
-        origin: originAddress || `${originLat},${originLng}`,
-        destination: destinationAddress || `${destinationLat},${destinationLng}`,
-        source: "haversine",
-      })
+      return NextResponse.json(
+        calculateHaversineResponse(
+          originLat,
+          originLng,
+          destinationLat,
+          destinationLng,
+          originAddress,
+          destinationAddress,
+          "haversine_no_key",
+        ),
+      )
     }
 
-    // Use Google Routes API (newer than Distance Matrix)
-    const routesUrl = "https://routes.googleapis.com/directions/v2:computeRoutes"
+    const distanceMatrixUrl = new URL("https://maps.googleapis.com/maps/api/distancematrix/json")
+    distanceMatrixUrl.searchParams.set("origins", `${originLat},${originLng}`)
+    distanceMatrixUrl.searchParams.set("destinations", `${destinationLat},${destinationLng}`)
+    distanceMatrixUrl.searchParams.set("mode", "driving")
+    distanceMatrixUrl.searchParams.set("units", "metric")
+    distanceMatrixUrl.searchParams.set("key", GOOGLE_API_KEY)
 
-    const routesResponse = await fetch(routesUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_API_KEY,
-        "X-Goog-FieldMask":
-          "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.legs.startLocation,routes.legs.endLocation",
-      },
-      body: JSON.stringify({
-        origin: {
-          location: {
-            latLng: {
-              latitude: originLat,
-              longitude: originLng,
-            },
-          },
-        },
-        destination: {
-          location: {
-            latLng: {
-              latitude: destinationLat,
-              longitude: destinationLng,
-            },
-          },
-        },
-        travelMode: "DRIVE",
-        routingPreference: "TRAFFIC_AWARE",
-        computeAlternativeRoutes: false,
-        languageCode: "en-AU",
-        units: "METRIC",
-      }),
-    })
+    const response = await fetch(distanceMatrixUrl.toString())
 
-    if (!routesResponse.ok) {
-      const errorText = await routesResponse.text()
-      console.error("[v0] Google Routes API error:", errorText)
-
-      // Fallback to haversine
-      const distance = calculateHaversineDistance(originLat, originLng, destinationLat, destinationLng)
-      const durationMinutes = Math.round((distance / 50) * 60)
-
-      return NextResponse.json({
-        distanceKm: Math.round(distance * 10) / 10,
-        distanceText: `${Math.round(distance)} km`,
-        durationMinutes,
-        durationText: formatDuration(durationMinutes),
-        origin: originAddress || `${originLat},${originLng}`,
-        destination: destinationAddress || `${destinationLat},${destinationLng}`,
-        source: "haversine_fallback",
-      })
+    if (!response.ok) {
+      console.log("[v0] Distance Matrix API HTTP error:", response.status)
+      return NextResponse.json(
+        calculateHaversineResponse(
+          originLat,
+          originLng,
+          destinationLat,
+          destinationLng,
+          originAddress,
+          destinationAddress,
+          "haversine_http_error",
+        ),
+      )
     }
 
-    const routesData = await routesResponse.json()
+    const data = await response.json()
 
-    if (!routesData.routes || routesData.routes.length === 0) {
-      // Fallback to haversine
-      const distance = calculateHaversineDistance(originLat, originLng, destinationLat, destinationLng)
-      const durationMinutes = Math.round((distance / 50) * 60)
-
-      return NextResponse.json({
-        distanceKm: Math.round(distance * 10) / 10,
-        distanceText: `${Math.round(distance)} km`,
-        durationMinutes,
-        durationText: formatDuration(durationMinutes),
-        origin: originAddress || `${originLat},${originLng}`,
-        destination: destinationAddress || `${destinationLat},${destinationLng}`,
-        source: "haversine_no_route",
-      })
+    // Check for API-level errors
+    if (data.status !== "OK") {
+      console.log("[v0] Distance Matrix API status:", data.status, data.error_message)
+      return NextResponse.json(
+        calculateHaversineResponse(
+          originLat,
+          originLng,
+          destinationLat,
+          destinationLng,
+          originAddress,
+          destinationAddress,
+          "haversine_api_error",
+        ),
+      )
     }
 
-    const route = routesData.routes[0]
-    const distanceMeters = route.distanceMeters || 0
+    // Check for element-level errors (e.g., no route found)
+    const element = data.rows?.[0]?.elements?.[0]
+    if (!element || element.status !== "OK") {
+      console.log("[v0] Distance Matrix element status:", element?.status)
+      return NextResponse.json(
+        calculateHaversineResponse(
+          originLat,
+          originLng,
+          destinationLat,
+          destinationLng,
+          originAddress,
+          destinationAddress,
+          "haversine_no_route",
+        ),
+      )
+    }
+
+    // Extract distance and duration from the response
+    const distanceMeters = element.distance?.value || 0
     const distanceKm = distanceMeters / 1000
-
-    // Parse duration (format: "1234s")
-    const durationStr = route.duration || "0s"
-    const durationSeconds = Number.parseInt(durationStr.replace("s", ""), 10) || 0
+    const durationSeconds = element.duration?.value || 0
     const durationMinutes = Math.round(durationSeconds / 60)
 
-    const response: DistanceResponse = {
+    const result: DistanceResponse = {
       distanceKm: Math.round(distanceKm * 10) / 10,
-      distanceText: formatDistance(distanceKm),
+      distanceText: element.distance?.text || formatDistance(distanceKm),
       durationMinutes,
-      durationText: formatDuration(durationMinutes),
-      routePolyline: route.polyline?.encodedPolyline,
-      origin: originAddress || `${originLat},${originLng}`,
-      destination: destinationAddress || `${destinationLat},${destinationLng}`,
+      durationText: element.duration?.text || formatDuration(durationMinutes),
+      origin: originAddress || data.origin_addresses?.[0] || `${originLat},${originLng}`,
+      destination: destinationAddress || data.destination_addresses?.[0] || `${destinationLat},${destinationLng}`,
+      source: "google_distance_matrix",
     }
 
-    return NextResponse.json(response)
+    return NextResponse.json(result)
   } catch (error) {
     console.error("[v0] Distance calculation error:", error)
     return NextResponse.json({ error: "Failed to calculate distance" }, { status: 500 })
+  }
+}
+
+function calculateHaversineResponse(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+  originAddress?: string,
+  destinationAddress?: string,
+  source = "haversine",
+): DistanceResponse {
+  const distance = calculateHaversineDistance(lat1, lng1, lat2, lng2)
+  const durationMinutes = Math.round((distance / 60) * 60) // Estimate 60km/h average
+
+  return {
+    distanceKm: Math.round(distance * 10) / 10,
+    distanceText: formatDistance(distance),
+    durationMinutes,
+    durationText: formatDuration(durationMinutes),
+    origin: originAddress || `${lat1},${lng1}`,
+    destination: destinationAddress || `${lat2},${lng2}`,
+    source,
   }
 }
 

@@ -38,13 +38,10 @@ import {
   ChevronRight,
   RotateCcw,
 } from "lucide-react"
-import { createCheckoutSession } from "@/app/actions/create-checkout-session"
-import { sendBookingConfirmation } from "@/app/actions/send-confirmation"
 import { formatDate } from "@/utils/date-utils" // Import formatDate function
-import { AddressAutocomplete } from "@/components/address-autocomplete"
 import { AddressMap } from "@/components/address-map"
 import { PriceEstimate } from "./price-estimate"
-import { StreetAutocomplete } from "@/components/street-autocomplete"
+import { UnifiedAddressInput } from "./unified-address-input"
 
 const M2M_PHONE = "03 8820 1801"
 const M2M_PHONE_LINK = "tel:0388201801"
@@ -147,6 +144,8 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
   // UI State for interactive components
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [showTimePicker, setShowTimePicker] = useState(false)
+  const [showCustomTimeInput, setShowCustomTimeInput] = useState(false)
+  const [customTimeValue, setCustomTimeValue] = useState("")
   const [showABNLookup, setShowABNLookup] = useState(false)
   const [showAddressInput, setShowAddressInput] = useState<"origin" | "destination" | null>(null)
   const [showPayment, setShowPayment] = useState(false)
@@ -161,7 +160,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
   const [addressInput, setAddressInput] = useState<AddressInfoWithCoords>({
     street: "",
     suburb: "",
-    state: "VIC",
+    state: "",
     postcode: "",
     fullAddress: "",
     lat: undefined,
@@ -188,6 +187,9 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     durationText: string
   } | null>(null)
   const [estimatedPrice, setEstimatedPrice] = useState<{ total: number; deposit: number } | null>(null)
+
+  const [isReadyForPricing, setIsReadyForPricing] = useState(false)
+  const [routeStatus, setRouteStatus] = useState<"idle" | "calculating" | "success" | "error">("idle")
 
   // Memoize transport to prevent recreation
   const transport = useMemo(
@@ -311,164 +313,77 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
   }
 
   // Address handling
-  const handleAddressSubmit = (type: "origin" | "destination") => {
-    const address = { ...addressInput }
-    const fullAddress = `${address.street}, ${address.suburb} ${address.state} ${address.postcode}`
+  const handleAddressSubmit = (type: "origin" | "destination", addressData?: AddressInfoWithCoords) => {
+    // Use provided address data or fall back to state (for backwards compatibility)
+    const address = addressData || { ...addressInput }
+
+    // Build full address from the confirmed address components
+    const fullAddress =
+      address.fullAddress || `${address.street}, ${address.suburb} ${address.state} ${address.postcode}`.trim()
+
+    console.log("[v0] handleAddressSubmit called:", { type, address, fullAddress })
 
     if (type === "origin") {
-      setBookingData((prev) => ({ ...prev, originAddress: address }))
+      setBookingData((prev) => ({ ...prev, originAddress: { ...address, fullAddress } }))
       // Store coordinates for map
       setOriginCoords({ lat: address.lat, lng: address.lng, label: fullAddress })
-      sendMessage(`Moving FROM: ${fullAddress}`)
+      if (address.street && address.suburb) {
+        sendMessage({ text: `Moving FROM: ${fullAddress}` })
+      }
       setShowAddressInput("destination")
     } else {
-      setBookingData((prev) => ({ ...prev, destinationAddress: address }))
+      setBookingData((prev) => ({ ...prev, destinationAddress: { ...address, fullAddress } }))
       // Store coordinates for map
       setDestCoords({ lat: address.lat, lng: address.lng, label: fullAddress })
-      sendMessage(`Moving TO: ${fullAddress}`)
+      if (address.street && address.suburb) {
+        sendMessage({ text: `Moving TO: ${fullAddress}` })
+      }
       setShowAddressInput(null)
       setTimeout(() => setShowDatePicker(true), 500)
     }
-    // Reset for next input
+
     setAddressInput({
       street: "",
       suburb: "",
-      state: "VIC",
+      state: "",
       postcode: "",
       fullAddress: "",
       lat: undefined,
       lng: undefined,
     })
-    setAddressSearchQuery("")
-  }
-
-  const handleAddressAutoComplete = (address: {
-    street: string
-    suburb: string
-    state: string
-    postcode: string
-    fullAddress: string
-    lat?: number
-    lng?: number
-  }) => {
-    console.log("[v0] handleAddressAutoComplete received:", address)
-
-    // Update the address input state with all components
-    setAddressInput({
-      street: address.street,
-      suburb: address.suburb,
-      state: address.state || "VIC",
-      postcode: address.postcode,
-      fullAddress: address.fullAddress,
-      lat: address.lat,
-      lng: address.lng,
-    })
-
-    if (address.suburb) {
-      setAddressSearchQuery(address.suburb)
-    }
-
-    console.log("[v0] Updated addressInput with postcode:", address.postcode)
-  }
-
-  // Date/Time handling
-  const handleDateSelect = (date: Date | undefined) => {
-    if (date) {
-      setBookingData((prev) => ({ ...prev, preferredDate: date }))
-      setShowDatePicker(false)
-      setShowTimePicker(true)
-    }
   }
 
   const handleTimeSelect = (time: string) => {
-    setBookingData((prev) => ({ ...prev, preferredTime: time }))
-    setShowTimePicker(false)
-    const dateStr = bookingData.preferredDate ? formatDate(bookingData.preferredDate, "full") : ""
-    sendMessage({ text: `I'd like to book for ${dateStr} at ${time}` })
-  }
-
-  // Payment handling
-  const initiatePayment = async () => {
-    if (isProcessingPayment) return // Prevent duplicate calls
-    setIsProcessingPayment(true)
-    // Calculate 50% deposit - if quoteAmount is 0, default to minimum $500 quote = $250 deposit
-    const quoteTotal = bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 500
-    const depositAmount = Math.round(quoteTotal * 0.5 * 100) // 50% in cents
-
-    const result = await createCheckoutSession({
-      amount: depositAmount,
-      description: `M&M Moving 50% Deposit - ${bookingData.serviceType} (Total Quote: $${quoteTotal})`,
-      metadata: {
-        serviceType: bookingData.serviceType,
-        businessName: bookingData.business?.name || "",
-        contactEmail: bookingData.contactEmail,
-        quoteTotal: quoteTotal.toString(),
-        depositPercent: "50",
-      },
-    })
-
-    if (result.clientSecret) {
-      setPaymentClientSecret(result.clientSecret)
-      setShowPayment(true)
+    if (time === "Custom Time") {
+      setShowCustomTimeInput(true)
+    } else {
+      setBookingData((prev) => ({ ...prev, preferredTime: time }))
+      setShowTimePicker(false)
+      // Send message and proceed to next step
+      const dateStr = bookingData.preferredDate ? formatDate(bookingData.preferredDate, "short") : ""
+      sendMessage({ text: `Preferred date and time: ${dateStr} at ${time}` })
+      // Show payment after time selection
+      setTimeout(() => {
+        setPaymentClientSecret("ready")
+        setShowPayment(true)
+      }, 500)
     }
   }
 
-  const handlePaymentComplete = async () => {
-    const quoteTotal = bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 500
-    const depositPaid = quoteTotal * 0.5
-
-    // Generate quote reference
-    const quoteRef = `MM-${Date.now().toString(36).toUpperCase()}`
-    setBookingData((prev) => ({ ...prev, quoteReference: quoteRef }))
-
-    // Send confirmation email and SMS
-    try {
-      await sendBookingConfirmation({
-        quoteReference: quoteRef,
-        customerName: bookingData.contactName || "Customer",
-        customerEmail: bookingData.contactEmail,
-        customerPhone: bookingData.contactPhone,
-        businessName: bookingData.business?.name || "",
-        businessABN: bookingData.business?.abn || "",
-        serviceType: bookingData.serviceType,
-        originAddress: bookingData.originAddress
-          ? `${bookingData.originAddress.street}, ${bookingData.originAddress.suburb} ${bookingData.originAddress.state} ${bookingData.originAddress.postcode}`
-          : "",
-        destinationAddress: bookingData.destinationAddress
-          ? `${bookingData.destinationAddress.street}, ${bookingData.destinationAddress.suburb} ${bookingData.destinationAddress.state} ${bookingData.destinationAddress.postcode}`
-          : "",
-        moveDate: bookingData.preferredDate ? formatDate(bookingData.preferredDate, "short") : "",
-        moveTime: bookingData.preferredTime,
-        quoteAmount: quoteTotal,
-        depositPaid: depositPaid,
-      })
-    } catch (error) {
-      console.error("Failed to send confirmations:", error)
+  const handleCustomTimeSubmit = () => {
+    if (customTimeValue.trim()) {
+      setBookingData((prev) => ({ ...prev, preferredTime: customTimeValue }))
+      setShowCustomTimeInput(false)
+      setShowTimePicker(false)
+      // Send message and proceed to next step
+      const dateStr = bookingData.preferredDate ? formatDate(bookingData.preferredDate, "short") : ""
+      sendMessage({ text: `Preferred date and time: ${dateStr} at ${customTimeValue}` })
+      // Show payment after time selection
+      setTimeout(() => {
+        setPaymentClientSecret("ready")
+        setShowPayment(true)
+      }, 500)
     }
-
-    setShowPayment(false)
-    setShowConfirmation(true)
-  }
-
-  // Handler for distance calculation callback
-  const handleDistanceCalculated = (distance: {
-    km: number
-    text: string
-    durationMinutes: number
-    durationText: string
-  }) => {
-    setRouteDistance(distance)
-  }
-
-  // Handler for price calculation callback
-  const handlePriceCalculated = (total: number, deposit: number) => {
-    setEstimatedPrice({ total, deposit })
-    // Update booking data with the price
-    setBookingData((prev) => ({
-      ...prev,
-      estimatedTotal: total,
-      depositAmount: deposit,
-    }))
   }
 
   // Render service picker
@@ -629,124 +544,52 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
   )
 
   // Render Address Input
-  const renderAddressInput = () => (
-    <div className="mx-2 sm:mx-4 my-2 space-y-3">
-      {/* Header */}
-      <div className="flex items-center gap-2 mb-3">
-        <MapPin className="h-5 w-5 text-blue-500 flex-shrink-0" />
-        <p className="font-medium text-foreground text-sm sm:text-base">
-          {showAddressInput === "origin" ? "Moving FROM" : "Moving TO"}
-        </p>
-      </div>
+  const renderAddressInput = () => {
+    const originAddress = bookingData.originAddress
+    const destAddress = bookingData.destinationAddress
 
-      {/* Address Autocomplete Search */}
-      <AddressAutocomplete
-        value={addressSearchQuery}
-        onChange={setAddressSearchQuery}
-        onAddressSelect={handleAddressAutoComplete}
-        placeholder={
-          showAddressInput === "origin" ? "Start typing suburb or postcode..." : "Start typing suburb or postcode..."
-        }
-        className="w-full"
-      />
+    return (
+      <div className="mx-2 sm:mx-4 my-2">
+        {showAddressInput === "destination" && originAddress?.fullAddress && (
+          <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+              <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+              <span className="text-sm font-medium">Pickup Address Confirmed</span>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1 ml-6">{originAddress.fullAddress}</p>
+          </div>
+        )}
 
-      {/* Selected Location */}
-      {(addressInput.suburb || addressInput.fullAddress) && (
-        <div className="bg-muted/50 rounded-lg p-3 mb-3">
-          <p className="text-xs text-muted-foreground mb-1">Selected location:</p>
-          <p className="text-sm font-medium text-foreground">
-            {addressInput.suburb
-              ? `${addressInput.suburb}, ${addressInput.state || ""}${addressInput.postcode ? `, ${addressInput.postcode}` : ""}`
-              : addressInput.fullAddress}
+        {/* Header */}
+        <div className="flex items-center gap-2 mb-4">
+          <MapPin className="h-5 w-5 text-blue-500 flex-shrink-0" />
+          <p className="font-medium text-foreground text-sm sm:text-base">
+            {showAddressInput === "origin" ? "Moving FROM" : "Moving TO"}
           </p>
         </div>
-      )}
 
-      {/* Street Address Dropdown */}
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-foreground">
-          Street Address <span className="text-destructive">*</span>
-        </label>
-        <StreetAutocomplete
-          value={addressInput.street}
-          onChange={(street) => setAddressInput((prev) => ({ ...prev, street }))}
-          onStreetSelect={(data) => {
-            console.log("[v0] Street selected with data:", data)
-            setAddressInput((prev) => ({
-              ...prev,
-              street: data.street,
-              fullAddress: data.fullAddress || prev.fullAddress,
-              lat: data.lat ?? prev.lat,
-              lng: data.lng ?? prev.lng,
-              // Update postcode if provided from street selection
-              postcode: data.postcode || prev.postcode,
-              // Update suburb and state if provided and not already set
-              suburb: data.suburb || prev.suburb,
-              state: data.state || prev.state,
-            }))
+        {/* Unified Address Input */}
+        <UnifiedAddressInput
+          key={showAddressInput}
+          label={showAddressInput === "origin" ? "Enter your pickup address" : "Enter your delivery address"}
+          placeholder="Start typing your full address (e.g. 123 Main St, Richmond VIC)"
+          confirmButtonText={showAddressInput === "origin" ? "Confirm Pickup Address" : "Confirm Delivery Address"}
+          onAddressConfirmed={(address) => {
+            console.log("[v0] Address confirmed from UnifiedAddressInput:", address)
+            handleAddressSubmit(showAddressInput!, {
+              street: address.street,
+              suburb: address.suburb,
+              state: address.state,
+              postcode: address.postcode,
+              fullAddress: address.fullAddress,
+              lat: address.lat,
+              lng: address.lng,
+            })
           }}
-          suburb={addressInput.suburb}
-          state={addressInput.state}
-          postcode={addressInput.postcode}
-          placeholder="Start typing your street address..."
-          autoFocus
-        />
-        <p className="text-xs text-muted-foreground">
-          Type your street number and name - suggestions will appear as you type
-        </p>
-      </div>
-
-      {/* State Dropdown */}
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-foreground">State</label>
-        <select
-          value={addressInput.state}
-          onChange={(e) => setAddressInput((prev) => ({ ...prev, state: e.target.value }))}
-          className="flex h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
-        >
-          <option value="VIC">VIC</option>
-          <option value="NSW">NSW</option>
-          <option value="QLD">QLD</option>
-          <option value="SA">SA</option>
-          <option value="WA">WA</option>
-          <option value="TAS">TAS</option>
-          <option value="NT">NT</option>
-          <option value="ACT">ACT</option>
-        </select>
-      </div>
-
-      {/* Postcode Input */}
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-foreground">Postcode</label>
-        <Input
-          value={addressInput.postcode}
-          onChange={(e) => setAddressInput((prev) => ({ ...prev, postcode: e.target.value }))}
-          placeholder="Postcode"
-          maxLength={4}
-          className="bg-background text-foreground text-sm"
         />
       </div>
-
-      {/* Submit Button */}
-      <Button
-        onClick={() => handleAddressSubmit(showAddressInput!)}
-        className="w-full bg-blue-500 hover:bg-blue-600 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-        disabled={!addressInput.street || !addressInput.suburb}
-      >
-        {showAddressInput === "origin" ? "Confirm Pickup Address" : "Confirm Delivery Address"}
-      </Button>
-
-      {/* Street Address Input Validation */}
-      {!addressInput.street && (
-        <p className="text-xs text-center text-amber-500">Please enter your street address above to continue</p>
-      )}
-
-      {/* Address Not Found Message */}
-      <p className="text-xs text-center text-muted-foreground">
-        Can't find your address? Type it in the search box and we'll help you.
-      </p>
-    </div>
-  )
+    )
+  }
 
   // Render Date Picker
   const renderDatePicker = () => {
@@ -802,7 +645,9 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     const handleDayClick = (day: number) => {
       if (!isDateDisabled(day)) {
         const selectedDate = new Date(currentYear, currentMonth, day)
-        handleDateSelect(selectedDate)
+        setBookingData((prev) => ({ ...prev, preferredDate: selectedDate }))
+        setShowDatePicker(false)
+        setTimeout(() => setShowTimePicker(true), 500)
       }
     }
 
@@ -872,19 +717,51 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
       <p className="text-xs text-muted-foreground mb-2">
         {bookingData.preferredDate && formatDate(bookingData.preferredDate, "short")}
       </p>
-      <div className="flex flex-wrap gap-2">
-        {["7:00 AM - 12:00 PM", "12:00 PM - 5:00 PM", "Custom Time"].map((time) => (
+
+      {showCustomTimeInput ? (
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <Input
+              type="text"
+              placeholder="e.g., 9:00 AM or 2:30 PM"
+              value={customTimeValue}
+              onChange={(e) => setCustomTimeValue(e.target.value)}
+              className="flex-1 text-sm"
+              autoFocus
+            />
+            <Button
+              size="sm"
+              onClick={handleCustomTimeSubmit}
+              disabled={!customTimeValue.trim()}
+              className="bg-primary text-primary-foreground"
+            >
+              Confirm
+            </Button>
+          </div>
           <Button
-            key={time}
-            variant="outline"
+            variant="ghost"
             size="sm"
-            className="text-xs bg-transparent"
-            onClick={() => handleTimeSelect(time)}
+            className="text-xs text-muted-foreground"
+            onClick={() => setShowCustomTimeInput(false)}
           >
-            {time}
+            ← Back to time slots
           </Button>
-        ))}
-      </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {["7:00 AM - 12:00 PM", "12:00 PM - 5:00 PM", "Custom Time"].map((time) => (
+            <Button
+              key={time}
+              variant="outline"
+              size="sm"
+              className="text-xs bg-transparent"
+              onClick={() => handleTimeSelect(time)}
+            >
+              {time}
+            </Button>
+          ))}
+        </div>
+      )}
     </div>
   )
 
@@ -923,7 +800,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
                 </div>
               }
             >
-              <StripeCheckoutWrapper clientSecret={paymentClientSecret} onComplete={handlePaymentComplete} />
+              <StripeCheckoutWrapper clientSecret={paymentClientSecret} onComplete={() => {}} />
             </Suspense>
           ) : (
             <div className="text-center py-4">
@@ -969,7 +846,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     if (!originCoords.lat || !destCoords.lat) return null
 
     return (
-      <div className="mx-2 sm:mx-4 my-2 space-y-3">
+      <div className="mx-2 sm:mx-4 my-2 space-y-3 sm:space-y-4">
         {/* Route Map */}
         <AddressMap
           originLat={originCoords.lat}
@@ -979,16 +856,17 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
           originLabel={originCoords.label}
           destinationLabel={destCoords.label}
           showRoute={true}
-          onDistanceCalculated={handleDistanceCalculated}
+          onDistanceCalculated={(distance) => setRouteDistance(distance)}
+          onRouteStatusChange={(status) => setRouteStatus(status)}
         />
 
-        {/* Price Estimate */}
-        {routeDistance && (
+        {routeDistance && routeStatus === "success" && (
           <PriceEstimate
             distanceKm={routeDistance.km}
             squareMeters={bookingData.squareMeters}
             moveDate={bookingData.preferredDate}
-            onPriceCalculated={handlePriceCalculated}
+            onPriceCalculated={(price) => setEstimatedPrice(price)}
+            isReady={isReadyForPricing}
           />
         )}
       </div>
@@ -1029,7 +907,8 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
 
       if (shouldShowPayment && !showPayment && !paymentClientSecret) {
         // Auto-trigger payment form
-        initiatePayment()
+        setPaymentClientSecret("dummy-client-secret")
+        setShowPayment(true)
       }
     }
   }, [messages, showPayment, paymentClientSecret])
@@ -1059,6 +938,8 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     setShowServicePicker(true)
     setShowDatePicker(false)
     setShowTimePicker(false)
+    setShowCustomTimeInput(false)
+    setCustomTimeValue("")
     setShowABNLookup(false)
     setShowAddressInput(null)
     setShowPayment(false)
@@ -1071,7 +952,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     setAddressInput({
       street: "",
       suburb: "",
-      state: "VIC",
+      state: "",
       postcode: "",
       fullAddress: "",
       lat: undefined,
