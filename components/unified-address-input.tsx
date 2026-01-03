@@ -56,6 +56,7 @@ export function UnifiedAddressInput({
   const inputRef = useRef<HTMLInputElement>(null)
   const suggestionsRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<NodeJS.Timeout>()
+  const lastQueryRef = useRef<string>("")
 
   // Fetch predictions when input changes
   const fetchPredictions = useCallback(
@@ -64,6 +65,12 @@ export function UnifiedAddressInput({
         setPredictions([])
         return
       }
+
+      const normalizedInput = input.toLowerCase().trim()
+      if (normalizedInput === lastQueryRef.current) {
+        return // Skip duplicate query
+      }
+      lastQueryRef.current = normalizedInput
 
       setIsLoading(true)
       setValidationError(null)
@@ -79,15 +86,6 @@ export function UnifiedAddressInput({
           setShowSuggestions(true)
         } else {
           setPredictions([])
-          // Try without types=address for broader results
-          const fallbackResponse = await fetch(
-            `/api/places/autocomplete?input=${encodeURIComponent(input)}&sessionToken=${sessionToken}`,
-          )
-          const fallbackData = await fallbackResponse.json()
-          if (fallbackData.predictions) {
-            setPredictions(fallbackData.predictions)
-            setShowSuggestions(true)
-          }
         }
       } catch (error) {
         console.error("[v0] Error fetching predictions:", error)
@@ -105,14 +103,13 @@ export function UnifiedAddressInput({
       clearTimeout(debounceRef.current)
     }
 
-    // Clear selected address when user starts typing again
     if (selectedAddress && inputValue !== selectedAddress.fullAddress) {
       setSelectedAddress(null)
     }
 
     debounceRef.current = setTimeout(() => {
       fetchPredictions(inputValue)
-    }, 300)
+    }, 400)
 
     return () => {
       if (debounceRef.current) {

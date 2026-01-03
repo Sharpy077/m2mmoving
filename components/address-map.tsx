@@ -4,6 +4,17 @@ import { useEffect, useRef, useState, useCallback } from "react"
 import { MapPin, Loader2, Clock, Route, AlertCircle } from "lucide-react"
 import type * as L from "leaflet"
 
+const clientDistanceCache = new Map<
+  string,
+  {
+    km: number
+    text: string
+    durationMinutes: number
+    durationText: string
+    routeGeometry?: number[][]
+  }
+>()
+
 interface AddressMapProps {
   originLat?: number
   originLng?: number
@@ -191,12 +202,42 @@ export function AddressMap({
   const calculateRouteDistance = useCallback(async () => {
     if (!originLat || !originLng || !destinationLat || !destinationLng) return
 
-    const coordsKey = `${originLat.toFixed(4)},${originLng.toFixed(4)}-${destinationLat.toFixed(4)},${destinationLng.toFixed(4)}`
-    if (calculatedCoordsRef.current === coordsKey) {
-      return // Already calculated, skip
-    }
-    calculatedCoordsRef.current = coordsKey
+    const coordsKey = `${originLat.toFixed(2)},${originLng.toFixed(2)}-${destinationLat.toFixed(2)},${destinationLng.toFixed(2)}`
 
+    // Check if already calculated
+    if (calculatedCoordsRef.current === coordsKey) {
+      return
+    }
+
+    const cachedResult = clientDistanceCache.get(coordsKey)
+    if (cachedResult) {
+      console.log("[v0] Client distance cache HIT:", coordsKey)
+      calculatedCoordsRef.current = coordsKey
+      setDistanceKm(cachedResult.km)
+      setDistance(cachedResult.text)
+      setDurationMinutes(cachedResult.durationMinutes)
+      setDuration(cachedResult.durationText)
+      onRouteStatusChange?.("success")
+      onDistanceCalculated?.(cachedResult)
+
+      // Draw cached route if available
+      if (cachedResult.routeGeometry && mapInstanceRef.current) {
+        const L = (window as unknown as { L: typeof import("leaflet") }).L
+        if (L && routePolylineRef.current) {
+          routePolylineRef.current.remove()
+        }
+        if (L) {
+          routePolylineRef.current = L.polyline(cachedResult.routeGeometry, {
+            color: "#3b82f6",
+            weight: 4,
+            opacity: 0.8,
+          }).addTo(mapInstanceRef.current)
+        }
+      }
+      return
+    }
+
+    calculatedCoordsRef.current = coordsKey
     setIsCalculatingRoute(true)
     setRouteError(null)
     onRouteStatusChange?.("calculating")
@@ -221,6 +262,14 @@ export function AddressMap({
         setDistance(data.distanceText)
         setDurationMinutes(data.durationMinutes)
         setDuration(data.durationText)
+
+        clientDistanceCache.set(coordsKey, {
+          km: data.distanceKm,
+          text: data.distanceText,
+          durationMinutes: data.durationMinutes,
+          durationText: data.durationText,
+          routeGeometry: data.routeGeometry,
+        })
 
         if (data.routeGeometry && data.routeGeometry.length > 0 && mapInstanceRef.current) {
           const L = (window as unknown as { L: typeof import("leaflet") }).L
@@ -253,8 +302,9 @@ export function AddressMap({
           })
         }
       } else {
+        // Fallback to haversine
         const d = calculateHaversineDistance(originLat, originLng, destinationLat, destinationLng)
-        const mins = Math.round((d / 50) * 60)
+        const mins = Math.round((d / 60) * 60)
         setDistanceKm(d)
         setDistance(`${Math.round(d)} km`)
         setDurationMinutes(mins)
@@ -273,7 +323,7 @@ export function AddressMap({
     } catch (error) {
       console.error("[v0] Error calculating route:", error)
       const d = calculateHaversineDistance(originLat, originLng, destinationLat, destinationLng)
-      const mins = Math.round((d / 50) * 60)
+      const mins = Math.round((d / 60) * 60)
       setDistanceKm(d)
       setDistance(`${Math.round(d)} km`)
       setDurationMinutes(mins)
@@ -304,7 +354,7 @@ export function AddressMap({
 
   useEffect(() => {
     if (hasBoth && originLat && originLng && destinationLat && destinationLng) {
-      const coordsKey = `${originLat.toFixed(4)},${originLng.toFixed(4)}-${destinationLat.toFixed(4)},${destinationLng.toFixed(4)}`
+      const coordsKey = `${originLat.toFixed(2)},${originLng.toFixed(2)}-${destinationLat.toFixed(2)},${destinationLng.toFixed(2)}`
       if (calculatedCoordsRef.current !== coordsKey) {
         calculateRouteDistance()
       }

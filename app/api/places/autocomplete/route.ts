@@ -3,6 +3,10 @@ import { checkApiSecurity } from "@/lib/api-security"
 
 // Google Places Autocomplete API proxy
 // This keeps the API key secure on the server side
+const autocompleteCache = new Map<string, { data: unknown; timestamp: number }>()
+const AUTOCOMPLETE_CACHE_TTL = 30 * 24 * 60 * 60 * 1000 // 30 days
+const MAX_AUTOCOMPLETE_CACHE = 500
+
 export async function GET(request: NextRequest) {
   const security = await checkApiSecurity(request, {
     rateLimit: { windowMs: 60000, maxRequests: 60 }, // 60 requests per minute
@@ -22,16 +26,24 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Input is required" }, { status: 400 })
   }
 
+  const cacheKey = `${input.toLowerCase().trim()}-${types || "all"}`
+  const cached = autocompleteCache.get(cacheKey)
+  if (cached && Date.now() - cached.timestamp < AUTOCOMPLETE_CACHE_TTL) {
+    console.log("[v0] Autocomplete cache HIT:", cacheKey)
+    return NextResponse.json(cached.data)
+  }
+
   const apiKey = process.env.GOOGLE_PLACES_API_KEY
 
   // If no API key, return mock suggestions for development
   if (!apiKey) {
     console.log("[v0] No GOOGLE_PLACES_API_KEY found, using mock data")
-    return NextResponse.json({
+    const mockResponse = {
       predictions: getMockPredictions(input, types),
       status: "OK",
       _source: "mock",
-    })
+    }
+    return NextResponse.json(mockResponse)
   }
 
   try {
@@ -89,11 +101,21 @@ export async function GET(request: NextRequest) {
         },
       }))
 
-      return NextResponse.json({
+      const result = {
         predictions,
         status: "OK",
         _source: "google",
-      })
+      }
+
+      if (predictions.length > 0) {
+        if (autocompleteCache.size >= MAX_AUTOCOMPLETE_CACHE) {
+          const keysToRemove = Array.from(autocompleteCache.keys()).slice(0, 50)
+          keysToRemove.forEach((key) => autocompleteCache.delete(key))
+        }
+        autocompleteCache.set(cacheKey, { data: result, timestamp: Date.now() })
+      }
+
+      return NextResponse.json(result)
     }
 
     // Handle API errors
