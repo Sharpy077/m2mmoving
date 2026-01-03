@@ -439,13 +439,45 @@ export function UnifiedAddressInput({
     inputRef.current?.focus()
   }
 
-  const handleConfirm = () => {
+  const geocodeAddress = async (address: string): Promise<{ lat: number; lng: number } | null> => {
+    try {
+      const response = await fetch("/api/places/geocode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address }),
+      })
+      if (!response.ok) return null
+      const data = await response.json()
+      if (data.lat && data.lng) {
+        return { lat: data.lat, lng: data.lng }
+      }
+      return null
+    } catch {
+      return null
+    }
+  }
+
+  const handleConfirm = async () => {
     if (selectedAddress && !validationError) {
+      // If selected address has no coordinates, try to geocode it
+      if (!selectedAddress.lat || !selectedAddress.lng) {
+        const coords = await geocodeAddress(selectedAddress.fullAddress || inputValue)
+        if (coords) {
+          onAddressConfirmed({ ...selectedAddress, lat: coords.lat, lng: coords.lng })
+          return
+        }
+      }
       onAddressConfirmed(selectedAddress)
     } else if (useManualEntry && inputValue.length >= 5) {
       const manualAddress = parseFromDescription(inputValue)
       if (!manualAddress.fullAddress) {
         manualAddress.fullAddress = inputValue
+      }
+      // Geocode the manual address to get coordinates
+      const coords = await geocodeAddress(manualAddress.fullAddress)
+      if (coords) {
+        manualAddress.lat = coords.lat
+        manualAddress.lng = coords.lng
       }
       onAddressConfirmed(manualAddress)
     }
