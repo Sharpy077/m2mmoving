@@ -37,6 +37,12 @@ import {
   ChevronLeft,
   ChevronRight,
   RotateCcw,
+  Package,
+  Zap,
+  ClipboardList,
+  FileText,
+  Shield,
+  CheckCircle,
 } from "lucide-react"
 import { formatDate } from "@/utils/date-utils" // Import formatDate function
 import { AddressMap } from "@/components/address-map"
@@ -92,7 +98,7 @@ interface BookingData {
   destinationAddress: AddressInfoWithCoords | null
   preferredDate: Date | null
   preferredTime: string
-  inventory: string
+  inventory: string // Changed to string for summary
   specialRequirements: string
   contactName: string
   contactEmail: string
@@ -104,6 +110,47 @@ interface BookingData {
   squareMeters?: number
   distanceKm?: number
   durationMinutes?: number
+}
+
+interface InventoryItem {
+  id: string
+  name: string
+  quantity: number
+  category: string
+}
+
+// Office relocation inventory categories
+const OFFICE_INVENTORY_CATEGORIES = {
+  furniture: {
+    label: "Office Furniture",
+    items: [
+      { id: "desk", name: "Desks", icon: "🖥️" },
+      { id: "chair", name: "Office Chairs", icon: "🪑" },
+      { id: "cabinet", name: "Filing Cabinets", icon: "🗄️" },
+      { id: "bookshelf", name: "Bookshelves", icon: "📚" },
+      { id: "table", name: "Meeting Tables", icon: "📋" },
+      { id: "reception", name: "Reception Desk", icon: "🛎️" },
+    ],
+  },
+  equipment: {
+    label: "IT & Equipment",
+    items: [
+      { id: "computer", name: "Desktop Computers", icon: "🖥️" },
+      { id: "monitor", name: "Monitors", icon: "🖵" },
+      { id: "printer", name: "Printers/Copiers", icon: "🖨️" },
+      { id: "server", name: "Server Equipment", icon: "🗄️" },
+      { id: "phone", name: "Phone Systems", icon: "📞" },
+    ],
+  },
+  storage: {
+    label: "Storage & Boxes",
+    items: [
+      { id: "boxes_small", name: "Small Boxes", icon: "📦" },
+      { id: "boxes_medium", name: "Medium Boxes", icon: "📦" },
+      { id: "boxes_large", name: "Large Boxes", icon: "📦" },
+      { id: "archive", name: "Archive Boxes", icon: "🗃️" },
+    ],
+  },
 }
 
 interface PricingBreakdown {
@@ -162,6 +209,12 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
   const [showAddressInput, setShowAddressInput] = useState<"origin" | "destination" | null>(null)
   const [showPayment, setShowPayment] = useState(false)
   const [showConfirmation, setShowConfirmation] = useState(false)
+  const [showInventory, setShowInventory] = useState(false)
+  const [showQuoteConfirmation, setShowQuoteConfirmation] = useState(false)
+  const [inventoryItems, setInventoryItems] = useState<Record<string, number>>({})
+  const [specialRequirements, setSpecialRequirements] = useState("")
+  const [quoteOption, setQuoteOption] = useState<"instant" | "onsite" | null>(null)
+
   const [abnSearchQuery, setAbnSearchQuery] = useState("")
   const [abnSearchResults, setAbnSearchResults] = useState<BusinessInfo[]>([])
   const [isSearchingABN, setIsSearchingABN] = useState(false)
@@ -238,7 +291,9 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
       !showDatePicker &&
       !showTimePicker &&
       !showPayment &&
-      !showConfirmation
+      !showConfirmation &&
+      !showInventory && // Added check for inventory
+      !showQuoteConfirmation // Added check for quote confirmation
     ) {
       // Small delay to ensure DOM is ready
       const timer = setTimeout(() => {
@@ -255,6 +310,8 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     showTimePicker,
     showPayment,
     showConfirmation,
+    showInventory, // Added
+    showQuoteConfirmation, // Added
   ])
 
   useEffect(() => {
@@ -375,11 +432,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
       // Send message and proceed to next step
       const dateStr = bookingData.preferredDate ? formatDate(bookingData.preferredDate, "short") : ""
       sendMessage({ text: `Preferred date and time: ${dateStr} at ${time}` })
-      // Show payment after time selection
-      setTimeout(() => {
-        setPaymentClientSecret("ready")
-        setShowPayment(true)
-      }, 500)
+      setTimeout(() => setShowInventory(true), 500)
     }
   }
 
@@ -391,11 +444,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
       // Send message and proceed to next step
       const dateStr = bookingData.preferredDate ? formatDate(bookingData.preferredDate, "short") : ""
       sendMessage({ text: `Preferred date and time: ${dateStr} at ${customTimeValue}` })
-      // Show payment after time selection
-      setTimeout(() => {
-        setPaymentClientSecret("ready")
-        setShowPayment(true)
-      }, 500)
+      setTimeout(() => setShowInventory(true), 500)
     }
   }
 
@@ -654,6 +703,13 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
   const renderDatePicker = () => {
     const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate()
     const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay()
+
+    // Calculate the number of empty cells before the first day
+    const emptyCells = Array(firstDayOfMonth).fill(null)
+
+    // Create an array of days, padding with nulls at the start
+    const days = [...emptyCells, ...Array.from({ length: daysInMonth }, (_, i) => i + 1)]
+
     const monthNames = [
       "January",
       "February",
@@ -669,14 +725,6 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
       "December",
     ]
     const dayNames = ["S", "M", "T", "W", "T", "F", "S"]
-
-    const days: (number | null)[] = []
-    for (let i = 0; i < firstDayOfMonth; i++) {
-      days.push(null)
-    }
-    for (let i = 1; i <= daysInMonth; i++) {
-      days.push(i)
-    }
 
     const handlePrevMonth = () => {
       if (currentMonth === 0) {
@@ -698,7 +746,10 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
 
     const isDateDisabled = (day: number) => {
       const date = new Date(currentYear, currentMonth, day)
-      return date < new Date()
+      // Disable past dates, and dates within the current month that are earlier than today
+      const today = new Date()
+      today.setHours(0, 0, 0, 0) // Normalize today's date
+      return date < today
     }
 
     const handleDayClick = (day: number) => {
@@ -1036,13 +1087,377 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
         messageText.toLowerCase().includes(trigger.toLowerCase()),
       )
 
-      if (shouldShowPayment && !showPayment && !paymentClientSecret) {
+      // Check for on-site quote booking confirmation
+      const onsiteBookingConfirmed = messageText.toLowerCase().includes("booking an on-site assessment")
+
+      if (onsiteBookingConfirmed && !showConfirmation) {
+        setShowConfirmation(true)
+      } else if (shouldShowPayment && !showPayment && !paymentClientSecret) {
         // Auto-trigger payment form
         setPaymentClientSecret("dummy-client-secret")
         setShowPayment(true)
       }
     }
-  }, [messages, showPayment, paymentClientSecret])
+  }, [messages, showPayment, paymentClientSecret, showConfirmation])
+
+  const handleInventoryChange = (itemId: string, quantity: number) => {
+    setInventoryItems((prev) => ({
+      ...prev,
+      [itemId]: Math.max(0, quantity),
+    }))
+  }
+
+  const handleQuoteOptionSelect = (option: "instant" | "onsite") => {
+    setQuoteOption(option)
+    if (option === "onsite") {
+      // Request on-site quote
+      const inventorySummary = Object.entries(inventoryItems)
+        .filter(([, qty]) => qty > 0)
+        .map(([id, qty]) => {
+          const allItems = [
+            ...OFFICE_INVENTORY_CATEGORIES.furniture.items,
+            ...OFFICE_INVENTORY_CATEGORIES.equipment.items,
+            ...OFFICE_INVENTORY_CATEGORIES.storage.items,
+          ]
+          const item = allItems.find((i) => i.id === id)
+          return `${qty}x ${item?.name || id}`
+        })
+        .join(", ")
+
+      sendMessage({
+        text: `I'd like to request an on-site quote. Items: ${inventorySummary || "To be assessed on-site"}. Special requirements: ${specialRequirements || "None"}`,
+      })
+      setShowInventory(false)
+      // Show on-site booking confirmation
+      setTimeout(() => {
+        sendMessage({
+          text: "I'd like to book an on-site assessment for an accurate quote.",
+        })
+      }, 500)
+    }
+  }
+
+  const handleInventorySubmit = () => {
+    // Build inventory summary
+    const inventorySummary = Object.entries(inventoryItems)
+      .filter(([, qty]) => qty > 0)
+      .map(([id, qty]) => {
+        const allItems = [
+          ...OFFICE_INVENTORY_CATEGORIES.furniture.items,
+          ...OFFICE_INVENTORY_CATEGORIES.equipment.items,
+          ...OFFICE_INVENTORY_CATEGORIES.storage.items,
+        ]
+        const item = allItems.find((i) => i.id === id)
+        return `${qty}x ${item?.name || id}`
+      })
+      .join(", ")
+
+    // Update booking data
+    setBookingData((prev) => ({
+      ...prev,
+      inventory: inventorySummary,
+      specialRequirements: specialRequirements,
+    }))
+
+    // Send message
+    sendMessage({
+      text: `Items to move: ${inventorySummary || "Standard office contents"}. ${specialRequirements ? `Special requirements: ${specialRequirements}` : ""}`,
+    })
+
+    setShowInventory(false)
+    setTimeout(() => setShowQuoteConfirmation(true), 500)
+  }
+
+  const handleQuoteConfirmation = (proceed: boolean) => {
+    setShowQuoteConfirmation(false)
+    if (proceed) {
+      sendMessage({ text: "Yes, I'd like to proceed with this quote and pay the deposit." })
+      // Show payment form
+      setTimeout(() => {
+        setPaymentClientSecret("ready")
+        setShowPayment(true)
+      }, 500)
+    } else {
+      sendMessage({ text: "I'd like to discuss the quote further or request changes." })
+    }
+  }
+
+  const renderInventory = () => (
+    <Card className="m-4 border-orange-200 bg-white dark:bg-zinc-900 shadow-lg">
+      <CardContent className="p-4">
+        {/* Header */}
+        <div className="flex items-center gap-2 mb-4 pb-3 border-b border-orange-200">
+          <Package className="h-5 w-5 text-orange-500" />
+          <p className="font-semibold text-foreground text-lg">What are you moving?</p>
+        </div>
+
+        {/* Quote Option Selection */}
+        {!quoteOption && (
+          <div className="mb-4">
+            <p className="text-sm text-muted-foreground mb-3">Choose how you'd like to get your quote:</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Button
+                variant="outline"
+                className="h-auto p-4 flex flex-col items-center gap-2 border-orange-300 hover:bg-orange-50 dark:hover:bg-orange-950/20 bg-transparent"
+                onClick={() => setQuoteOption("instant")}
+              >
+                <Zap className="h-6 w-6 text-orange-500" />
+                <span className="font-medium">Instant Quote</span>
+                <span className="text-xs text-muted-foreground text-center">
+                  Tell us what you're moving for an immediate estimate
+                </span>
+              </Button>
+              <Button
+                variant="outline"
+                className="h-auto p-4 flex flex-col items-center gap-2 border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/20 bg-transparent"
+                onClick={() => handleQuoteOptionSelect("onsite")}
+              >
+                <ClipboardList className="h-6 w-6 text-blue-500" />
+                <span className="font-medium">On-Site Quote</span>
+                <span className="text-xs text-muted-foreground text-center">
+                  Book a site visit ($99, refunded if you book)
+                </span>
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Instant Quote - Inventory Selection */}
+        {quoteOption === "instant" && (
+          <>
+            {/* Furniture */}
+            <div className="mb-4">
+              <p className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                <Building2 className="h-4 w-4" />
+                {OFFICE_INVENTORY_CATEGORIES.furniture.label}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {OFFICE_INVENTORY_CATEGORIES.furniture.items.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between bg-zinc-50 dark:bg-zinc-800 rounded-lg p-2"
+                  >
+                    <span className="text-sm flex items-center gap-1">
+                      <span>{item.icon}</span>
+                      <span className="truncate">{item.name}</span>
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 w-6 p-0"
+                        onClick={() => handleInventoryChange(item.id, (inventoryItems[item.id] || 0) - 1)}
+                      >
+                        -
+                      </Button>
+                      <span className="w-6 text-center text-sm">{inventoryItems[item.id] || 0}</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 w-6 p-0"
+                        onClick={() => handleInventoryChange(item.id, (inventoryItems[item.id] || 0) + 1)}
+                      >
+                        +
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* IT & Equipment */}
+            <div className="mb-4">
+              <p className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                <Monitor className="h-4 w-4" />
+                {OFFICE_INVENTORY_CATEGORIES.equipment.label}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {OFFICE_INVENTORY_CATEGORIES.equipment.items.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between bg-zinc-50 dark:bg-zinc-800 rounded-lg p-2"
+                  >
+                    <span className="text-sm flex items-center gap-1">
+                      <span>{item.icon}</span>
+                      <span className="truncate">{item.name}</span>
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 w-6 p-0"
+                        onClick={() => handleInventoryChange(item.id, (inventoryItems[item.id] || 0) - 1)}
+                      >
+                        -
+                      </Button>
+                      <span className="w-6 text-center text-sm">{inventoryItems[item.id] || 0}</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 w-6 p-0"
+                        onClick={() => handleInventoryChange(item.id, (inventoryItems[item.id] || 0) + 1)}
+                      >
+                        +
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Storage */}
+            <div className="mb-4">
+              <p className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                <Package className="h-4 w-4" />
+                {OFFICE_INVENTORY_CATEGORIES.storage.label}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {OFFICE_INVENTORY_CATEGORIES.storage.items.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between bg-zinc-50 dark:bg-zinc-800 rounded-lg p-2"
+                  >
+                    <span className="text-sm flex items-center gap-1">
+                      <span>{item.icon}</span>
+                      <span className="truncate">{item.name}</span>
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 w-6 p-0"
+                        onClick={() => handleInventoryChange(item.id, (inventoryItems[item.id] || 0) - 1)}
+                      >
+                        -
+                      </Button>
+                      <span className="w-6 text-center text-sm">{inventoryItems[item.id] || 0}</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 w-6 p-0"
+                        onClick={() => handleInventoryChange(item.id, (inventoryItems[item.id] || 0) + 1)}
+                      >
+                        +
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Special Requirements */}
+            <div className="mb-4">
+              <p className="text-sm font-medium text-foreground mb-2">Special Requirements (Optional)</p>
+              <textarea
+                className="w-full p-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm resize-none"
+                rows={2}
+                placeholder="Fragile items, after-hours access, specific equipment needed..."
+                value={specialRequirements}
+                onChange={(e) => setSpecialRequirements(e.target.value)}
+              />
+            </div>
+
+            {/* Submit Button */}
+            <Button className="w-full bg-orange-500 hover:bg-orange-600 text-white" onClick={handleInventorySubmit}>
+              Get My Quote
+            </Button>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+
+  const renderQuoteConfirmation = () => {
+    const pricing = pricingBreakdown || {
+      baseCharge: 150,
+      distanceCharge: 0,
+      labourCharge: 340,
+      timeCharge: 90,
+      total: bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580,
+      deposit: (bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580) * 0.5,
+      balance: (bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580) * 0.5,
+    }
+
+    return (
+      <Card className="m-4 border-orange-200 bg-white dark:bg-zinc-900 shadow-lg">
+        <CardContent className="p-4">
+          {/* Header */}
+          <div className="flex items-center gap-2 mb-4 pb-3 border-b border-orange-200">
+            <FileText className="h-5 w-5 text-orange-500" />
+            <p className="font-semibold text-foreground text-lg">Your Quote is Ready!</p>
+          </div>
+
+          {/* Quote Summary */}
+          <div className="bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/30 rounded-lg p-4 mb-4 border border-orange-200 dark:border-orange-800">
+            <div className="text-center mb-4">
+              <p className="text-sm text-muted-foreground mb-1">Total Quote</p>
+              <p className="text-3xl font-bold text-orange-600 dark:text-orange-400">${pricing.total.toFixed(2)}</p>
+            </div>
+
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Base Call-out Fee</span>
+                <span className="font-medium">${pricing.baseCharge.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Distance ({routeDistance?.km.toFixed(0) || 0} km)</span>
+                <span className="font-medium">${pricing.distanceCharge.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Labour (2 movers)</span>
+                <span className="font-medium">${pricing.labourCharge.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Vehicle & Equipment</span>
+                <span className="font-medium">${pricing.timeCharge.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Deposit Info */}
+          <div className="bg-green-50 dark:bg-green-950/30 rounded-lg p-3 mb-4 border border-green-200 dark:border-green-800">
+            <div className="flex items-center gap-2 mb-2">
+              <CheckCircle className="h-5 w-5 text-green-600" />
+              <span className="font-medium text-green-700 dark:text-green-400">Secure Your Booking</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Pay a 50% deposit of <span className="font-bold text-green-600">${pricing.deposit.toFixed(2)}</span> now.
+              Balance of ${pricing.balance.toFixed(2)} due on moving day.
+            </p>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="space-y-2">
+            <Button
+              className="w-full bg-orange-500 hover:bg-orange-600 text-white py-6 text-lg"
+              onClick={() => handleQuoteConfirmation(true)}
+            >
+              <CreditCard className="mr-2 h-5 w-5" />
+              Proceed to Payment
+            </Button>
+            <Button variant="outline" className="w-full bg-transparent" onClick={() => handleQuoteConfirmation(false)}>
+              I have questions about this quote
+            </Button>
+          </div>
+
+          {/* Trust Badges */}
+          <div className="mt-4 pt-4 border-t border-zinc-200 dark:border-zinc-700">
+            <div className="flex justify-center gap-4 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Shield className="h-3 w-3" /> $10M Insured
+              </span>
+              <span className="flex items-center gap-1">
+                <CheckCircle className="h-3 w-3" /> $0 Claims
+              </span>
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3" /> 24-48hr Response
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   const resetChat = useCallback(() => {
     // Clear messages
@@ -1075,6 +1490,11 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     setShowAddressInput(null)
     setShowPayment(false)
     setShowConfirmation(false)
+    setShowInventory(false)
+    setShowQuoteConfirmation(false)
+    setInventoryItems({})
+    setSpecialRequirements("")
+    setQuoteOption(null)
 
     // Reset search/input state
     setAbnSearchQuery("")
@@ -1164,6 +1584,8 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
             {!showAddressInput && originCoords.lat && destCoords.lat && renderRouteSummary()}
             {showDatePicker && renderDatePicker()}
             {showTimePicker && renderTimePicker()}
+            {showInventory && renderInventory()}
+            {showQuoteConfirmation && renderQuoteConfirmation()}
             {showPayment && renderPayment()}
             {showConfirmation && renderConfirmation()}
 
