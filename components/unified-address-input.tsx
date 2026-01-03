@@ -7,6 +7,75 @@ import { Button } from "@/components/ui/button"
 import { MapPin, Loader2, X, Navigation, CheckCircle2, AlertCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
+const CACHE_KEY = "mm_autocomplete_cache"
+const CACHE_VERSION = 1
+const CACHE_MAX_ENTRIES = 500 // Limit entries to prevent localStorage overflow
+const CACHE_TTL_DAYS = 30
+
+interface CacheEntry {
+  predictions: Prediction[]
+  timestamp: number
+}
+
+interface CacheData {
+  version: number
+  entries: Record<string, CacheEntry>
+}
+
+// Get cache from localStorage
+function getLocalCache(): CacheData {
+  if (typeof window === "undefined") return { version: CACHE_VERSION, entries: {} }
+
+  try {
+    const cached = localStorage.getItem(CACHE_KEY)
+    if (!cached) return { version: CACHE_VERSION, entries: {} }
+
+    const data = JSON.parse(cached) as CacheData
+
+    // Check version - clear cache if outdated
+    if (data.version !== CACHE_VERSION) {
+      localStorage.removeItem(CACHE_KEY)
+      return { version: CACHE_VERSION, entries: {} }
+    }
+
+    return data
+  } catch {
+    return { version: CACHE_VERSION, entries: {} }
+  }
+}
+
+// Save cache to localStorage
+function saveLocalCache(cache: CacheData): void {
+  if (typeof window === "undefined") return
+
+  try {
+    // Prune old entries if over limit
+    const entries = Object.entries(cache.entries)
+    if (entries.length > CACHE_MAX_ENTRIES) {
+      // Sort by timestamp, keep newest
+      entries.sort((a, b) => b[1].timestamp - a[1].timestamp)
+      cache.entries = Object.fromEntries(entries.slice(0, CACHE_MAX_ENTRIES))
+    }
+
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache))
+  } catch (e) {
+    // localStorage might be full - clear old data
+    console.warn("[v0] localStorage cache full, clearing old entries")
+    localStorage.removeItem(CACHE_KEY)
+  }
+}
+
+// Check if cache entry is still valid
+function isCacheValid(entry: CacheEntry): boolean {
+  const maxAge = CACHE_TTL_DAYS * 24 * 60 * 60 * 1000
+  return Date.now() - entry.timestamp < maxAge
+}
+
+// Normalize search key for cache
+function normalizeSearchKey(input: string): string {
+  return input.toLowerCase().trim().replace(/\s+/g, " ")
+}
+
 interface AddressData {
   street: string
   suburb: string
@@ -58,7 +127,6 @@ export function UnifiedAddressInput({
   const debounceRef = useRef<NodeJS.Timeout>()
   const lastQueryRef = useRef<string>("")
 
-  // Fetch predictions when input changes
   const fetchPredictions = useCallback(
     async (input: string) => {
       if (input.length < 3) {
@@ -66,11 +134,22 @@ export function UnifiedAddressInput({
         return
       }
 
-      const normalizedInput = input.toLowerCase().trim()
+      const normalizedInput = normalizeSearchKey(input)
       if (normalizedInput === lastQueryRef.current) {
         return // Skip duplicate query
       }
       lastQueryRef.current = normalizedInput
+
+      // Check localStorage cache first
+      const cache = getLocalCache()
+      const cachedEntry = cache.entries[normalizedInput]
+
+      if (cachedEntry && isCacheValid(cachedEntry)) {
+        // Cache hit - use cached predictions without API call
+        setPredictions(cachedEntry.predictions)
+        setShowSuggestions(cachedEntry.predictions.length > 0)
+        return
+      }
 
       setIsLoading(true)
       setValidationError(null)
@@ -84,8 +163,22 @@ export function UnifiedAddressInput({
         if (data.predictions && data.predictions.length > 0) {
           setPredictions(data.predictions)
           setShowSuggestions(true)
+
+          // Save to localStorage cache
+          cache.entries[normalizedInput] = {
+            predictions: data.predictions,
+            timestamp: Date.now(),
+          }
+          saveLocalCache(cache)
         } else {
           setPredictions([])
+
+          // Cache empty results too (prevents repeated failed lookups)
+          cache.entries[normalizedInput] = {
+            predictions: [],
+            timestamp: Date.now(),
+          }
+          saveLocalCache(cache)
         }
       } catch (error) {
         console.error("[v0] Error fetching predictions:", error)
@@ -97,7 +190,7 @@ export function UnifiedAddressInput({
     [sessionToken],
   )
 
-  // Debounced input handler
+  // Fetch predictions when input changes
   useEffect(() => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current)
