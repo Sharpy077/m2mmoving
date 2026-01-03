@@ -1,7 +1,17 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { checkApiSecurity } from "@/lib/api-security"
 
 // Google Places Details API (New) proxy
 export async function GET(request: NextRequest) {
+  const security = await checkApiSecurity(request, {
+    rateLimit: { windowMs: 60000, maxRequests: 30 }, // 30 requests per minute
+    validateOrigin: true,
+  })
+
+  if (!security.allowed) {
+    return security.response
+  }
+
   const searchParams = request.nextUrl.searchParams
   const placeId = searchParams.get("placeId")
   const sessionToken = searchParams.get("sessionToken")

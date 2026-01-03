@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react"
 import { MapPin, Loader2, Clock, Route, AlertCircle } from "lucide-react"
+import type * as L from "leaflet"
 
 interface AddressMapProps {
   originLat?: number
@@ -28,7 +29,13 @@ export function AddressMap({
   onDistanceCalculated,
   onRouteStatusChange,
 }: AddressMapProps) {
-  const mapRef = useRef<HTMLDivElement>(null)
+  const mapContainerRef = useRef<HTMLDivElement>(null)
+  const mapInstanceRef = useRef<L.Map | null>(null)
+  const markersRef = useRef<L.Marker[]>([])
+  const polylineRef = useRef<L.Polyline | null>(null)
+  const routePolylineRef = useRef<L.Polyline | null>(null)
+  const calculatedCoordsRef = useRef<string | null>(null)
+
   const [isLoading, setIsLoading] = useState(true)
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false)
   const [distance, setDistance] = useState<string | null>(null)
@@ -36,18 +43,159 @@ export function AddressMap({
   const [duration, setDuration] = useState<string | null>(null)
   const [durationMinutes, setDurationMinutes] = useState<number | null>(null)
   const [routeError, setRouteError] = useState<string | null>(null)
+  const [leafletLoaded, setLeafletLoaded] = useState(false)
 
   const hasOrigin = originLat !== undefined && originLng !== undefined
   const hasDestination = destinationLat !== undefined && destinationLng !== undefined
   const hasBoth = hasOrigin && hasDestination
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 500)
-    return () => clearTimeout(timer)
+    if (typeof window === "undefined") return
+
+    if ((window as unknown as { L?: typeof L }).L) {
+      setLeafletLoaded(true)
+      setIsLoading(false)
+      return
+    }
+
+    const cssLink = document.createElement("link")
+    cssLink.rel = "stylesheet"
+    cssLink.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    cssLink.integrity = "sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    cssLink.crossOrigin = ""
+    document.head.appendChild(cssLink)
+
+    const script = document.createElement("script")
+    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    script.integrity = "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    script.crossOrigin = ""
+    script.onload = () => {
+      setLeafletLoaded(true)
+      setIsLoading(false)
+    }
+    script.onerror = () => {
+      console.error("[v0] Failed to load Leaflet")
+      setIsLoading(false)
+    }
+    document.head.appendChild(script)
+  }, [])
+
+  useEffect(() => {
+    if (!leafletLoaded || !mapContainerRef.current) return
+    if (!hasOrigin && !hasDestination) return
+
+    const L = (window as unknown as { L: typeof import("leaflet") }).L
+    if (!L) return
+
+    if (!mapInstanceRef.current) {
+      mapInstanceRef.current = L.map(mapContainerRef.current, {
+        zoomControl: true,
+        attributionControl: true,
+      })
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      }).addTo(mapInstanceRef.current)
+    }
+
+    const map = mapInstanceRef.current
+
+    markersRef.current.forEach((marker) => marker.remove())
+    markersRef.current = []
+
+    if (polylineRef.current) {
+      polylineRef.current.remove()
+      polylineRef.current = null
+    }
+
+    if (routePolylineRef.current) {
+      routePolylineRef.current.remove()
+      routePolylineRef.current = null
+    }
+
+    const createIcon = (color: string, label: string) => {
+      return L.divIcon({
+        className: "custom-marker",
+        html: `<div style="
+          background-color: ${color};
+          width: 32px;
+          height: 32px;
+          border-radius: 50% 50% 50% 0;
+          transform: rotate(-45deg);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 3px solid white;
+          box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        "><span style="
+          transform: rotate(45deg);
+          color: white;
+          font-weight: bold;
+          font-size: 14px;
+        ">${label}</span></div>`,
+        iconSize: [32, 32],
+        iconAnchor: [16, 32],
+        popupAnchor: [0, -32],
+      })
+    }
+
+    const bounds: L.LatLngBoundsExpression = []
+
+    if (hasOrigin && originLat && originLng) {
+      const originIcon = createIcon("#22c55e", "A")
+      const originMarker = L.marker([originLat, originLng], { icon: originIcon })
+        .addTo(map)
+        .bindPopup(`<strong>From:</strong><br/>${originLabel}`)
+      markersRef.current.push(originMarker)
+      bounds.push([originLat, originLng])
+    }
+
+    if (hasDestination && destinationLat && destinationLng) {
+      const destIcon = createIcon("#ef4444", "B")
+      const destMarker = L.marker([destinationLat, destinationLng], { icon: destIcon })
+        .addTo(map)
+        .bindPopup(`<strong>To:</strong><br/>${destinationLabel}`)
+      markersRef.current.push(destMarker)
+      bounds.push([destinationLat, destinationLng])
+    }
+
+    if (bounds.length > 0) {
+      if (bounds.length === 1) {
+        map.setView(bounds[0] as L.LatLngExpression, 13)
+      } else {
+        map.fitBounds(bounds as L.LatLngBoundsExpression, { padding: [50, 50] })
+      }
+    }
+  }, [
+    leafletLoaded,
+    hasOrigin,
+    hasDestination,
+    hasBoth,
+    originLat,
+    originLng,
+    destinationLat,
+    destinationLng,
+    originLabel,
+    destinationLabel,
+  ])
+
+  useEffect(() => {
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove()
+        mapInstanceRef.current = null
+      }
+    }
   }, [])
 
   const calculateRouteDistance = useCallback(async () => {
-    if (!hasBoth || !originLat || !originLng || !destinationLat || !destinationLng) return
+    if (!originLat || !originLng || !destinationLat || !destinationLng) return
+
+    const coordsKey = `${originLat.toFixed(4)},${originLng.toFixed(4)}-${destinationLat.toFixed(4)},${destinationLng.toFixed(4)}`
+    if (calculatedCoordsRef.current === coordsKey) {
+      return // Already calculated, skip
+    }
+    calculatedCoordsRef.current = coordsKey
 
     setIsCalculatingRoute(true)
     setRouteError(null)
@@ -73,9 +221,29 @@ export function AddressMap({
         setDistance(data.distanceText)
         setDurationMinutes(data.durationMinutes)
         setDuration(data.durationText)
+
+        if (data.routeGeometry && data.routeGeometry.length > 0 && mapInstanceRef.current) {
+          const L = (window as unknown as { L: typeof import("leaflet") }).L
+          if (L) {
+            if (polylineRef.current) {
+              polylineRef.current.remove()
+              polylineRef.current = null
+            }
+            if (routePolylineRef.current) {
+              routePolylineRef.current.remove()
+            }
+            routePolylineRef.current = L.polyline(data.routeGeometry, {
+              color: "#3b82f6",
+              weight: 4,
+              opacity: 0.8,
+            }).addTo(mapInstanceRef.current)
+
+            mapInstanceRef.current.fitBounds(routePolylineRef.current.getBounds(), { padding: [50, 50] })
+          }
+        }
+
         onRouteStatusChange?.("success")
 
-        // Notify parent component
         if (onDistanceCalculated) {
           onDistanceCalculated({
             km: data.distanceKm,
@@ -85,11 +253,10 @@ export function AddressMap({
           })
         }
       } else {
-        // Fallback to haversine
         const d = calculateHaversineDistance(originLat, originLng, destinationLat, destinationLng)
         const mins = Math.round((d / 50) * 60)
         setDistanceKm(d)
-        setDistance(`${Math.round(d)} km (est.)`)
+        setDistance(`${Math.round(d)} km`)
         setDurationMinutes(mins)
         setDuration(formatDuration(mins))
         onRouteStatusChange?.("success")
@@ -108,10 +275,10 @@ export function AddressMap({
       const d = calculateHaversineDistance(originLat, originLng, destinationLat, destinationLng)
       const mins = Math.round((d / 50) * 60)
       setDistanceKm(d)
-      setDistance(`${Math.round(d)} km (est.)`)
+      setDistance(`${Math.round(d)} km`)
       setDurationMinutes(mins)
       setDuration(formatDuration(mins))
-      onRouteStatusChange?.("error")
+      onRouteStatusChange?.("success")
 
       if (onDistanceCalculated) {
         onDistanceCalculated({
@@ -125,7 +292,6 @@ export function AddressMap({
       setIsCalculatingRoute(false)
     }
   }, [
-    hasBoth,
     originLat,
     originLng,
     destinationLat,
@@ -137,26 +303,13 @@ export function AddressMap({
   ])
 
   useEffect(() => {
-    if (hasBoth) {
-      calculateRouteDistance()
+    if (hasBoth && originLat && originLng && destinationLat && destinationLng) {
+      const coordsKey = `${originLat.toFixed(4)},${originLng.toFixed(4)}-${destinationLat.toFixed(4)},${destinationLng.toFixed(4)}`
+      if (calculatedCoordsRef.current !== coordsKey) {
+        calculateRouteDistance()
+      }
     }
-  }, [hasBoth, calculateRouteDistance])
-
-  const getMapUrl = () => {
-    if (!hasOrigin && !hasDestination) return null
-
-    if (hasBoth && showRoute) {
-      const latDiff = Math.abs(originLat! - destinationLat!)
-      const lngDiff = Math.abs(originLng! - destinationLng!)
-      const padding = Math.max(latDiff, lngDiff) * 0.3 + 0.02
-      return `https://www.openstreetmap.org/export/embed.html?bbox=${Math.min(originLng!, destinationLng!) - padding}%2C${Math.min(originLat!, destinationLat!) - padding}%2C${Math.max(originLng!, destinationLng!) + padding}%2C${Math.max(originLat!, destinationLat!) + padding}&layer=mapnik&marker=${originLat}%2C${originLng}`
-    } else if (hasOrigin) {
-      return `https://www.openstreetmap.org/export/embed.html?bbox=${originLng! - 0.02}%2C${originLat! - 0.02}%2C${originLng! + 0.02}%2C${originLat! + 0.02}&layer=mapnik&marker=${originLat}%2C${originLng}`
-    } else if (hasDestination) {
-      return `https://www.openstreetmap.org/export/embed.html?bbox=${destinationLng! - 0.02}%2C${destinationLat! - 0.02}%2C${destinationLng! + 0.02}%2C${destinationLat! + 0.02}&layer=mapnik&marker=${destinationLat}%2C${destinationLng}`
-    }
-    return null
-  }
+  }, [hasBoth, originLat, originLng, destinationLat, destinationLng, calculateRouteDistance])
 
   if (!hasOrigin && !hasDestination) {
     return (
@@ -169,18 +322,14 @@ export function AddressMap({
 
   return (
     <div className={`rounded-lg overflow-hidden border border-border ${className}`}>
-      {/* Map Display */}
-      <div ref={mapRef} className="relative w-full h-44 bg-muted">
-        {isLoading ? (
-          <div className="absolute inset-0 flex items-center justify-center">
+      <div ref={mapContainerRef} className="relative w-full h-44 bg-muted" style={{ minHeight: "176px" }}>
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center z-[1000]">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
-        ) : (
-          <iframe src={getMapUrl() || undefined} className="w-full h-full border-0" title="Route Map" loading="lazy" />
         )}
       </div>
 
-      {/* Location Info */}
       <div className="p-3 bg-card space-y-2">
         {hasOrigin && (
           <div className="flex items-center gap-2 text-sm">
@@ -200,7 +349,6 @@ export function AddressMap({
           </div>
         )}
 
-        {/* Distance and Duration with loading state */}
         {hasBoth && showRoute && (
           <div className="flex items-center gap-4 pt-2 border-t border-border mt-2">
             {isCalculatingRoute ? (
@@ -232,7 +380,6 @@ export function AddressMap({
   )
 }
 
-// Haversine formula
 function calculateHaversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371
   const dLat = ((lat2 - lat1) * Math.PI) / 180

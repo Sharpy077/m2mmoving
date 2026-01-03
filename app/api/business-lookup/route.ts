@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { checkApiSecurity } from "@/lib/api-security"
 
 const ABN_LOOKUP_GUID = "62b9db95-297e-49e0-8635-c42ca2518af3"
 
@@ -146,6 +147,15 @@ function getEntityTypePriority(entityType: string): number {
 }
 
 export async function GET(req: Request) {
+  const security = await checkApiSecurity(req, {
+    rateLimit: { windowMs: 60000, maxRequests: 20 }, // 20 requests per minute
+    validateOrigin: true,
+  })
+
+  if (!security.allowed) {
+    return security.response
+  }
+
   const { searchParams } = new URL(req.url)
   const query = searchParams.get("q")
   const type = searchParams.get("type") || "name"

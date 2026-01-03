@@ -102,9 +102,21 @@ interface BookingData {
   estimatedTotal?: number
   depositAmount?: number
   squareMeters?: number
+  distanceKm?: number
+  durationMinutes?: number
 }
 
-export interface QuoteAssistantRef {
+interface PricingBreakdown {
+  baseCharge: number
+  distanceCharge: number
+  labourCharge: number
+  timeCharge: number
+  total: number
+  deposit: number
+  balance: number
+}
+
+interface QuoteAssistantRef {
   open: () => void
   close: () => void
 }
@@ -186,6 +198,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     durationMinutes: number
     durationText: string
   } | null>(null)
+  const [pricingBreakdown, setPricingBreakdown] = useState<PricingBreakdown | null>(null)
   const [estimatedPrice, setEstimatedPrice] = useState<{ total: number; deposit: number } | null>(null)
 
   const [isReadyForPricing, setIsReadyForPricing] = useState(false)
@@ -385,6 +398,52 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
       }, 500)
     }
   }
+
+  const calculatePricing = useCallback((distanceKm: number, durationMinutes: number): PricingBreakdown => {
+    // Pricing rates (AUD)
+    const BASE_CHARGE = 150 // Base call-out fee
+    const DISTANCE_RATE = 2.5 // Per km
+    const LABOUR_RATE_PER_HOUR = 85 // Per hour per mover
+    const NUM_MOVERS = 2 // Standard 2-person crew
+    const TIME_RATE_PER_HOUR = 45 // Vehicle/equipment time per hour
+
+    // Calculate hours from duration (add 1 hour for loading/unloading minimum)
+    const estimatedHours = Math.max(2, Math.ceil(durationMinutes / 60) + 1)
+
+    // Calculate components
+    const baseCharge = BASE_CHARGE
+    const distanceCharge = Math.round(distanceKm * DISTANCE_RATE * 100) / 100
+    const labourCharge = Math.round(estimatedHours * LABOUR_RATE_PER_HOUR * NUM_MOVERS * 100) / 100
+    const timeCharge = Math.round(estimatedHours * TIME_RATE_PER_HOUR * 100) / 100
+
+    const total = Math.round((baseCharge + distanceCharge + labourCharge + timeCharge) * 100) / 100
+    const deposit = Math.round(total * 0.5 * 100) / 100
+    const balance = Math.round((total - deposit) * 100) / 100
+
+    return {
+      baseCharge,
+      distanceCharge,
+      labourCharge,
+      timeCharge,
+      total,
+      deposit,
+      balance,
+    }
+  }, [])
+
+  useEffect(() => {
+    if (routeDistance && routeDistance.km > 0) {
+      const pricing = calculatePricing(routeDistance.km, routeDistance.durationMinutes)
+      setPricingBreakdown(pricing)
+      setEstimatedPrice({ total: pricing.total, deposit: pricing.deposit })
+      setBookingData((prev) => ({
+        ...prev,
+        quoteAmount: pricing.total,
+        distanceKm: routeDistance.km,
+        durationMinutes: routeDistance.durationMinutes,
+      }))
+    }
+  }, [routeDistance, calculatePricing])
 
   // Render service picker
   const renderServicePicker = () => (
@@ -767,35 +826,99 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
 
   // Render Payment
   const renderPayment = () => {
-    const quoteTotal = bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 500
-    const depositAmount = quoteTotal * 0.5
+    const pricing = pricingBreakdown || {
+      baseCharge: 150,
+      distanceCharge: 0,
+      labourCharge: 340,
+      timeCharge: 90,
+      total: bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580,
+      deposit: (bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580) * 0.5,
+      balance: (bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580) * 0.5,
+    }
 
     return (
-      <Card className="m-4 border-purple-200 bg-purple-50 dark:bg-purple-950/20">
+      <Card className="m-4 border-orange-200 bg-white dark:bg-zinc-900 shadow-lg">
         <CardContent className="p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <CreditCard className="h-5 w-5 text-purple-500" />
-            <p className="font-medium text-foreground">Secure Payment</p>
+          {/* Header */}
+          <div className="flex items-center gap-2 mb-4 pb-3 border-b border-orange-200">
+            <CreditCard className="h-5 w-5 text-orange-500" />
+            <p className="font-semibold text-foreground text-lg">Quote Summary & Payment</p>
           </div>
-          <div className="bg-white dark:bg-background rounded-lg p-3 mb-4 border">
-            <div className="flex justify-between text-sm mb-1">
-              <span>Quote Total:</span>
-              <span className="font-medium">${quoteTotal.toFixed(2)}</span>
+
+          {/* Pricing Breakdown */}
+          <div className="bg-zinc-50 dark:bg-zinc-800 rounded-lg p-4 mb-4 border border-zinc-200 dark:border-zinc-700">
+            <p className="text-sm font-medium text-foreground mb-3">Pricing Breakdown</p>
+
+            {/* Base Charge */}
+            <div className="flex justify-between text-sm py-1.5 border-b border-zinc-200 dark:border-zinc-700">
+              <span className="text-muted-foreground">Base Call-out Fee</span>
+              <span className="font-medium text-foreground">${pricing.baseCharge.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between text-sm mb-1">
-              <span>Deposit Required (50%):</span>
-              <span className="font-semibold text-purple-600">${depositAmount.toFixed(2)}</span>
+
+            {/* Distance Charge */}
+            <div className="flex justify-between text-sm py-1.5 border-b border-zinc-200 dark:border-zinc-700">
+              <div className="flex flex-col">
+                <span className="text-muted-foreground">Distance Charge</span>
+                {routeDistance && (
+                  <span className="text-xs text-muted-foreground/70">{routeDistance.km.toFixed(1)} km × $2.50/km</span>
+                )}
+              </div>
+              <span className="font-medium text-foreground">${pricing.distanceCharge.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between text-sm text-muted-foreground">
-              <span>Balance Due on Move Day:</span>
-              <span>${depositAmount.toFixed(2)}</span>
+
+            {/* Labour Charge */}
+            <div className="flex justify-between text-sm py-1.5 border-b border-zinc-200 dark:border-zinc-700">
+              <div className="flex flex-col">
+                <span className="text-muted-foreground">Labour (2 movers)</span>
+                {routeDistance && (
+                  <span className="text-xs text-muted-foreground/70">
+                    {Math.max(2, Math.ceil(routeDistance.durationMinutes / 60) + 1)} hrs × $85/hr × 2
+                  </span>
+                )}
+              </div>
+              <span className="font-medium text-foreground">${pricing.labourCharge.toFixed(2)}</span>
+            </div>
+
+            {/* Time/Equipment Charge */}
+            <div className="flex justify-between text-sm py-1.5 border-b border-zinc-200 dark:border-zinc-700">
+              <div className="flex flex-col">
+                <span className="text-muted-foreground">Vehicle & Equipment</span>
+                {routeDistance && (
+                  <span className="text-xs text-muted-foreground/70">
+                    {Math.max(2, Math.ceil(routeDistance.durationMinutes / 60) + 1)} hrs × $45/hr
+                  </span>
+                )}
+              </div>
+              <span className="font-medium text-foreground">${pricing.timeCharge.toFixed(2)}</span>
+            </div>
+
+            {/* Total */}
+            <div className="flex justify-between text-base pt-3 mt-2 border-t-2 border-orange-300 dark:border-orange-600">
+              <span className="font-semibold text-foreground">Quote Total</span>
+              <span className="font-bold text-foreground text-lg">${pricing.total.toFixed(2)}</span>
             </div>
           </div>
+
+          {/* Payment Summary */}
+          <div className="bg-orange-50 dark:bg-orange-950/30 rounded-lg p-4 mb-4 border border-orange-200 dark:border-orange-800">
+            <div className="flex justify-between text-sm mb-2">
+              <span className="text-foreground">Deposit Required (50%)</span>
+              <span className="font-bold text-orange-600 dark:text-orange-400 text-lg">
+                ${pricing.deposit.toFixed(2)}
+              </span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Balance Due on Move Day</span>
+              <span className="font-medium text-foreground">${pricing.balance.toFixed(2)}</span>
+            </div>
+          </div>
+
+          {/* Payment Form */}
           {paymentClientSecret ? (
             <Suspense
               fallback={
                 <div className="text-center py-4">
-                  <Loader2 className="h-8 w-8 animate-spin mx-auto text-purple-500" />
+                  <Loader2 className="h-8 w-8 animate-spin mx-auto text-orange-500" />
                   <p className="text-sm text-muted-foreground mt-2">Loading payment form...</p>
                 </div>
               }
@@ -804,7 +927,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
             </Suspense>
           ) : (
             <div className="text-center py-4">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto text-purple-500" />
+              <Loader2 className="h-8 w-8 animate-spin mx-auto text-orange-500" />
               <p className="text-sm text-muted-foreground mt-2">Loading payment form...</p>
             </div>
           )}
@@ -856,7 +979,14 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
           originLabel={originCoords.label}
           destinationLabel={destCoords.label}
           showRoute={true}
-          onDistanceCalculated={(distance) => setRouteDistance(distance)}
+          onDistanceCalculated={(distance) => {
+            setRouteDistance(distance)
+            setBookingData((prev) => ({
+              ...prev,
+              distanceKm: distance.km,
+              durationMinutes: distance.durationMinutes,
+            }))
+          }}
           onRouteStatusChange={(status) => setRouteStatus(status)}
         />
 
@@ -867,6 +997,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
             moveDate={bookingData.preferredDate}
             onPriceCalculated={(price) => setEstimatedPrice(price)}
             isReady={isReadyForPricing}
+            onPricingBreakdown={(breakdown) => setPricingBreakdown(breakdown)}
           />
         )}
       </div>

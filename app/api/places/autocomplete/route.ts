@@ -1,8 +1,18 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { checkApiSecurity } from "@/lib/api-security"
 
 // Google Places Autocomplete API proxy
 // This keeps the API key secure on the server side
 export async function GET(request: NextRequest) {
+  const security = await checkApiSecurity(request, {
+    rateLimit: { windowMs: 60000, maxRequests: 60 }, // 60 requests per minute
+    validateOrigin: true,
+  })
+
+  if (!security.allowed) {
+    return security.response
+  }
+
   const searchParams = request.nextUrl.searchParams
   const input = searchParams.get("input")
   const sessionToken = searchParams.get("sessionToken")
