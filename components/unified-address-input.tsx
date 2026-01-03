@@ -122,6 +122,7 @@ export function UnifiedAddressInput({
   const [sessionToken] = useState(() => crypto.randomUUID())
   const [selectedAddress, setSelectedAddress] = useState<AddressData | null>(null)
   const [validationError, setValidationError] = useState<string | null>(null)
+  const [useManualEntry, setUseManualEntry] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const suggestionsRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<NodeJS.Timeout>()
@@ -198,6 +199,7 @@ export function UnifiedAddressInput({
 
     if (selectedAddress && inputValue !== selectedAddress.fullAddress) {
       setSelectedAddress(null)
+      setUseManualEntry(false)
     }
 
     debounceRef.current = setTimeout(() => {
@@ -433,16 +435,32 @@ export function UnifiedAddressInput({
     setShowSuggestions(false)
     setSelectedAddress(null)
     setValidationError(null)
+    setUseManualEntry(false)
     inputRef.current?.focus()
   }
 
   const handleConfirm = () => {
     if (selectedAddress && !validationError) {
       onAddressConfirmed(selectedAddress)
+    } else if (useManualEntry && inputValue.length >= 5) {
+      const manualAddress = parseFromDescription(inputValue)
+      if (!manualAddress.fullAddress) {
+        manualAddress.fullAddress = inputValue
+      }
+      onAddressConfirmed(manualAddress)
     }
   }
 
-  const isAddressValid = selectedAddress && !validationError && selectedAddress.street && selectedAddress.suburb
+  const handleManualEntry = () => {
+    setUseManualEntry(true)
+  }
+
+  const isAddressValid =
+    (selectedAddress && !validationError && selectedAddress.street && selectedAddress.suburb) ||
+    (useManualEntry && inputValue.length >= 10 && !validationError)
+
+  const showManualEntryPrompt =
+    inputValue.length >= 5 && !isLoading && predictions.length === 0 && !selectedAddress && !useManualEntry
 
   return (
     <div className={cn("space-y-3", className)}>
@@ -483,6 +501,7 @@ export function UnifiedAddressInput({
           ) : null}
         </div>
 
+        {/* Suggestions Dropdown */}
         {showSuggestions && predictions.length > 0 && (
           <div
             ref={suggestionsRef}
@@ -523,6 +542,23 @@ export function UnifiedAddressInput({
         </p>
       )}
 
+      {showManualEntryPrompt && (
+        <div className="rounded-lg p-3 bg-blue-500/10 border border-blue-500/20">
+          <p className="text-sm text-foreground mb-2">
+            No matching addresses found. You can use this address as entered.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleManualEntry}
+            className="w-full bg-blue-500/20 border-blue-500/30 hover:bg-blue-500/30"
+          >
+            Use "{inputValue.length > 30 ? inputValue.slice(0, 30) + "..." : inputValue}" as my address
+          </Button>
+        </div>
+      )}
+
       {/* Selected Address Summary */}
       {selectedAddress && (
         <div
@@ -541,28 +577,34 @@ export function UnifiedAddressInput({
             )}
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-foreground">
-                {isAddressValid ? "Address detected:" : "Please verify:"}
+                {isAddressValid ? (useManualEntry ? "Using manual address:" : "Address detected:") : "Please verify:"}
               </p>
               <div className="mt-1 text-xs text-muted-foreground space-y-0.5">
-                {selectedAddress.street && (
-                  <p>
-                    <span className="text-foreground font-medium">Street:</span> {selectedAddress.street}
-                  </p>
-                )}
-                {selectedAddress.suburb && (
-                  <p>
-                    <span className="text-foreground font-medium">Suburb:</span> {selectedAddress.suburb}
-                  </p>
-                )}
-                {selectedAddress.state && (
-                  <p>
-                    <span className="text-foreground font-medium">State:</span> {selectedAddress.state}
-                  </p>
-                )}
-                {selectedAddress.postcode && (
-                  <p>
-                    <span className="text-foreground font-medium">Postcode:</span> {selectedAddress.postcode}
-                  </p>
+                {useManualEntry ? (
+                  <p className="text-foreground">{selectedAddress.fullAddress || inputValue}</p>
+                ) : (
+                  <>
+                    {selectedAddress.street && (
+                      <p>
+                        <span className="text-foreground font-medium">Street:</span> {selectedAddress.street}
+                      </p>
+                    )}
+                    {selectedAddress.suburb && (
+                      <p>
+                        <span className="text-foreground font-medium">Suburb:</span> {selectedAddress.suburb}
+                      </p>
+                    )}
+                    {selectedAddress.state && (
+                      <p>
+                        <span className="text-foreground font-medium">State:</span> {selectedAddress.state}
+                      </p>
+                    )}
+                    {selectedAddress.postcode && (
+                      <p>
+                        <span className="text-foreground font-medium">Postcode:</span> {selectedAddress.postcode}
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             </div>
