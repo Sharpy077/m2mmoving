@@ -93,6 +93,7 @@ interface Prediction {
     main_text: string
     secondary_text: string
   }
+  _nominatim?: any // Embedded Nominatim data
 }
 
 interface UnifiedAddressInputProps {
@@ -220,6 +221,41 @@ export function UnifiedAddressInput({
     setValidationError(null)
 
     try {
+      if (prediction.place_id.startsWith("nominatim_") && (prediction as any)._nominatim) {
+        const nominatimData = (prediction as any)._nominatim
+        const addressData: AddressData = {
+          street: nominatimData.address?.road
+            ? `${nominatimData.address.house_number || ""} ${nominatimData.address.road}`.trim()
+            : "",
+          suburb:
+            nominatimData.address?.suburb ||
+            nominatimData.address?.city ||
+            nominatimData.address?.town ||
+            nominatimData.address?.village ||
+            "",
+          state: getAustralianStateAbbr(nominatimData.address?.state || ""),
+          postcode: nominatimData.address?.postcode || "",
+          fullAddress: prediction.description,
+          lat: nominatimData.lat,
+          lng: nominatimData.lng,
+        }
+
+        setInputValue(prediction.description)
+        setSelectedAddress(addressData)
+
+        if (!addressData.street) {
+          setValidationError("Please include a street number and name")
+        } else if (!addressData.suburb) {
+          setValidationError("Could not detect suburb - please verify")
+        } else if (!addressData.postcode) {
+          setValidationError("Could not detect postcode - please verify")
+        }
+
+        setIsLoading(false)
+        return
+      }
+
+      // Google Places flow
       const response = await fetch(`/api/places/details?placeId=${prediction.place_id}&sessionToken=${sessionToken}`)
       const data = await response.json()
 
@@ -254,6 +290,20 @@ export function UnifiedAddressInput({
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const getAustralianStateAbbr = (state: string): string => {
+    const stateMap: Record<string, string> = {
+      Victoria: "VIC",
+      "New South Wales": "NSW",
+      Queensland: "QLD",
+      "South Australia": "SA",
+      "Western Australia": "WA",
+      Tasmania: "TAS",
+      "Northern Territory": "NT",
+      "Australian Capital Territory": "ACT",
+    }
+    return stateMap[state] || state
   }
 
   // Parse Google Places address components
