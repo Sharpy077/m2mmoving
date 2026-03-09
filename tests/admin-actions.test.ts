@@ -26,7 +26,8 @@ describe("admin and lead server actions", () => {
 
   it("signs in with Supabase and redirects on successful login", async () => {
     const signInMock = vi.fn().mockResolvedValue({ error: null })
-    vi.mocked(createClient).mockResolvedValueOnce({ auth: { signInWithPassword: signInMock } } as any)
+    const getSessionMock = vi.fn().mockResolvedValue({ data: { session: { user: { id: "test" } } } })
+    vi.mocked(createClient).mockResolvedValueOnce({ auth: { signInWithPassword: signInMock, getSession: getSessionMock } } as any)
 
     const formData = new FormData()
     formData.set("email", "admin@example.com")

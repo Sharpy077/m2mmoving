@@ -5,6 +5,24 @@ const authToken = process.env.TWILIO_AUTH_TOKEN
 
 export const twilioClient = accountSid && authToken ? twilio(accountSid, authToken) : null
 
+/**
+ * Validates that an incoming request genuinely came from Twilio.
+ * Returns true in development (TWILIO_AUTH_TOKEN not set) to allow local testing.
+ * In production, verifies the X-Twilio-Signature header.
+ */
+export function validateTwilioRequest(request: Request, params: Record<string, string>): boolean {
+  if (!authToken) {
+    // Skip validation in dev/test environments where Twilio credentials are not configured
+    console.warn("[twilio] TWILIO_AUTH_TOKEN not set — skipping webhook signature validation")
+    return true
+  }
+
+  const twilioSignature = request.headers.get("X-Twilio-Signature") || ""
+  const url = request.url
+
+  return twilio.validateRequest(authToken, twilioSignature, url, params)
+}
+
 // Business hours configuration (Melbourne time)
 export const BUSINESS_HOURS = {
   timezone: "Australia/Melbourne",

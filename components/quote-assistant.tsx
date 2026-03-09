@@ -233,6 +233,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const [currentQuote, setCurrentQuote] = useState<QuoteEstimate | null>(null)
     const [isSubmittingLead, setIsSubmittingLead] = useState(false)
     const [leadSubmitted, setLeadSubmitted] = useState(false)
+    const [submittedLeadId, setSubmittedLeadId] = useState<string | null>(null)
     const [businessLookupResults, setBusinessLookupResults] = useState<BusinessResult[] | null>(null)
     const [confirmedBusiness, setConfirmedBusiness] = useState<BusinessResult | null>(null)
     const [showCalendar, setShowCalendar] = useState(false)
@@ -688,7 +689,6 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       if (currentQuote && contactInfo && selectedDate) {
         setIsSubmittingLead(true)
         try {
-          // Add submittedLead to state to use its ID in PaymentConfirmation
           const submittedLead = await submitLead({
             company_name: confirmedBusiness?.name || contactInfo.companyName || "",
             contact_name: contactInfo.contactName,
@@ -697,16 +697,16 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             move_type: currentQuote.moveTypeKey || "office",
             origin_suburb: currentQuote.origin,
             destination_suburb: currentQuote.destination,
-            estimated_value: currentQuote.estimatedTotal,
-            status: "confirmed",
+            estimated_total: currentQuote.estimatedTotal,
             notes: `Deposit paid. Move scheduled for ${selectedDate}. ABN: ${confirmedBusiness?.abn || "N/A"}`,
             scheduled_date: selectedDate,
             deposit_amount: currentQuote.depositRequired,
             deposit_paid: true,
           })
           setLeadSubmitted(true)
-          // The `submittedLead` object is not directly used here, but it's good practice to capture the result.
-          // If you needed the ID for PaymentConfirmation, you'd have to manage it in state.
+          if (submittedLead.success && submittedLead.lead?.id) {
+            setSubmittedLeadId(submittedLead.lead.id)
+          }
         } catch (error) {
           console.error("Failed to submit lead:", error)
         } finally {
@@ -945,7 +945,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       if (paymentComplete && currentQuote && contactInfo) {
         return (
           <PaymentConfirmation
-            referenceId={""} // Placeholder, ideally use submittedLead ID if available and passed down
+            referenceId={submittedLeadId?.slice(0, 8).toUpperCase() || ""}
             depositAmount={currentQuote.depositRequired}
             estimatedTotal={currentQuote.estimatedTotal}
             scheduledDate={selectedDate || undefined}
@@ -1014,6 +1014,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             origin: currentQuote?.origin || undefined,
             destination: currentQuote?.destination || undefined,
             scheduledDate: selectedDate || undefined,
+            leadId: submittedLeadId || undefined,
           })
 
           if (result.success && result.clientSecret) {

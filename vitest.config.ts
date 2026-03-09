@@ -13,8 +13,11 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
+    setupFiles: ["./tests/setupTests.ts"],
     coverage: {
       reporter: ["text", "lcov"],
+      include: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "lib/**/*.{ts,tsx}", "hooks/**/*.{ts,tsx}"],
+      exclude: ["**/*.test.{ts,tsx}", "**/node_modules/**", "**/.next/**"],
     },
   },
 })

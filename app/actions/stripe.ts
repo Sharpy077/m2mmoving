@@ -75,6 +75,7 @@ export async function createDepositCheckout({
   origin,
   destination,
   scheduledDate,
+  leadId,
 }: {
   amount: number
   customerEmail: string
@@ -84,6 +85,7 @@ export async function createDepositCheckout({
   origin?: string
   destination?: string
   scheduledDate?: string
+  leadId?: string
 }): Promise<{ success: boolean; clientSecret?: string; error?: string }> {
   try {
     const session = await stripe.checkout.sessions.create({
@@ -105,6 +107,7 @@ export async function createDepositCheckout({
       ],
       mode: "payment",
       metadata: {
+        lead_id: leadId || "",
         customer_name: customerName,
         customer_email: customerEmail,
         move_type: moveType || "",

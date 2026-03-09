@@ -32,29 +32,29 @@ export default function AdminLayout({
             </a>
             
             <nav className="hidden md:flex items-center gap-4">
-              <a 
-                href="/admin/agents" 
-                className="text-sm text-white/60 hover:text-white transition-colors"
-              >
-                AI Salesforce
-              </a>
-              <a 
-                href="/admin/leads" 
+              <a
+                href="/admin"
                 className="text-sm text-white/60 hover:text-white transition-colors"
               >
                 Leads
               </a>
-              <a 
-                href="/admin/bookings" 
+              <a
+                href="/admin/voicemails"
                 className="text-sm text-white/60 hover:text-white transition-colors"
               >
-                Bookings
+                Voicemails
               </a>
-              <a 
-                href="/admin/analytics" 
+              <a
+                href="/admin/agents"
                 className="text-sm text-white/60 hover:text-white transition-colors"
               >
-                Analytics
+                AI Salesforce
+              </a>
+              <a
+                href="/admin/settings"
+                className="text-sm text-white/60 hover:text-white transition-colors"
+              >
+                Settings
               </a>
             </nav>
           </div>

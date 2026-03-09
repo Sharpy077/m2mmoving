@@ -124,6 +124,7 @@ describe("API Endpoints - Voicemails", () => {
   beforeEach(() => {
     createClientMock.mockReturnValue({
       from: fromMock,
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "test-user" } }, error: null }) },
     })
     selectMock.mockReturnValue({
       order: orderMock,
@@ -251,7 +252,8 @@ describe("API Endpoints - Voicemails", () => {
         headers: { "Content-Type": "application/json" },
       })
 
-      await expect(PATCH(request)).rejects.toThrow()
+      const response = await PATCH(request)
+      expect(response.status).toBe(500)
     })
 
     it("should handle database update errors", async () => {

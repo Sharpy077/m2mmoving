@@ -507,20 +507,26 @@ export class MayaAgent extends BaseAgent {
   // =============================================================================
 
   private async lookupBusiness(params: { query: string; searchType?: string }) {
-    // In production, call ABR API
     this.log("info", "lookupBusiness", `Looking up: ${params.query}`)
 
-    return {
-      success: true,
-      data: {
-        found: true,
-        business: {
-          abn: "71661027309",
-          name: "Sample Business Pty Ltd",
-          status: "Active",
-          type: "Australian Private Company",
-        },
-      },
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+      const searchType = params.searchType || "name"
+      const url = `${baseUrl}/api/business-lookup?query=${encodeURIComponent(params.query)}&type=${searchType}`
+
+      const response = await fetch(url, { cache: "no-store" })
+      if (!response.ok) {
+        throw new Error(`Business lookup API returned ${response.status}`)
+      }
+
+      const data = await response.json()
+      return { success: true, data }
+    } catch (error) {
+      this.log("error", "lookupBusiness", `Failed: ${error}`)
+      return {
+        success: false,
+        error: "Unable to look up business details. Please enter your ABN manually.",
+      }
     }
   }
 

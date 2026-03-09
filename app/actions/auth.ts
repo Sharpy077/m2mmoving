@@ -22,6 +22,12 @@ export async function loginAction(formData: FormData) {
     return { error: error.message }
   }
 
+  // Verify the session was actually established before redirecting
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) {
+    return { error: "Authentication failed — please try again" }
+  }
+
   redirect("/admin")
 }
 
