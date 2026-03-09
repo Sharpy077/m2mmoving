@@ -257,13 +257,11 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
       return
     }
     if (!email || !selectedType || !estimate) {
-      console.log("[v0] Submit validation failed:", { email, selectedType, estimate })
       return
     }
 
     setIsSubmitting(true)
     setSubmitError(null)
-    console.log("[v0] Starting lead submission...")
 
     try {
       const result = await submitLead({
@@ -281,7 +279,6 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
         additional_services: selectedServices.length > 0 ? selectedServices : undefined,
       })
 
-      console.log("[v0] Lead submission result:", result)
 
       if (result.success) {
         setSubmitted(true)
@@ -290,7 +287,7 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
         setSubmitError(result.error || "Failed to submit quote. Please try again.")
       }
     } catch (error) {
-      console.error("[v0] Lead submission error:", error)
+      console.error("Lead submission error:", error)
       setSubmitError("An unexpected error occurred. Please try again.")
     } finally {
       setIsSubmitting(false)
@@ -306,7 +303,6 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
 
     setIsSubmitting(true)
     setSubmitError(null)
-    console.log("[v0] Initiating deposit payment for lead:", submittedLead.id)
 
     try {
       const result = await createDepositCheckoutSession(
@@ -315,7 +311,6 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
         email,
       )
 
-      console.log("[v0] Checkout session result:", result)
 
       if (result.success && result.clientSecret) {
         setPaymentClientSecret(result.clientSecret)
@@ -324,7 +319,7 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
         setSubmitError(result.error || "Failed to initiate payment. Please try again.")
       }
     } catch (error) {
-      console.error("[v0] Payment initiation error:", error)
+      console.error("Payment initiation error:", error)
       setSubmitError("An unexpected error occurred. Please try again.")
     } finally {
       setIsSubmitting(false)
@@ -334,7 +329,6 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
   const handlePaymentComplete = useCallback(async () => {
     if (!submittedLead) return
 
-    console.log("[v0] Payment completed, updating lead status...")
     await markDepositPaid(submittedLead.id)
     setPaymentComplete(true)
     setShowPayment(false)

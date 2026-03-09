@@ -37,7 +37,7 @@ export function CTASection() {
       })
       setSubmitted(true)
     } catch (error) {
-      console.error("[v0] Contact form submission error:", error)
+      console.error("Contact form submission error:", error)
     } finally {
       setIsSubmitting(false)
     }

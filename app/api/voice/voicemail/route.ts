@@ -21,8 +21,8 @@ export async function POST(request: NextRequest) {
   const callerNumber = formData.get("From") as string
   const duration = formData.get("RecordingDuration") as string
 
-  console.log(`[v0] Voicemail received from ${callerNumber}`)
-  console.log(`[v0] Recording URL: ${recordingUrl}`)
+  console.log(`Voicemail received from ${callerNumber}`)
+  console.log(`Recording URL: ${recordingUrl}`)
 
   // Store voicemail in database
   try {
@@ -36,9 +36,9 @@ export async function POST(request: NextRequest) {
       status: "new",
     })
 
-    console.log("[v0] Voicemail saved to database")
+    console.log("Voicemail saved to database")
   } catch (error) {
-    console.error("[v0] Failed to save voicemail:", error)
+    console.error("Failed to save voicemail:", error)
   }
 
   const twiml = new VoiceResponse()

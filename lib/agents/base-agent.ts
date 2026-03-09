@@ -13,6 +13,7 @@ import type {
   AgentMessage,
   PriorityLevel,
 } from "./types"
+import { createEscalation } from "./db"
 
 export type { AgentInput, AgentOutput, AgentAction }
 
@@ -132,6 +133,18 @@ export abstract class BaseAgent {
     priority: PriorityLevel
   ): Promise<{ reason: string; priority: PriorityLevel }> {
     this.log("info", "escalateToHuman", `Escalating: ${reason} - ${details}`)
+    try {
+      await createEscalation({
+        fromAgent: this.config.codename,
+        reason,
+        priority,
+        conversationId: typeof context.conversationId === "string" ? context.conversationId : undefined,
+        summary: details,
+        context,
+      })
+    } catch (err) {
+      this.log("error", "escalateToHuman", `Failed to persist escalation: ${String(err)}`)
+    }
     return { reason, priority }
   }
 

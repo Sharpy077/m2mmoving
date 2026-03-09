@@ -14,19 +14,24 @@ export async function GET() {
   try {
     const supabase = await createClient()
 
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
     const { data: voicemails, error } = await supabase
       .from("voicemails")
       .select("*")
       .order("created_at", { ascending: false })
 
     if (error) {
-      console.error("[v0] Failed to fetch voicemails:", error)
+      console.error("Failed to fetch voicemails:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ voicemails })
   } catch (error) {
-    console.error("[v0] Voicemails API error:", error)
+    console.error("Voicemails API error:", error)
     return NextResponse.json({ error: "Failed to fetch voicemails" }, { status: 500 })
   }
 }
@@ -60,7 +65,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("[v0] Update voicemail error:", error)
+    console.error("Update voicemail error:", error)
     return NextResponse.json({ error: "Failed to update voicemail" }, { status: 500 })
   }
 }

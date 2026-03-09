@@ -5,27 +5,21 @@ import { createClient } from "@/lib/supabase/server"
 import type { Lead, LeadInsert } from "@/lib/types"
 
 export async function submitLead(data: LeadInsert) {
-  console.log("[v0] submitLead called with:", JSON.stringify(data, null, 2))
-
   try {
-    console.log("[v0] Creating Supabase client...")
     const supabase = await createClient()
 
-    console.log("[v0] Inserting lead into database...")
     const { data: lead, error } = await supabase.from("leads").insert(data).select().single()
 
     if (error) {
-      console.error("[v0] Supabase insert error:", JSON.stringify(error, null, 2))
+      console.error("Supabase insert error:", error.message)
       return { success: false, error: error.message }
     }
-
-    console.log("[v0] Lead inserted successfully:", JSON.stringify(lead, null, 2))
 
     await sendEmailNotification(lead)
 
     return { success: true, lead }
   } catch (error) {
-    console.error("[v0] Unexpected error in submitLead:", error)
+    console.error("Unexpected error in submitLead:", error instanceof Error ? error.message : String(error))
     return { success: false, error: error instanceof Error ? error.message : "An unexpected error occurred" }
   }
 }
@@ -37,13 +31,13 @@ export async function getLeads() {
     const { data: leads, error } = await supabase.from("leads").select("*").order("created_at", { ascending: false })
 
     if (error) {
-      console.error("[v0] Error fetching leads:", error)
+      console.error("Error fetching leads:", error.message)
       return { success: false, error: error.message, leads: [] }
     }
 
     return { success: true, leads }
   } catch (error) {
-    console.error("[v0] Unexpected error in getLeads:", error)
+    console.error("Unexpected error in getLeads:", error instanceof Error ? error.message : String(error))
     return { success: false, error: error instanceof Error ? error.message : "An unexpected error occurred", leads: [] }
   }
 }
@@ -55,13 +49,13 @@ export async function updateLeadStatus(id: string, status: string) {
     const { error } = await supabase.from("leads").update({ status }).eq("id", id)
 
     if (error) {
-      console.error("[v0] Error updating lead:", error)
+      console.error("Error updating lead:", error.message)
       return { success: false, error: error.message }
     }
 
     return { success: true }
   } catch (error) {
-    console.error("[v0] Unexpected error in updateLeadStatus:", error)
+    console.error("Unexpected error in updateLeadStatus:", error instanceof Error ? error.message : String(error))
     return { success: false, error: error instanceof Error ? error.message : "An unexpected error occurred" }
   }
 }
@@ -73,13 +67,13 @@ export async function updateLeadNotes(id: string, notes: string) {
     const { error } = await supabase.from("leads").update({ internal_notes: notes }).eq("id", id)
 
     if (error) {
-      console.error("[v0] Error updating notes:", error)
+      console.error("Error updating notes:", error.message)
       return { success: false, error: error.message }
     }
 
     return { success: true }
   } catch (error) {
-    console.error("[v0] Unexpected error in updateLeadNotes:", error)
+    console.error("Unexpected error in updateLeadNotes:", error instanceof Error ? error.message : String(error))
     return { success: false, error: error instanceof Error ? error.message : "An unexpected error occurred" }
   }
 }
@@ -87,26 +81,14 @@ export async function updateLeadNotes(id: string, notes: string) {
 async function sendEmailNotification(lead: Lead) {
   if (!lead) return
 
-  console.log(
-    `
-    ====== NEW LEAD NOTIFICATION ======
-    Type: ${lead.lead_type}
-    Email: ${lead.email}
-    Company: ${lead.company_name || "N/A"}
-    Move Type: ${lead.move_type || "Custom Request"}
-    Estimated Value: ${lead.estimated_total ? formatCurrency(lead.estimated_total) : "TBD"}
-    ===================================
-  `,
-  )
-
   if (!resend) {
-    console.warn("[v0] Resend API key not configured. Skipping email notification.")
+    console.warn("Resend API key not configured. Skipping email notification.")
     return
   }
 
   const recipients = LEAD_NOTIFICATION_RECIPIENTS
   if (recipients.length === 0) {
-    console.warn("[v0] No lead notification recipients configured.")
+    console.warn("No lead notification recipients configured.")
     return
   }
 
@@ -160,6 +142,6 @@ async function sendEmailNotification(lead: Lead) {
       })
     }
   } catch (error) {
-    console.error("[v0] Failed to send email notification:", error)
+    console.error("Failed to send email notification:", error instanceof Error ? error.message : String(error))
   }
 }

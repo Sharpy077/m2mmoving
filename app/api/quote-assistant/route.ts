@@ -1,6 +1,8 @@
 import { streamText, tool } from "ai"
 import { createOpenAI } from "@ai-sdk/openai"
 import { z } from "zod"
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit"
+import { reportMonitoring } from "@/lib/monitoring"
 
 
 export const maxDuration = 60
@@ -576,11 +578,20 @@ const tools = {
 } as const
 
 export async function POST(req: Request) {
+  const ip = getClientIp(req)
+  const rateCheck = checkRateLimit(ip, 20, 60_000)
+  if (!rateCheck.allowed) {
+    return new Response(JSON.stringify({ error: "Too many requests" }), {
+      status: 429,
+      headers: {
+        "Content-Type": "application/json",
+        "Retry-After": String(Math.ceil((rateCheck.retryAfterMs ?? 60_000) / 1000)),
+      },
+    })
+  }
+
   try {
     const body = await req.json()
-    console.log("[v0] Request body received")
-    console.log("[v0] OPENAI_API_KEY present:", !!process.env.OPENAI_API_KEY)
-    console.log("[v0] Key prefix:", process.env.OPENAI_API_KEY?.substring(0, 10))
     const rawMessages = body.messages || []
 
     const effectiveMessages =
@@ -603,12 +614,6 @@ export async function POST(req: Request) {
       tools,
       // maxSteps: 5,
     })
-
-    // console.log("[v0] Result keys:", Object.keys(result))
-    // throw new Error(`Debug keys: ${Object.keys(result).join(', ')}`) 
-    // Commented out throw, trying toTextStreamResponse as fallback if valid?
-    // console.log("[v0] Result keys:", Object.keys(result))
-    // console.log("[v0] Proto keys:", Object.getOwnPropertyNames(Object.getPrototypeOf(result)))
 
     if (typeof result.toDataStreamResponse === 'function') {
       return result.toDataStreamResponse()
@@ -666,8 +671,13 @@ export async function POST(req: Request) {
       }
     })
   } catch (error) {
-    console.error("[v0] Quote assistant error:", error)
-    return new Response(JSON.stringify({ error: "Internal server error", details: String(error) }), {
+    console.error("Quote assistant error:", error)
+    void reportMonitoring({
+      source: "api/quote-assistant",
+      message: error instanceof Error ? error.message : "Unknown quote assistant error",
+      severity: "error",
+    })
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     })
