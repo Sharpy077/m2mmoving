@@ -1,6 +1,6 @@
 export interface Lead {
   id: string
-  lead_type: "instant_quote" | "custom_quote"
+  lead_type: "instant_quote" | "custom_quote" | "phone_enquiry"
   status: "new" | "contacted" | "quoted" | "won" | "lost"
   contact_name: string | null
   company_name: string | null
@@ -27,15 +27,29 @@ export interface Lead {
   project_description: string | null
   preferred_contact_time: string | null
   internal_notes: string | null
+  // Lead tracking
+  lead_source: string | null          // e.g. "google_ads", "organic", "referral", "direct"
+  utm_source: string | null           // e.g. "google"
+  utm_medium: string | null           // e.g. "cpc"
+  utm_campaign: string | null         // e.g. "melbourne-office-movers"
+  utm_content: string | null          // ad variation
+  // Final balance
+  final_balance_amount: number | null
+  final_invoice_sent: boolean | null
+  final_payment_status: string | null // "pending" | "sent" | "paid"
+  final_payment_date: string | null
+  // Stripe
+  stripe_session_id: string | null
+  stripe_payment_intent_id: string | null
   created_at: string
   updated_at: string
 }
 
 export interface LeadInsert {
-  lead_type?: "instant_quote" | "custom_quote"
+  lead_type?: "instant_quote" | "custom_quote" | "phone_enquiry"
   email: string
   status?: Lead["status"]
-  contact_name?: string
+  contact_name?: string | null
   company_name?: string
   phone?: string
   move_type?: string
@@ -59,4 +73,18 @@ export interface LeadInsert {
   project_description?: string
   preferred_contact_time?: string
   internal_notes?: string
+  // Lead tracking
+  lead_source?: string
+  utm_source?: string
+  utm_medium?: string
+  utm_campaign?: string
+  utm_content?: string
+  // Final balance
+  final_balance_amount?: number
+  final_invoice_sent?: boolean
+  final_payment_status?: string
+  final_payment_date?: string
+  // Stripe
+  stripe_session_id?: string
+  stripe_payment_intent_id?: string
 }

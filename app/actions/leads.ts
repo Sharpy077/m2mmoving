@@ -84,6 +84,36 @@ export async function updateLeadNotes(id: string, notes: string) {
   }
 }
 
+export async function updateLeadUtm(
+  leadId: string,
+  utmData: {
+    lead_source?: string
+    utm_source?: string
+    utm_medium?: string
+    utm_campaign?: string
+    utm_content?: string
+  },
+) {
+  try {
+    const supabase = await createClient()
+
+    const { error } = await supabase
+      .from("leads")
+      .update(utmData)
+      .eq("id", leadId)
+
+    if (error) {
+      console.error("[v0] Error updating lead UTM fields:", error)
+      return { success: false, error: error.message }
+    }
+
+    return { success: true }
+  } catch (error) {
+    console.error("[v0] Unexpected error in updateLeadUtm:", error)
+    return { success: false, error: error instanceof Error ? error.message : "An unexpected error occurred" }
+  }
+}
+
 async function sendEmailNotification(lead: Lead) {
   if (!lead) return
 

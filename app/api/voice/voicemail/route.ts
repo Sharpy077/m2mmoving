@@ -24,17 +24,71 @@ export async function POST(request: NextRequest) {
   console.log(`[v0] Voicemail received from ${callerNumber}`)
   console.log(`[v0] Recording URL: ${recordingUrl}`)
 
-  // Store voicemail in database
+  // Store voicemail in database and link to existing or new lead
   try {
     const supabase = await createClient()
 
-    await supabase.from("voicemails").insert({
+    // Look up existing lead by phone number
+    let leadId: string | null = null
+    if (callerNumber) {
+      const { data: existingLead } = await supabase
+        .from("leads")
+        .select("id, email, contact_name")
+        .eq("phone", callerNumber)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single()
+
+      if (existingLead) {
+        leadId = existingLead.id
+        console.log("[v0] Matched voicemail to existing lead:", leadId)
+      } else {
+        // Create a stub lead for the unknown caller
+        const sanitisedNumber = callerNumber.replace(/[^0-9]/g, "")
+        const { data: newLead, error: leadInsertError } = await supabase
+          .from("leads")
+          .insert({
+            lead_type: "phone_enquiry",
+            email: `voicemail_${sanitisedNumber}@pending.m2mmoving.au`,
+            phone: callerNumber,
+            lead_source: "phone",
+            status: "new",
+            contact_name: null,
+            internal_notes: "Auto-created from voicemail recording",
+          })
+          .select("id")
+          .single()
+
+        if (leadInsertError) {
+          console.error("[v0] Failed to create stub lead for voicemail:", leadInsertError)
+        } else if (newLead) {
+          leadId = newLead.id
+          console.log("[v0] Created stub lead for voicemail caller:", leadId)
+        }
+      }
+    }
+
+    // Insert voicemail record with lead linkage
+    const { error: voicemailError } = await supabase.from("voicemails").insert({
       caller_number: callerNumber,
       recording_url: recordingUrl,
       recording_sid: recordingSid,
       duration: Number.parseInt(duration) || 0,
       status: "new",
+      lead_id: leadId,
     })
+
+    if (voicemailError) {
+      // Fallback: insert without lead_id in case column does not yet exist
+      console.warn("[v0] Voicemail insert with lead_id failed, retrying without:", voicemailError.message)
+      await supabase.from("voicemails").insert({
+        caller_number: callerNumber,
+        recording_url: recordingUrl,
+        recording_sid: recordingSid,
+        duration: Number.parseInt(duration) || 0,
+        status: "new",
+      })
+    }
 
     console.log("[v0] Voicemail saved to database")
   } catch (error) {
