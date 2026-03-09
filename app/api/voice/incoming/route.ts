@@ -1,14 +1,23 @@
 import { type NextRequest, NextResponse } from "next/server"
 import twilio from "twilio"
-import { isBusinessHours, FORWARD_NUMBERS, formatAustralianNumber } from "@/lib/twilio"
+import { isBusinessHours, FORWARD_NUMBERS, formatAustralianNumber, validateTwilioRequest } from "@/lib/twilio"
 
 const VoiceResponse = twilio.twiml.VoiceResponse
 
 export async function POST(request: NextRequest) {
+  const formData = await request.formData()
+
+  // Validate that the request genuinely came from Twilio
+  const params: Record<string, string> = {}
+  formData.forEach((value, key) => { params[key] = value.toString() })
+  if (!validateTwilioRequest(request, params)) {
+    console.warn("[voice/incoming] Invalid Twilio signature — rejecting request")
+    return new NextResponse("Forbidden", { status: 403 })
+  }
+
   const twiml = new VoiceResponse()
 
   // Get caller info from Twilio
-  const formData = await request.formData()
   const callerNumber = formData.get("From") as string
   const calledNumber = formData.get("To") as string
 

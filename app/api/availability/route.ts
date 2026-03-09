@@ -17,23 +17,26 @@ export async function GET(req: Request) {
       .order("date", { ascending: true })
 
     if (error) {
-      // If table doesn't exist yet, return simulated availability
+      // Table not set up yet — return simulated availability with a flag so clients can distinguish
+      console.warn("[availability] DB unavailable, returning simulated availability:", error.message)
       const dates = []
       const start = new Date(startDate)
       const end = new Date(endDate)
 
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      let d = new Date(start)
+      while (d <= end) {
         const dayOfWeek = d.getDay()
         const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
         dates.push({
           date: d.toISOString().split("T")[0],
           is_available: !isWeekend,
           max_bookings: 3,
-          current_bookings: Math.floor(Math.random() * 2), // Simulate some bookings
+          current_bookings: 0,
         })
+        d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
       }
 
-      return NextResponse.json({ availability: dates })
+      return NextResponse.json({ availability: dates, simulated: true })
     }
 
     return NextResponse.json({ availability: data })

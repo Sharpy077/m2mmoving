@@ -14,7 +14,10 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const searchParams = useSearchParams()
-  const redirectTo = searchParams.get("redirect") || "/admin"
+  // Validate redirect to prevent open redirect attacks — only allow known relative paths
+  const allowedRedirects = ["/admin", "/admin/voicemails", "/admin/settings", "/admin/agents", "/quote"]
+  const rawRedirect = searchParams.get("redirect") || "/admin"
+  const redirectTo = allowedRedirects.includes(rawRedirect) ? rawRedirect : "/admin"
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()

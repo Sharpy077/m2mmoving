@@ -15,6 +15,7 @@ const mockFrom = vi.fn(() => ({
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(() => ({
     from: mockFrom,
+    auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "test-admin" } }, error: null }) },
   })),
 }))
 

@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { submitLead } from "@/app/actions/leads"
 
-// Mock Supabase
-const mockInsert = vi.fn()
-const mockFrom = vi.fn(() => ({
-  insert: mockInsert,
-}))
+const { mockInsert, mockFrom, mockSend } = vi.hoisted(() => {
+  const mockInsert = vi.fn()
+  const mockFrom = vi.fn(() => ({ insert: mockInsert }))
+  const mockSend = vi.fn()
+  return { mockInsert, mockFrom, mockSend }
+})
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(() => ({
@@ -13,8 +13,6 @@ vi.mock("@/lib/supabase/server", () => ({
   })),
 }))
 
-// Mock email
-const mockSend = vi.fn()
 vi.mock("@/lib/email", () => ({
   resend: {
     emails: {
@@ -25,6 +23,8 @@ vi.mock("@/lib/email", () => ({
   LEAD_NOTIFICATION_RECIPIENTS: ["admin@example.com"],
   formatCurrency: (n: number) => `$${n?.toLocaleString() || "0"}`,
 }))
+
+import { submitLead } from "@/app/actions/leads"
 
 describe("User-Side: Custom Quote Form", () => {
   beforeEach(() => {

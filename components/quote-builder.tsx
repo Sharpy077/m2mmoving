@@ -173,7 +173,10 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
     let total = type.baseRate + type.perSqm * effectiveSqm
 
     if (distance) {
-      total += Number.parseInt(distance) * 8
+      const distanceKm = Number.parseInt(distance, 10)
+      if (!Number.isNaN(distanceKm) && distanceKm > 0) {
+        total += distanceKm * 8
+      }
     }
 
     selectedServices.forEach((serviceId) => {

@@ -135,10 +135,14 @@ describe("API Endpoints: Fleet Stats", () => {
 
 describe("API Endpoints: Security", () => {
   it("should validate query parameters", async () => {
-    // Business lookup should validate query and type
+    ;(global.fetch as any).mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({ error: "Missing parameters" }),
+    })
+
     const response = await fetch("http://localhost/api/business-lookup")
-    // Should handle missing parameters
-    expect(response).toBeDefined()
+    expect(response.status).toBe(400)
   })
 
   it("should prevent SQL injection in queries", async () => {

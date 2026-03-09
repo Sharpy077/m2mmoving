@@ -6,9 +6,12 @@ import React from "react"
 ;(globalThis as any).React = React
 
 // Polyfill pointer capture APIs expected by Radix UI components in tests.
-if (!Element.prototype.hasPointerCapture) {
-  Element.prototype.hasPointerCapture = () => false
-}
-if (!Element.prototype.releasePointerCapture) {
-  Element.prototype.releasePointerCapture = () => {}
+// Guard with typeof check since these APIs only exist in browser/dom environments.
+if (typeof Element !== "undefined") {
+  if (!Element.prototype.hasPointerCapture) {
+    Element.prototype.hasPointerCapture = () => false
+  }
+  if (!Element.prototype.releasePointerCapture) {
+    Element.prototype.releasePointerCapture = () => {}
+  }
 }

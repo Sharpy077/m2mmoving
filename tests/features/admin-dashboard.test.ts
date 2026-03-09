@@ -402,7 +402,7 @@ describe('Admin Dashboard - Usability Tests', () => {
 
       const sorted = [...mockLeads].sort(sortByDate)
 
-      expect(sorted[0].created_at).toBeGreaterThanOrEqual(sorted[1].created_at)
+      expect(new Date(sorted[0].created_at).getTime()).toBeGreaterThanOrEqual(new Date(sorted[1].created_at).getTime())
     })
 
     it('should format currency correctly', () => {
