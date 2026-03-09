@@ -312,24 +312,185 @@ RESEND_API_KEY=
 8. **Path alias `@/`** resolves to the project root (not `src/`) — check `tsconfig.json`
 9. **Agent codenames** are fixed — do not rename agents without updating all references in `lib/agents/index.ts`
 10. **Supabase migrations** are append-only — never modify existing migration files, always create new ones
+11. **TDD is mandatory** — write the failing test first, then implement, then refactor. Never write implementation code without a corresponding test written beforehand.
 
 ---
 
-## Testing Conventions
+## Test-Driven Development (TDD)
+
+TDD is **mandatory** for all work in this codebase. Every feature, bug fix, or refactor must follow the Red-Green-Refactor cycle. AI assistants must always write the test file before the implementation file.
+
+### The Workflow
+
+1. **Red** — Write a failing test that describes the desired behaviour
+2. **Green** — Write the minimum code to make the test pass
+3. **Refactor** — Clean up code while keeping tests green
+
+Never write implementation code without a corresponding test written first.
+
+### Test Commands
 
 ```bash
-pnpm test                          # Run all tests
-pnpm test tests/quote-builder      # Run specific test file
-pnpm test --reporter=verbose       # Verbose output
-pnpm exec vitest ui                # Open Vitest UI dashboard
+pnpm test                                  # Run all tests (single run)
+pnpm test:watch                            # Watch mode — use this during active TDD
+pnpm test:coverage                         # Coverage report
+pnpm test tests/my-file.test.ts            # Run a single file
+pnpm test --reporter=verbose               # Verbose output
+pnpm exec vitest ui                        # Vitest browser UI dashboard
 ```
 
-Test categories in `tests/`:
-- `features.test.tsx` — comprehensive feature coverage (primary test suite)
-- `security.test.ts` — auth, validation, XSS/injection prevention
-- `api-endpoints.test.ts` — API route testing with mocked services
-- `stripe-webhook.test.ts` — payment webhook handling
-- `twilio.test.ts` — voice/SMS integration tests
+### Test File Placement
+
+| What you're building | Where to put the test |
+|---|---|
+| Server action `app/actions/foo.ts` | `tests/foo-actions.test.ts` |
+| API route `app/api/foo/route.ts` | `tests/foo.test.ts` |
+| Component `components/foo.tsx` | `tests/features/foo.test.tsx` |
+| Library `lib/foo.ts` | `tests/foo.test.ts` |
+| Agent `lib/agents/bar/` | `tests/features/ai-agents.test.ts` |
+| Hook `hooks/use-foo.ts` | `tests/foo.test.ts` |
+
+### TDD Templates by Domain
+
+**Server Actions** — write this test first, then create `app/actions/`:
+
+```typescript
+// tests/my-action.test.ts
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+const { mockInsert, mockFrom } = vi.hoisted(() => {
+  const mockInsert = vi.fn()
+  const mockFrom = vi.fn(() => ({ insert: mockInsert }))
+  return { mockInsert, mockFrom }
+})
+
+vi.mock('@/lib/supabase/server', () => ({
+  createClient: vi.fn().mockResolvedValue({ from: mockFrom }),
+}))
+
+describe('myAction()', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+
+  it('inserts record and returns success', async () => {
+    mockInsert.mockResolvedValue({ error: null })
+    const result = await myAction({ name: 'Test' })
+    expect(result).toEqual({ success: true })
+    expect(mockFrom).toHaveBeenCalledWith('my_table')
+  })
+
+  it('returns error when database fails', async () => {
+    mockInsert.mockResolvedValue({ error: { message: 'DB error' } })
+    const result = await myAction({ name: 'Test' })
+    expect(result).toEqual({ error: 'DB error' })
+  })
+})
+```
+
+**API Routes** — write this test first, then create `app/api/`:
+
+```typescript
+// tests/my-route.test.ts
+import { NextRequest } from 'next/server'
+import { describe, it, expect, vi } from 'vitest'
+
+describe('GET /api/my-route', () => {
+  it('returns 200 with expected data', async () => {
+    const { GET } = await import('@/app/api/my-route/route')
+    const req = new NextRequest('http://localhost/api/my-route')
+    const res = await GET(req)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body).toHaveProperty('data')
+  })
+
+  it('returns 400 for invalid input', async () => {
+    const { POST } = await import('@/app/api/my-route/route')
+    const req = new NextRequest('http://localhost/api/my-route', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(400)
+  })
+})
+```
+
+**Library / Utility Functions** — write this test first, then create `lib/`:
+
+```typescript
+// tests/my-lib.test.ts
+import { describe, it, expect } from 'vitest'
+import { calculatePrice } from '@/lib/quote/calculate-price'
+
+describe('calculatePrice()', () => {
+  it('applies minimum square meter requirement', () => {
+    expect(calculatePrice({ sqm: 10, baseRate: 2500, perSqm: 45, minSqm: 20 }))
+      .toBe(3400) // 2500 + 20 * 45
+  })
+
+  it('uses actual area when above minimum', () => {
+    expect(calculatePrice({ sqm: 100, baseRate: 2500, perSqm: 45, minSqm: 20 }))
+      .toBe(7000) // 2500 + 100 * 45
+  })
+})
+```
+
+**React Components** — write this test first, then create `components/`:
+
+```typescript
+// tests/features/my-component.test.tsx
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, it, expect, vi } from 'vitest'
+import MyComponent from '@/components/my-component'
+
+describe('MyComponent', () => {
+  it('renders the submit button', () => {
+    render(<MyComponent onSubmit={vi.fn()} />)
+    expect(screen.getByRole('button', { name: /submit/i })).toBeInTheDocument()
+  })
+
+  it('calls onSubmit with form data when submitted', async () => {
+    const onSubmit = vi.fn()
+    render(<MyComponent onSubmit={onSubmit} />)
+    await userEvent.click(screen.getByRole('button', { name: /submit/i }))
+    expect(onSubmit).toHaveBeenCalled()
+  })
+})
+```
+
+### Mocking Cheat-Sheet
+
+Always use `vi.hoisted()` for mocks that need to reference each other. Use `vi.clearAllMocks()` in `beforeEach()`.
+
+| Service | Mock pattern |
+|---|---|
+| Supabase | `vi.mock('@/lib/supabase/server', ...)` with `vi.hoisted()` |
+| Stripe | `vi.mock('@/lib/stripe', ...)` |
+| Next.js router | `vi.mock('next/navigation', ...)` |
+| fetch() | `global.fetch = vi.fn()` |
+| OpenAI / AI SDK | `vi.mock('@ai-sdk/openai', ...)` |
+| Twilio | `vi.mock('@/lib/twilio', ...)` |
+| Resend | `vi.mock('@/lib/email', ...)` |
+
+### Pre-Submission Checklist
+
+Before submitting any implementation, verify:
+- [ ] Test file written **before** the implementation file
+- [ ] Happy path covered by at least one test
+- [ ] At least one error or edge case tested
+- [ ] All external services mocked — no real API calls
+- [ ] `pnpm test` passes with zero failures
+- [ ] Test placed in the correct location per the placement table above
+
+### Existing Test Categories
+
+- `tests/features.test.tsx` — comprehensive feature coverage (primary suite)
+- `tests/features/` — per-feature test files (quote, admin, security, etc.)
+- `tests/security.test.ts` — auth, validation, XSS/injection prevention
+- `tests/api-endpoints.test.ts` — API route testing with mocked services
+- `tests/stripe-webhook.test.ts` — payment webhook handling
+- `tests/twilio.test.ts` — voice/SMS integration tests
 
 ---
 
