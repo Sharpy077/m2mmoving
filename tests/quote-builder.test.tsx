@@ -1,3 +1,13 @@
+// @vitest-environment jsdom
+import { vi } from "vitest"
+
+// Polyfill ResizeObserver for Radix UI components in jsdom
+global.ResizeObserver = vi.fn().mockImplementation(() => ({
+  observe: vi.fn(),
+  unobserve: vi.fn(),
+  disconnect: vi.fn(),
+}))
+
 import React, { type ReactNode } from "react"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -8,6 +18,12 @@ import { submitLead } from "@/app/actions/leads"
 import { createDepositCheckoutSession } from "@/app/actions/stripe"
 
 process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = ""
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn(), forward: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => "/quote",
+}))
 
 vi.mock("@/app/actions/leads", () => ({
   submitLead: vi.fn(),
@@ -45,14 +61,14 @@ describe("QuoteBuilder", () => {
 
     await user.type(screen.getByPlaceholderText(/melbourne cbd/i), "Melbourne CBD")
     await user.type(screen.getByPlaceholderText(/richmond/i), "Richmond")
-    await user.type(screen.getByPlaceholderText(/e\.g\.\s*15/i), "15")
+    await user.type(screen.getByPlaceholderText("15"), "15")
 
     await user.click(screen.getByRole("button", { name: /continue/i }))
 
-    await user.type(screen.getByPlaceholderText(/you@company\.com/i), "ops@acme.com")
-    await user.type(screen.getByPlaceholderText(/04XX XXX XXX/i), "0412345678")
+    await user.type(screen.getByPlaceholderText(/your\.email@company\.com\.au/i), "ops@acme.com")
+    await user.type(screen.getByPlaceholderText(/0412 345 678/i), "0412345678")
     await user.type(screen.getByPlaceholderText(/John Smith/i), "Alex Operations")
-    await user.type(screen.getByPlaceholderText(/Acme Pty Ltd/i), "Acme Pty Ltd")
+    await user.type(screen.getByPlaceholderText(/Acme Corporation Pty Ltd/i), "Acme Pty Ltd")
 
     await user.click(screen.getByRole("button", { name: /confirm & book/i }))
 
@@ -99,7 +115,7 @@ describe("QuoteBuilder", () => {
     await user.click(screen.getByRole("button", { name: /continue/i }))
     await user.click(screen.getByRole("button", { name: /continue/i }))
 
-    await user.type(screen.getByPlaceholderText(/you@company\.com/i), "ops@acme.com")
+    await user.type(screen.getByPlaceholderText(/your\.email@company\.com\.au/i), "ops@acme.com")
     await user.click(screen.getByRole("button", { name: /confirm & book/i }))
     await screen.findByText(/Quote Submitted/i)
 

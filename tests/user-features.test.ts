@@ -1,15 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 // Mock dependencies
-const insertMock = vi.fn()
-const selectMock = vi.fn()
-const singleMock = vi.fn()
-const fromMock = vi.fn(() => ({
-  insert: insertMock,
-  select: selectMock,
-}))
-
-const createClientMock = vi.fn()
+const { insertMock, selectMock, singleMock, fromMock, createClientMock } = vi.hoisted(() => {
+  const insertMock = vi.fn()
+  const selectMock = vi.fn()
+  const singleMock = vi.fn()
+  const fromMock = vi.fn(() => ({ insert: insertMock, select: selectMock }))
+  const createClientMock = vi.fn()
+  return { insertMock, selectMock, singleMock, fromMock, createClientMock }
+})
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: () => createClientMock(),
@@ -23,7 +22,7 @@ vi.mock("@/lib/email", () => ({
   },
   EMAIL_FROM_ADDRESS: "test@example.com",
   LEAD_NOTIFICATION_RECIPIENTS: ["admin@example.com"],
-  formatCurrency: (amount: number) => `$${amount.toFixed(2)}`,
+  formatCurrency: (amount: number) => `$${(amount ?? 0).toFixed(2)}`,
 }))
 
 import { submitLead } from "@/app/actions/leads"
