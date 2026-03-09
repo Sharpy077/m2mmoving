@@ -16,13 +16,13 @@ export async function POST(request: NextRequest) {
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
 
     if (!webhookSecret) {
-      console.error("[v0] STRIPE_WEBHOOK_SECRET is not set")
+      console.error("STRIPE_WEBHOOK_SECRET is not set")
       return NextResponse.json({ error: "Webhook secret not configured" }, { status: 500 })
     }
 
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
   } catch (err) {
-    console.error("[v0] Webhook signature verification failed:", err)
+    console.error("Webhook signature verification failed:", err)
     return NextResponse.json({ error: "Webhook signature verification failed" }, { status: 400 })
   }
 
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object
-        console.log("[v0] Checkout session completed:", session.id)
+        console.log("Checkout session completed:", session.id)
 
         // Update lead with payment info if metadata contains lead_id
         if (session.metadata?.lead_id) {
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
 
       case "checkout.session.expired": {
         const session = event.data.object
-        console.log("[v0] Checkout session expired:", session.id)
+        console.log("Checkout session expired:", session.id)
 
         if (session.metadata?.lead_id) {
           const supabase = await createClient()
@@ -67,13 +67,13 @@ export async function POST(request: NextRequest) {
 
       case "payment_intent.succeeded": {
         const paymentIntent = event.data.object
-        console.log("[v0] Payment intent succeeded:", paymentIntent.id)
+        console.log("Payment intent succeeded:", paymentIntent.id)
         break
       }
 
       case "payment_intent.payment_failed": {
         const paymentIntent = event.data.object
-        console.log("[v0] Payment intent failed:", paymentIntent.id)
+        console.log("Payment intent failed:", paymentIntent.id)
 
         if (paymentIntent.metadata?.lead_id) {
           const supabase = await createClient()
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
 
       case "charge.refunded": {
         const charge = event.data.object
-        console.log("[v0] Charge refunded:", charge.id)
+        console.log("Charge refunded:", charge.id)
 
         if (charge.payment_intent) {
           const paymentIntent = await stripe.paymentIntents.retrieve(charge.payment_intent as string)
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
 
       case "charge.dispute.created": {
         const dispute = event.data.object
-        console.log("[v0] Charge dispute created:", dispute.id)
+        console.log("Charge dispute created:", dispute.id)
 
         if (dispute.payment_intent) {
           const paymentIntent = await stripe.paymentIntents.retrieve(dispute.payment_intent as string)
@@ -131,12 +131,12 @@ export async function POST(request: NextRequest) {
       }
 
       default:
-        console.log(`[v0] Unhandled event type: ${event.type}`)
+        console.log(`Unhandled event type: ${event.type}`)
     }
 
     return NextResponse.json({ received: true })
   } catch (err) {
-    console.error("[v0] Webhook handler error:", err)
+    console.error("Webhook handler error:", err)
     return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 })
   }
 }

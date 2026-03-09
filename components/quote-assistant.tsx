@@ -275,7 +275,6 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const { messages, sendMessage, status, error } = useChat({
       api: "/api/quote-assistant",
       onError: (err) => {
-        console.log("[v0] Chat error:", err.message)
         setHasError(true)
         setErrorMessage(err.message || "Failed to connect to the quote assistant")
       },
@@ -730,7 +729,6 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
 
     const renderMessageContent = (message: any) => {
       // Debug log
-      console.log("[v0] Rendering:", message.role, "Content:", message.content, "Parts:", message.parts)
 
       if (message.parts) {
         return message.parts

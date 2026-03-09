@@ -28,7 +28,7 @@ export async function GET(req: Request) {
     if (type === "abn") {
       const cleanABN = query.replace(/\s/g, "")
       if (!/^\d{11}$/.test(cleanABN)) {
-        return NextResponse.json({ results: [], message: "Invalid ABN format" })
+        return NextResponse.json({ results: [], message: "Invalid ABN format" }, { status: 400 })
       }
 
       const abnUrl = `https://abr.business.gov.au/json/AbnDetails.aspx?abn=${cleanABN}&callback=callback&guid=${ABN_LOOKUP_GUID}`
@@ -100,7 +100,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ results })
   } catch (error) {
-    console.error("[v0] Business lookup error:", error)
+    console.error("Business lookup error:", error)
     return NextResponse.json({ error: "Failed to lookup business" }, { status: 500 })
   }
 }
@@ -153,7 +153,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ business })
   } catch (error) {
-    console.error("[v0] Business details error:", error)
+    console.error("Business details error:", error)
     return NextResponse.json({ error: "Failed to fetch business details" }, { status: 500 })
   }
 }

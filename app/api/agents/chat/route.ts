@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getCortex, getAgent, initializeAISalesforce, type AgentCodename, type AgentInput } from "@/lib/agents"
 import { createConversation, addMessage, getConversation } from "@/lib/agents/db"
 import { v4 as uuid } from "uuid"
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit"
 
 // Initialize on first request
 let initialized = false
@@ -21,6 +22,18 @@ function ensureInitialized() {
 }
 
 export async function POST(request: NextRequest) {
+  const ip = getClientIp(request)
+  const rateCheck = checkRateLimit(ip, 30, 60_000)
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      {
+        status: 429,
+        headers: { "Retry-After": String(Math.ceil((rateCheck.retryAfterMs ?? 60_000) / 1000)) },
+      },
+    )
+  }
+
   try {
     ensureInitialized()
 

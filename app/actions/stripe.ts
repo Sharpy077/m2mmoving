@@ -4,6 +4,10 @@ import { stripe } from "@/lib/stripe"
 import { createClient } from "@/lib/supabase/server"
 
 export async function createDepositCheckoutSession(leadId: string, depositAmountCents: number, customerEmail: string) {
+  if (!Number.isInteger(depositAmountCents) || depositAmountCents < 100 || depositAmountCents > 10_000_000) {
+    return { success: false, error: "Invalid deposit amount" }
+  }
+
   try {
     const session = await stripe.checkout.sessions.create({
       ui_mode: "embedded",
@@ -87,6 +91,10 @@ export async function createDepositCheckout({
   scheduledDate?: string
   leadId?: string
 }): Promise<{ success: boolean; clientSecret?: string; error?: string }> {
+  if (typeof amount !== "number" || !isFinite(amount) || amount < 1 || amount > 100_000) {
+    return { success: false, error: "Invalid deposit amount" }
+  }
+
   try {
     const session = await stripe.checkout.sessions.create({
       ui_mode: "embedded",
@@ -123,7 +131,7 @@ export async function createDepositCheckout({
       clientSecret: session.client_secret ?? undefined,
     }
   } catch (error) {
-    console.error("[v0] Error creating deposit checkout:", error)
+    console.error("Error creating deposit checkout:", error)
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to create checkout session",
