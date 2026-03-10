@@ -90,7 +90,7 @@ export function Footer() {
 
         <div className="border-t border-border pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-xs text-muted-foreground font-mono">
-            © 2025 M&M Commercial Moving Services. All rights reserved.
+            © 2026 M&M Commercial Moving Services. All rights reserved.
           </p>
           <p className="text-xs text-muted-foreground font-mono">
             SYS_VERSION: 2.4.1 | STATUS: <span className="text-primary">OPERATIONAL</span>
