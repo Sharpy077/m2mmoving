@@ -13,7 +13,7 @@ import type {
   AgentMessage,
   PriorityLevel,
 } from "./types"
-import { createEscalation } from "./db"
+import { createEscalation, createHandoff } from "./db"
 
 export type { AgentInput, AgentOutput, AgentAction }
 
@@ -158,5 +158,37 @@ export abstract class BaseAgent {
       return `Thank you for your message. I'm ${this.identity.name}, and I'm here to help with your commercial moving needs. How can I assist you today?`
     }
     return "How can I help you today?"
+  }
+
+  protected async requestHandoff(
+    targetAgent: string,
+    reason: string,
+    context: Record<string, unknown>,
+    priority: string
+  ): Promise<string> {
+    this.log("info", "requestHandoff", `Requesting handoff to ${targetAgent}: ${reason}`)
+    try {
+      const handoffId = await createHandoff({
+        fromAgent: this.config.codename,
+        toAgent: targetAgent,
+        reason,
+        context,
+        priority,
+      })
+      return handoffId
+    } catch (err) {
+      this.log("error", "requestHandoff", `Failed to persist handoff: ${String(err)}`)
+      return `local_${this.generateId()}`
+    }
+  }
+
+  protected async generateStructuredResponse<T>(
+    prompt: string,
+    schema: Record<string, unknown>
+  ): Promise<T> {
+    // Default implementation returns an empty object.
+    // Subclasses can override with actual AI SDK calls (e.g., generateObject).
+    this.log("info", "generateStructuredResponse", `Generating structured response for prompt: ${prompt.slice(0, 50)}...`)
+    return {} as T
   }
 }

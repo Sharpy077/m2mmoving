@@ -152,6 +152,39 @@ export async function getActiveConversations(agentCodename?: string): Promise<an
 }
 
 // =============================================================================
+// HANDOFF OPERATIONS
+// =============================================================================
+
+export interface CreateHandoffParams {
+  fromAgent: string
+  toAgent: string
+  reason: string
+  context: Record<string, unknown>
+  conversationId?: string
+  priority?: string
+}
+
+export async function createHandoff(params: CreateHandoffParams): Promise<string> {
+  const supabase = getSupabase()
+
+  const { data, error } = await supabase.rpc("create_agent_handoff", {
+    p_from_agent: params.fromAgent,
+    p_to_agent: params.toAgent,
+    p_reason: params.reason,
+    p_context: params.context,
+    p_conversation_id: params.conversationId || null,
+    p_priority: params.priority || "medium",
+  })
+
+  if (error) {
+    console.error("Error creating handoff:", error)
+    throw new Error(`Failed to create handoff: ${error.message}`)
+  }
+
+  return data as string
+}
+
+// =============================================================================
 // ESCALATION OPERATIONS
 // =============================================================================
 
