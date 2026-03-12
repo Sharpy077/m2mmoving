@@ -146,7 +146,7 @@ Successfully implemented comprehensive error handling and conversation continuit
 
 ### New Utilities Created
 
-```
+\`\`\`
 lib/conversation/
 ├── error-classifier.ts    # Error classification
 ├── retry-handler.ts       # Retry logic
@@ -154,7 +154,7 @@ lib/conversation/
 ├── state-manager.ts       # State persistence
 ├── fallback-provider.ts   # Fallback responses
 └── index.ts              # Centralized exports
-```
+\`\`\`
 
 ### Component Enhancements
 

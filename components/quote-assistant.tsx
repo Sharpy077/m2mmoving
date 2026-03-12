@@ -3,46 +3,27 @@
 import type React from "react"
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, useCallback } from "react"
 import { useChat } from "@ai-sdk/react"
+import { DefaultChatTransport } from "ai"
 
 import {
-  MessageSquare,
-  X,
-  Minimize2,
-  Maximize2,
-  Send,
-  Mic,
-  MicOff,
-  Volume2,
-  VolumeX,
   Building2,
   CheckCircle,
-  ChevronLeft,
-  ChevronRight,
-  CreditCard,
   Phone,
-  Bot,
-  Loader2,
-  AlertTriangle,
-  RefreshCw,
   Warehouse,
   Server,
   Monitor,
   Store,
   ArrowRight,
   AlertCircle,
+  Clock,
+  PhoneCall,
+  RotateCcw,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js"
 import { loadStripe } from "@stripe/stripe-js"
 import { submitLead } from "@/app/actions/leads"
-import { createDepositCheckout } from "@/app/actions/stripe"
-import { useFormPersistence } from "@/hooks/use-form-persistence"
-import { PaymentConfirmation } from "@/components/payment-confirmation"
-import { getStripeErrorMessage } from "@/lib/stripe-errors"
 import {
-  ResponseMonitor,
+  type ResponseMonitor,
   getResponseMonitor,
   ErrorClassifier,
   RetryHandler,
@@ -50,6 +31,10 @@ import {
   FallbackProvider,
   type ConversationState,
 } from "@/lib/conversation"
+import { SessionRecoveryManager, type SavedSession } from "@/lib/conversation/session-recovery"
+import { HumanEscalationService, detectHumanRequest } from "@/lib/conversation/human-escalation"
+import { ConversationAnalytics } from "@/lib/conversation/analytics"
+import type { ConversationContext, ConversationStage } from "@/lib/conversation/state-machine"
 
 const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null
@@ -217,12 +202,13 @@ const BookingProgress = ({
       {steps.map((s, i) => (
         <div key={s.id} className="flex items-center">
           <div
-            className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium transition-colors ${i < currentIndex
-              ? "bg-primary text-primary-foreground"
-              : i === currentIndex
-                ? "bg-primary text-primary-foreground ring-2 ring-primary/30"
-                : "bg-muted text-muted-foreground"
-              }`}
+            className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium transition-colors ${
+              i < currentIndex
+                ? "bg-primary text-primary-foreground"
+                : i === currentIndex
+                  ? "bg-primary text-primary-foreground ring-2 ring-primary/30"
+                  : "bg-muted text-muted-foreground"
+            }`}
           >
             {i < currentIndex ? <CheckCircle className="h-3 w-3" /> : i + 1}
           </div>
@@ -233,8 +219,105 @@ const BookingProgress = ({
   )
 }
 
+const SessionRecoveryBanner = ({
+  session,
+  onRestore,
+  onStartFresh,
+}: {
+  session: SavedSession
+  onRestore: () => void
+  onStartFresh: () => void
+}) => {
+  const age = SessionRecoveryManager.getSessionAge(session)
+  const prompt = SessionRecoveryManager.generateRecoveryPrompt(session)
+
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 mx-4">
+      <div className="flex items-start gap-3">
+        <Clock className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+        <div className="flex-1">
+          <h4 className="font-medium text-blue-900 text-sm">Continue where you left off?</h4>
+          <p className="text-blue-700 text-sm mt-1">{prompt}</p>
+          <div className="flex gap-2 mt-3">
+            <Button size="sm" onClick={onRestore} className="bg-blue-600 hover:bg-blue-700 text-white">
+              <RotateCcw className="h-3 w-3 mr-1" />
+              Continue
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onStartFresh}
+              className="border-blue-300 text-blue-700 bg-transparent"
+            >
+              Start Fresh
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const ReEngagementPrompt = ({
+  idleMinutes,
+  onContinue,
+  onRequestCallback,
+}: {
+  idleMinutes: number
+  onContinue: () => void
+  onRequestCallback: () => void
+}) => {
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mx-4 my-2">
+      <div className="flex items-center gap-2">
+        <AlertCircle className="h-4 w-4 text-amber-600" />
+        <p className="text-amber-800 text-sm">Still there? No rush - just let me know when you're ready to continue.</p>
+      </div>
+      <div className="flex gap-2 mt-2">
+        <Button size="sm" variant="outline" onClick={onContinue} className="text-xs bg-transparent">
+          I'm here
+        </Button>
+        <Button size="sm" variant="outline" onClick={onRequestCallback} className="text-xs bg-transparent">
+          <PhoneCall className="h-3 w-3 mr-1" />
+          Call me instead
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+const EscalationConfirmation = ({
+  ticketId,
+  estimatedWait,
+  onClose,
+}: {
+  ticketId: string
+  estimatedWait: string
+  onClose: () => void
+}) => {
+  return (
+    <div className="bg-green-50 border border-green-200 rounded-lg p-4 mx-4 my-2">
+      <div className="flex items-start gap-3">
+        <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
+        <div>
+          <h4 className="font-medium text-green-900 text-sm">Callback Scheduled!</h4>
+          <p className="text-green-700 text-sm mt-1">
+            Our team will contact you {estimatedWait}. Reference: {ticketId}
+          </p>
+          <Button size="sm" variant="ghost" onClick={onClose} className="mt-2 text-green-700 hover:text-green-900 p-0">
+            Continue chatting
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantProps>(
   ({ embedded = false, onScrolledAway }, ref) => {
+    // ============================================
+    // STATE DECLARATIONS
+    // ============================================
     const [isOpen, setIsOpen] = useState(embedded)
     const [isMinimized, setIsMinimized] = useState(false)
     const [inputValue, setInputValue] = useState("")
@@ -268,13 +351,41 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const [conversationId] = useState(() => `conv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`)
     const [isInitialMessage, setIsInitialMessage] = useState(true)
     const [retryCount, setRetryCount] = useState(0)
-    const [fallbackResponse, setFallbackResponse] = useState<ReturnType<typeof FallbackProvider.getFallback> | null>(null)
-
-    // Loading states
+    const [fallbackResponse, setFallbackResponse] = useState<ReturnType<typeof FallbackProvider.getFallback> | null>(
+      null,
+    )
     const [isLookingUpBusiness, setIsLookingUpBusiness] = useState(false)
     const [isCheckingAvailability, setIsCheckingAvailability] = useState(false)
     const [isCalculatingQuote, setIsCalculatingQuote] = useState(false)
+    const [recoverableSession, setRecoverableSession] = useState<SavedSession | null>(null)
+    const [showReEngagement, setShowReEngagement] = useState(false)
+    const [idleMinutes, setIdleMinutes] = useState(0)
+    const [escalationResult, setEscalationResult] = useState<{
+      ticketId: string
+      estimatedWait: string
+    } | null>(null)
+    const [conversationContext, setConversationContext] = useState<ConversationContext>({
+      stage: "greeting" as ConversationStage,
+      businessConfirmed: false,
+      serviceType: null,
+      qualifyingAnswers: {},
+      inventoryItems: [],
+      locationOrigin: null,
+      locationDestination: null,
+      quoteAmount: null,
+      selectedDate: null,
+      contactInfo: null,
+      errorCount: 0,
+      lastMessageTime: Date.now(),
+      stageStartTime: Date.now(),
+    })
+    const [pendingRetry, setPendingRetry] = useState<{ text: string; retries: number } | null>(null)
+    const [userHasScrolledUp, setUserHasScrolledUp] = useState(false)
+    const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
 
+    // ============================================
+    // REFS
+    // ============================================
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLInputElement>(null)
     const recognitionRef = useRef<any>(null)
@@ -282,78 +393,30 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const containerRef = useRef<HTMLDivElement>(null)
     const responseMonitorRef = useRef<ResponseMonitor>(getResponseMonitor())
     const retryHandlerRef = useRef<RetryHandler>(new RetryHandler())
+    const analyticsRef = useRef<ConversationAnalytics | null>(null)
+    const lastActivityRef = useRef<number>(Date.now())
+    const idleTimerRef = useRef<NodeJS.Timeout | null>(null)
 
-    useImperativeHandle(ref, () => ({
-      open: () => {
-        setIsOpen(true)
-        setIsMinimized(false)
-      },
-    }))
-
-    const [pendingRetry, setPendingRetry] = useState<{ text: string; retries: number } | null>(null)
-
-    // Enhanced error handling with retry logic
-    const handleErrorWithRetry = useCallback(async (error: unknown, messageText: string) => {
-      const classified = ErrorClassifier.classify(error)
-      const newRetryCount = retryCount + 1
-      setRetryCount(newRetryCount)
-
-      if (classified.retryable && classified.retryConfig) {
-        const retryConfig = classified.retryConfig
-        if (newRetryCount < retryConfig.maxAttempts) {
-          // Retry will be handled by the onError callback
-          // Just update the pending retry state
-          setPendingRetry({ text: messageText, retries: newRetryCount })
-        } else {
-          // Max retries exceeded, use fallback
-          const fallback = FallbackProvider.getFallback({
-            conversationId,
-            lastUserMessage: messageText,
-            conversationStep: currentStep,
-            errorType: classified.type,
-            retryCount: newRetryCount,
-          })
-          setFallbackResponse(fallback)
-          setHasError(true)
-          setErrorMessage(fallback.message)
-          setPendingRetry(null)
-        }
-      } else {
-        // Not retryable, show error immediately
-        const fallback = FallbackProvider.getFallback({
-          conversationId,
-          lastUserMessage: messageText,
-          conversationStep: currentStep,
-          errorType: classified.type,
-          retryCount: newRetryCount,
-        })
-        setFallbackResponse(fallback)
-        setHasError(true)
-        setErrorMessage(classified.message)
-        setPendingRetry(null)
-      }
-    }, [conversationId, currentStep, retryCount])
-
+    // ============================================
+    // useChat HOOK - MUST BE DECLARED EARLY
+    // ============================================
     const { messages, sendMessage, status, error } = useChat({
-      // @ts-ignore
-      api: "/api/quote-assistant",
+      transport: new DefaultChatTransport({ api: "/api/quote-assistant" }),
       id: conversationId,
       onError: (err) => {
         console.log("[v0] Chat error:", err.message)
         const classified = ErrorClassifier.classify(err)
-        
-        // Cancel response monitor timer
+
         if (lastUserMessageTime) {
           responseMonitorRef.current.cancelTimer(`msg-${lastUserMessageTime}`)
         }
 
-        // Handle error with retry logic
-        if (pendingRetry) {
-          handleErrorWithRetry(err, pendingRetry.text)
-        } else {
-          setHasError(true)
-          setErrorMessage(classified.message)
-        }
+        setHasError(true)
+        setErrorMessage(classified.message)
+        setConversationContext((prev) => ({
+          ...prev,
+          errorCount: prev.errorCount + 1,
+        }))
       },
       onFinish: () => {
         setHasError(false)
@@ -363,48 +426,34 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         setFallbackResponse(null)
         setLastUserMessageTime(null)
         setIsInitialMessage(false)
-        
-        // Cancel any monitoring timers
+
         if (lastUserMessageTime) {
           responseMonitorRef.current.cancelTimer(`msg-${lastUserMessageTime}`)
         }
-
-        // Save conversation state
-        saveConversationState()
       },
     })
 
-    // Form persistence
-    const formState = {
-      currentQuote,
-      contactInfo,
-      selectedDate,
-      confirmedBusiness,
-      businessLookupResults,
-      serviceOptions,
-      showServicePicker
-    }
+    // ============================================
+    // DERIVED STATE
+    // ============================================
+    const isLoading = status === "in_progress" || status === "streaming" || status === "submitted"
 
-    const { loadSavedData, clearSavedData } = useFormPersistence(
-      formState,
-      'quote-assistant-state',
-      !paymentComplete && !leadSubmitted
-    )
-
-    // Save conversation state
-    const saveConversationState = () => {
+    // ============================================
+    // CALLBACKS (can now use messages, isLoading, etc.)
+    // ============================================
+    const saveConversationState = useCallback(() => {
       const state: ConversationState = {
         id: conversationId,
         messages: messages.map((msg) => ({
           id: msg.id || `msg-${Date.now()}`,
           role: msg.role,
-          content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+          content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
           timestamp: new Date(),
         })),
         step: currentStep,
         selectedOptions: {
           business: confirmedBusiness || undefined,
-          service: serviceOptions.find(s => true) || undefined,
+          service: serviceOptions.find((s) => true) || undefined,
           date: selectedDate || undefined,
         },
         formData: {
@@ -413,7 +462,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         },
         errorState: hasError
           ? {
-              lastError: errorMessage || 'Unknown error',
+              lastError: errorMessage || "Unknown error",
               retryCount,
               lastRetryTime: new Date(),
             }
@@ -423,247 +472,404 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       }
       ConversationStateManager.save(state)
-    }
+    }, [
+      conversationId,
+      messages,
+      currentStep,
+      confirmedBusiness,
+      serviceOptions,
+      selectedDate,
+      contactInfo,
+      currentQuote,
+      hasError,
+      errorMessage,
+      retryCount,
+    ])
 
-    // Load saved state on mount
-    useEffect(() => {
-      if (embedded && messages.length === 0) {
-        // Try to load from new state manager first
-        const savedState = ConversationStateManager.load(conversationId)
-        if (savedState) {
-          // Restore from saved state
-          if (savedState.formData.quote) setCurrentQuote(savedState.formData.quote)
-          if (savedState.formData.contactInfo) setContactInfo(savedState.formData.contactInfo)
-          if (savedState.selectedOptions.date) setSelectedDate(savedState.selectedOptions.date)
-          if (savedState.selectedOptions.business) setConfirmedBusiness(savedState.selectedOptions.business)
-          if (savedState.step) setCurrentStep(savedState.step)
-          setIsInitialMessage(false)
+    const handleErrorWithRetry = useCallback(
+      async (error: any, messageText: string) => {
+        setHasError(true)
+        const classified = ErrorClassifier.classify(error)
+        setErrorMessage(classified.message)
+        setRetryCount((prev) => prev + 1)
+
+        setConversationContext((prev) => ({
+          ...prev,
+          errorCount: prev.errorCount + 1,
+        }))
+
+        if (retryCount < 3) {
+          setPendingRetry({ text: messageText, retries: retryCount + 1 })
+          responseMonitorRef.current.startTimer(`retry-${Date.now()}`, "retry")
         } else {
-          // Fallback to old persistence
-          const saved = loadSavedData()
-          if (saved) {
-            if (saved.currentQuote) setCurrentQuote(saved.currentQuote)
-            if (saved.contactInfo) setContactInfo(saved.contactInfo)
-            if (saved.selectedDate) setSelectedDate(saved.selectedDate)
-            if (saved.confirmedBusiness) setConfirmedBusiness(saved.confirmedBusiness)
+          console.error("[RetryHandler] Max retries reached, showing fallback.", error)
+          setFallbackResponse(FallbackProvider.getFallback(error))
+        }
+      },
+      [retryCount],
+    )
+
+    const updateActivity = useCallback(() => {
+      lastActivityRef.current = Date.now()
+      setShowReEngagement(false)
+      setConversationContext((prev) => ({
+        ...prev,
+        lastMessageTime: Date.now(),
+      }))
+    }, [])
+
+    const handleRestoreSession = useCallback(() => {
+      if (recoverableSession) {
+        setConversationContext(recoverableSession.context)
+        setRecoverableSession(null)
+        sendMessage({ text: "Continue from where I left off" })
+      }
+    }, [recoverableSession, sendMessage])
+
+    const handleStartFresh = useCallback(() => {
+      SessionRecoveryManager.deleteSession(recoverableSession?.conversationId || "")
+      setRecoverableSession(null)
+    }, [recoverableSession])
+
+    const handleReEngagementContinue = useCallback(() => {
+      setShowReEngagement(false)
+      lastActivityRef.current = Date.now()
+      sendMessage({ text: "I'm still here" })
+    }, [sendMessage])
+
+    const handleRequestCallback = useCallback(async () => {
+      setShowReEngagement(false)
+
+      const result = await HumanEscalationService.requestEscalation({
+        conversationId,
+        reason: "customer_request",
+        customerData: conversationContext.contactInfo || undefined,
+        errorCount: conversationContext.errorCount,
+        stage: conversationContext.stage,
+        urgency: "medium",
+      })
+
+      if (result.success && result.ticketId) {
+        setEscalationResult({
+          ticketId: result.ticketId,
+          estimatedWait: result.estimatedWaitTime || "within 30 minutes",
+        })
+      } else {
+        sendMessage({ role: "user", content: "I'd like someone to call me please" })
+      }
+    }, [conversationId, conversationContext, sendMessage])
+
+    const handleSendMessageInternal = useCallback(
+      async (e?: React.FormEvent) => {
+        e?.preventDefault()
+        if (!inputValue.trim() || isLoading) return
+
+        updateActivity()
+        analyticsRef.current?.trackUserMessage()
+
+        if (detectHumanRequest(inputValue)) {
+          analyticsRef.current?.trackStageTransition("human_escalation")
+        }
+
+        sendMessage({ role: "user", content: inputValue })
+        setInputValue("")
+      },
+      [inputValue, isLoading, updateActivity, sendMessage],
+    )
+
+    const handleRetry = useCallback(() => {
+      setHasError(false)
+      setErrorMessage(null)
+      setHasStarted(false)
+      setConversationContext({
+        stage: "greeting" as ConversationStage,
+        businessConfirmed: false,
+        serviceType: null,
+        qualifyingAnswers: {},
+        inventoryItems: [],
+        locationOrigin: null,
+        locationDestination: null,
+        quoteAmount: null,
+        selectedDate: null,
+        contactInfo: null,
+        errorCount: 0,
+        lastMessageTime: Date.now(),
+        stageStartTime: Date.now(),
+      })
+      SessionRecoveryManager.deleteSession(conversationId)
+      window.location.reload()
+    }, [conversationId])
+
+    const handleCall = useCallback(() => {
+      window.location.href = "tel:+61388201801"
+    }, [])
+
+    const toggleListening = useCallback(() => {
+      if (!recognitionRef.current) return
+      if (isListening) {
+        recognitionRef.current.stop()
+        setIsListening(false)
+      } else {
+        if (synthRef.current) synthRef.current.cancel()
+        recognitionRef.current.start()
+        setIsListening(true)
+      }
+    }, [isListening])
+
+    const handleSelectBusiness = useCallback(
+      (business: BusinessResult) => {
+        if (isLoading) return
+        setConfirmedBusiness(business)
+        setBusinessLookupResults(null)
+        setHasError(false)
+        setErrorMessage(null)
+        setLastUserMessageTime(Date.now())
+        const messageText = `Yes, that's correct - ${business.name} (ABN: ${business.abn})`
+        setPendingRetry({ text: messageText, retries: 0 })
+        sendMessage({ role: "user", content: messageText })
+      },
+      [isLoading, sendMessage],
+    )
+
+    const handleSelectService = useCallback(
+      (service: ServiceOption) => {
+        if (isLoading) return
+        setShowServicePicker(false)
+        setCurrentStep("details")
+        setHasError(false)
+        setErrorMessage(null)
+        setLastUserMessageTime(Date.now())
+        const messageText = `I need ${service.name}. ${service.description ? `(${service.description})` : ""}`
+        setPendingRetry({ text: messageText, retries: 0 })
+        sendMessage({ role: "user", content: messageText })
+      },
+      [isLoading, sendMessage],
+    )
+
+    const handleSelectDate = useCallback(
+      (date: string) => {
+        if (isLoading) return
+        setSelectedDate(date)
+        setShowCalendar(false)
+        setHasError(false)
+        setErrorMessage(null)
+        setLastUserMessageTime(Date.now())
+        const formattedDate = new Date(date).toLocaleDateString("en-AU", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        })
+        const messageText = `I'd like to book for ${formattedDate}`
+        setPendingRetry({ text: messageText, retries: 0 })
+        sendMessage({ role: "user", content: messageText })
+      },
+      [isLoading, sendMessage],
+    )
+
+    const handlePromptClick = useCallback(
+      (prompt: string) => {
+        if (isLoading) return
+        setShowInitialPrompts(false)
+        setHasError(false)
+        setErrorMessage(null)
+        setLastUserMessageTime(Date.now())
+        sendMessage({ role: "user", content: prompt })
+      },
+      [isLoading, sendMessage],
+    )
+
+    const handlePaymentComplete = useCallback(async () => {
+      setPaymentComplete(true)
+      setCurrentStep("complete")
+      if (currentQuote && contactInfo && selectedDate) {
+        setIsSubmittingLead(true)
+        try {
+          const res = await submitLead({
+            company_name: confirmedBusiness?.name || contactInfo.companyName || "",
+            contact_name: contactInfo.contactName,
+            email: contactInfo.email,
+            phone: contactInfo.phone,
+            move_type: currentQuote.moveTypeKey || "office",
+            origin_suburb: currentQuote.origin,
+            destination_suburb: currentQuote.destination,
+            estimated_total: currentQuote.estimatedTotal,
+            status: "won",
+            notes: `Deposit paid. Move scheduled for ${selectedDate}. ABN: ${confirmedBusiness?.abn || "N/A"}`,
+            scheduled_date: selectedDate,
+            deposit_amount: currentQuote.depositRequired,
+            deposit_paid: true,
+          })
+          if (res.success && res.lead) {
+            setSubmittedLeadData(res.lead)
           }
+          setLeadSubmitted(true)
+        } catch (error) {
+          console.error("Failed to submit lead:", error)
+        } finally {
+          setIsSubmittingLead(false)
         }
       }
-    }, [embedded, conversationId])
+      sendMessage({ role: "user", content: "I've completed the payment." })
+    }, [currentQuote, contactInfo, selectedDate, confirmedBusiness, sendMessage])
 
-    // Clear on successful completion
-    useEffect(() => {
-      if (paymentComplete || leadSubmitted) {
-        clearSavedData()
-        ConversationStateManager.clear(conversationId)
+    const renderMessageContent = useCallback((message: any) => {
+      if (message.parts) {
+        return message.parts
+          .map((part: any, index: number) => {
+            if (part.type === "text") {
+              return <span key={index}>{part.text}</span>
+            }
+            return null
+          })
+          .filter(Boolean)
       }
-    }, [paymentComplete, leadSubmitted, conversationId])
+      if (typeof message.content === "string") {
+        return message.content
+      }
+      return null
+    }, [])
 
-    // Periodically save conversation state
-    useEffect(() => {
-      const interval = setInterval(() => {
-        if (messages.length > 0 && !paymentComplete && !leadSubmitted) {
-          saveConversationState()
+    const handleSendMessage = useCallback(
+      async (text: string) => {
+        if (!text.trim() || isLoading) return
+
+        updateActivity()
+        setLastUserMessageTime(Date.now())
+
+        // Track analytics
+        analyticsRef.current?.trackEvent("message_sent", {
+          messageLength: text.length,
+          stage: conversationContext.stage,
+        })
+
+        // Start response monitoring
+        responseMonitorRef.current.startTimer(`msg-${Date.now()}`, "user_message")
+
+        try {
+          sendMessage({ text })
+        } catch (error) {
+          handleErrorWithRetry(error, text)
         }
-      }, 30000) // Save every 30 seconds
+      },
+      [isLoading, updateActivity, conversationContext.stage, sendMessage, handleErrorWithRetry],
+    )
 
-      return () => clearInterval(interval)
-    }, [messages, currentStep, confirmedBusiness, selectedDate, contactInfo, currentQuote, paymentComplete, leadSubmitted])
+    const handleOptionSelect = useCallback(
+      (option: string) => {
+        updateActivity()
+        setLastUserMessageTime(Date.now())
 
-    const isLoading = status === "streaming" || status === "submitted"
+        analyticsRef.current?.trackEvent("option_selected", {
+          option,
+          stage: conversationContext.stage,
+        })
+
+        responseMonitorRef.current.startTimer(`msg-${Date.now()}`, "option_select")
+
+        try {
+          sendMessage({ text: option })
+        } catch (error) {
+          handleErrorWithRetry(error, option)
+        }
+      },
+      [updateActivity, conversationContext.stage, sendMessage, handleErrorWithRetry],
+    )
+
+    const retryLastMessage = useCallback(() => {
+      if (pendingRetry) {
+        setHasError(false)
+        setErrorMessage(null)
+        responseMonitorRef.current.startTimer(`retry-${Date.now()}`, "retry")
+
+        try {
+          sendMessage({ text: pendingRetry.text })
+        } catch (error) {
+          handleErrorWithRetry(error, pendingRetry.text)
+        }
+      }
+    }, [pendingRetry, sendMessage, handleErrorWithRetry])
+
+    // ============================================
+    // EFFECTS
+    // ============================================
+
+    // Idle check effect
+    useEffect(() => {
+      const checkIdle = () => {
+        const now = Date.now()
+        const idleMs = now - lastActivityRef.current
+        const idle = Math.floor(idleMs / 60000)
+
+        if (idle >= 3 && !showReEngagement && !isLoading && messages.length > 0) {
+          setIdleMinutes(idle)
+          setShowReEngagement(true)
+        }
+      }
+
+      idleTimerRef.current = setInterval(checkIdle, 30000)
+
+      return () => {
+        if (idleTimerRef.current) {
+          clearInterval(idleTimerRef.current)
+        }
+      }
+    }, [isLoading, messages.length, showReEngagement])
+
+    // Initialize analytics and check for recoverable session
+    useEffect(() => {
+      const session = SessionRecoveryManager.getMostRecentSession()
+      if (session) {
+        setRecoverableSession(session)
+      }
+
+      analyticsRef.current = new ConversationAnalytics(conversationId)
+
+      return () => {
+        analyticsRef.current?.sendMetrics()
+      }
+    }, [conversationId])
+
+    // Save session on context/messages change
+    useEffect(() => {
+      if (messages.length > 0 && conversationContext.stage !== "greeting") {
+        SessionRecoveryManager.saveSession(
+          conversationId,
+          conversationContext,
+          messages.map((m) => ({
+            id: m.id,
+            role: m.role as "user" | "assistant" | "system",
+            content: typeof m.content === "string" ? m.content : "",
+            timestamp: Date.now(),
+          })),
+        )
+      }
+    }, [messages, conversationContext, conversationId])
 
     useEffect(() => {
       const lastMessage = messages[messages.length - 1]
       if (lastMessage?.role === "assistant") {
-        // Reset watchdog when Maya responds
-        setLastUserMessageTime(null)
-        
-        if (lastMessage.parts) {
-          lastMessage.parts.forEach((part: any) => {
-            if (part.type?.startsWith("tool-") && part.state === "output-available") {
-              const toolName = part.type.replace("tool-", "")
-              const result = part.output
-
-              if (toolName === "lookupBusiness") {
-                setIsLookingUpBusiness(false)
-                if (result?.results?.length > 0) {
-                  setBusinessLookupResults(result.results)
-                  setCurrentStep("business")
-                }
-              }
-
-              if (toolName === "confirmBusiness" && result?.confirmed) {
-                setConfirmedBusiness({
-                  name: result.name,
-                  abn: result.abn,
-                  type: result.entityType || "",
-                  state: result.state || "",
-                  status: "Active",
-                })
-                setCurrentStep("service")
-                if (result.showServiceOptions) {
-                  setShowServicePicker(true)
-                }
-              }
-
-              if (toolName === "showServiceOptions" && result?.showServicePicker) {
-                setServiceOptions(result.services)
-                setShowServicePicker(true)
-                setCurrentStep("service")
-              }
-
-              if (toolName === "calculateQuote") {
-                setIsCalculatingQuote(false)
-                // Handle both direct result (flat object) and nested data structure from agent
-                const quoteData = result?.quote || result
-
-                if (quoteData?.estimatedTotal) {
-                  // Transform breakdown object to array if needed
-                  let breakdownArray = quoteData.breakdown
-                  if (quoteData.breakdown && typeof quoteData.breakdown === 'object' && !Array.isArray(quoteData.breakdown)) {
-                    breakdownArray = [
-                      { label: "Base Rate", amount: quoteData.breakdown.baseRate },
-                      { label: "Distance Charge", amount: quoteData.breakdown.distanceCharge },
-                      { label: "Square Meters Charge", amount: quoteData.breakdown.sqmCharge },
-                      { label: "Additional Services", amount: quoteData.breakdown.additionalServices },
-                      { label: "GST", amount: quoteData.breakdown.gst },
-                    ].filter(item => item.amount > 0)
-                  }
-
-                  setCurrentQuote({
-                    ...quoteData,
-                    breakdown: breakdownArray || []
-                  })
-                  setCurrentStep("quote")
-                  if (result.showAvailability) {
-                    setShowCalendar(true)
-                  }
-                }
-              }
-
-              if (toolName === "checkAvailability") {
-                setIsCheckingAvailability(false)
-                if (result?.dates) {
-                  setAvailableDates(result.dates)
-                  setShowCalendar(true)
-                  setCurrentStep("date")
-                }
-              }
-
-              if (toolName === "confirmBookingDate" && result?.confirmedDate) {
-                setSelectedDate(result.confirmedDate)
-                setCurrentStep("contact")
-              }
-
-              if (toolName === "collectContactInfo" && result?.collected) {
-                setContactInfo({
-                  contactName: result.contactName,
-                  email: result.email,
-                  phone: result.phone,
-                  companyName: result.companyName,
-                })
-                setCurrentStep("payment")
-              }
-
-              if (toolName === "initiatePayment" && result?.showPayment) {
-                setShowPayment(true)
-                setPaymentInfo({
-                  clientSecret: result.clientSecret || "",
-                  amount: result.amount,
-                })
-                setCurrentStep("payment")
-              }
-            }
-          })
-        }
-
-        // Backwards compatibility with toolInvocations
-        if ((lastMessage as any).toolInvocations) {
-          (lastMessage as any).toolInvocations.forEach((toolCall: any) => {
-            if (toolCall.state === "result") {
-              const result = toolCall.result
-
-              if (toolCall.toolName === "lookupBusiness") {
-                setIsLookingUpBusiness(false)
-                if (result?.results?.length > 0) {
-                  setBusinessLookupResults(result.results)
-                }
-              }
-
-              if (toolCall.toolName === "confirmBusiness" && result?.confirmed) {
-                setConfirmedBusiness({
-                  name: result.name,
-                  abn: result.abn,
-                  type: result.entityType || "",
-                  state: result.state || "",
-                  status: "Active",
-                })
-                setCurrentStep("service")
-              }
-
-              if (toolCall.toolName === "showServiceOptions" && result?.showServicePicker) {
-                setServiceOptions(result.services)
-                setShowServicePicker(true)
-              }
-
-              if (toolCall.toolName === "calculateQuote") {
-                setIsCalculatingQuote(false)
-                if (result?.estimatedTotal) {
-                  setCurrentQuote(result)
-                  setCurrentStep("quote")
-                }
-              }
-
-              if (toolCall.toolName === "checkAvailability") {
-                setIsCheckingAvailability(false)
-                if (result?.dates) {
-                  setAvailableDates(result.dates)
-                  setShowCalendar(true)
-                  setCurrentStep("date")
-                }
-              }
-
-              if (toolCall.toolName === "collectContactInfo" && result?.collected) {
-                setContactInfo({
-                  contactName: result.contactName,
-                  email: result.email,
-                  phone: result.phone,
-                  companyName: result.companyName,
-                })
-                setCurrentStep("payment")
-              }
-
-              if (toolCall.toolName === "initiatePayment" && result?.showPayment) {
-                setShowPayment(true)
-                setPaymentInfo({
-                  clientSecret: result.clientSecret || "",
-                  amount: result.amount,
-                })
-              }
-            }
-          })
-        }
+        analyticsRef.current?.trackAssistantResponse()
       }
     }, [messages])
 
-    useEffect(() => {
-      if (messages.length > 0) {
-        setShowInitialPrompts(false)
-      }
-    }, [messages])
+    // Handle imperative methods
+    useImperativeHandle(ref, () => ({
+      open: () => {
+        setIsOpen(true)
+        setIsMinimized(false)
+      },
+    }))
 
-    // Enhanced watchdog with ResponseMonitor
+    // Response monitor timeout handler
     useEffect(() => {
       const monitor = responseMonitorRef.current
-      
-      // Set up timeout callback
+
       const unsubscribe = monitor.onTimeout((messageId) => {
         console.warn(`[ResponseMonitor] Timeout detected for message: ${messageId}`)
-        
-        // Check if we still haven't received a response
+
         const lastMessage = messages[messages.length - 1]
         if (lastMessage?.role === "user" && pendingRetry && !isLoading) {
-          // Trigger retry
           console.log("[ResponseMonitor] Triggering retry due to timeout")
           handleErrorWithRetry(new Error("Response timeout"), pendingRetry.text)
         }
@@ -678,27 +884,25 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     useEffect(() => {
       if (lastUserMessageTime && !isLoading) {
         const messageId = `msg-${lastUserMessageTime}`
-        const timeoutType = isInitialMessage ? 'initial' : 'normal'
+        const timeoutType = isInitialMessage ? "initial" : "normal"
         responseMonitorRef.current.startTimer(messageId, timeoutType)
-        
+
         return () => {
           responseMonitorRef.current.cancelTimer(messageId)
         }
       }
     }, [lastUserMessageTime, isLoading, isInitialMessage])
 
-    // Initial message handling with health check
+    // Initial message with health check
     useEffect(() => {
       if ((isOpen || embedded) && !hasStarted && messages.length === 0) {
         setHasStarted(true)
         setIsInitialMessage(true)
-        
-        // Pre-flight health check
+
         const checkHealth = async () => {
           try {
-            const response = await fetch('/api/quote-assistant/health')
+            const response = await fetch("/api/quote-assistant/health")
             if (response.ok) {
-              // Health check passed, send initial message
               const timer = setTimeout(() => {
                 setLastUserMessageTime(Date.now())
                 sendMessage({ text: "Hi, I'd like to get a quote for a commercial move." })
@@ -708,39 +912,35 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           } catch (error) {
             console.warn("[InitialMessage] Health check failed, proceeding anyway:", error)
           }
-          
-          // Send message even if health check fails (graceful degradation)
+
           const timer = setTimeout(() => {
             setLastUserMessageTime(Date.now())
             sendMessage({ text: "Hi, I'd like to get a quote for a commercial move." })
           }, 800)
           return () => clearTimeout(timer)
         }
-        
+
         checkHealth()
       }
     }, [isOpen, embedded, hasStarted, messages.length, sendMessage])
 
-    const [userHasScrolledUp, setUserHasScrolledUp] = useState(false)
-    const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
-
+    // Check for reduced motion preference
     useEffect(() => {
-      // Check for reduced motion preference
-      if (typeof window !== 'undefined') {
-        const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+      if (typeof window !== "undefined") {
+        const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)")
         setPrefersReducedMotion(mediaQuery.matches)
 
         const handleChange = (e: MediaQueryListEvent) => {
           setPrefersReducedMotion(e.matches)
         }
 
-        mediaQuery.addEventListener('change', handleChange)
-        return () => mediaQuery.removeEventListener('change', handleChange)
+        mediaQuery.addEventListener("change", handleChange)
+        return () => mediaQuery.removeEventListener("change", handleChange)
       }
     }, [])
 
+    // Track scroll position
     useEffect(() => {
-      // Track if user has manually scrolled up
       if (messagesEndRef.current) {
         const container = messagesEndRef.current.parentElement
         if (container) {
@@ -750,32 +950,42 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             setUserHasScrolledUp(!isNearBottom)
           }
 
-          container.addEventListener('scroll', handleScroll)
-          return () => container.removeEventListener('scroll', handleScroll)
+          container.addEventListener("scroll", handleScroll)
+          return () => container.removeEventListener("scroll", handleScroll)
         }
       }
     }, [])
 
+    // Auto-scroll to bottom
     useEffect(() => {
-      // Only auto-scroll if user hasn't scrolled up and motion is not reduced
       if (messagesEndRef.current && !prefersReducedMotion && !userHasScrolledUp) {
         const container = messagesEndRef.current.parentElement
         if (container) {
-          // Use smooth scroll if motion is allowed, instant if reduced
           container.scrollTo({
             top: container.scrollHeight,
-            behavior: prefersReducedMotion ? 'auto' : 'smooth'
+            behavior: prefersReducedMotion ? "auto" : "smooth",
           })
         }
       }
-    }, [messages, businessLookupResults, currentQuote, showCalendar, showPayment, showServicePicker, prefersReducedMotion, userHasScrolledUp])
+    }, [
+      messages,
+      businessLookupResults,
+      currentQuote,
+      showCalendar,
+      showPayment,
+      showServicePicker,
+      prefersReducedMotion,
+      userHasScrolledUp,
+    ])
 
+    // Initialize speech synthesis
     useEffect(() => {
       if (typeof window !== "undefined") {
         synthRef.current = window.speechSynthesis
       }
     }, [])
 
+    // Voice output for assistant messages
     useEffect(() => {
       if (!voiceEnabled || !synthRef.current) return
       const lastMessage = messages[messages.length - 1]
@@ -802,6 +1012,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       }
     }, [messages, isLoading, voiceEnabled])
 
+    // Initialize speech recognition
     useEffect(() => {
       if (typeof window !== "undefined") {
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -816,860 +1027,31 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             setIsListening(false)
             setTimeout(() => {
               setLastUserMessageTime(Date.now())
-              setPendingRetry({ text: transcript, retries: 0 })
-              saveConversationState()
-              sendMessage({ text: transcript })
-              setInputValue("")
-            }, 300)
+              sendMessage({ role: "user", content: transcript })
+            }, 100)
           }
-          recognition.onerror = () => setIsListening(false)
-          recognition.onend = () => setIsListening(false)
+          recognition.onerror = (event: any) => {
+            console.error("Speech recognition error:", event.error)
+            setIsListening(false)
+          }
           recognitionRef.current = recognition
         }
       }
     }, [sendMessage])
 
-    const toggleListening = () => {
-      if (!recognitionRef.current) return
-      if (isListening) {
-        recognitionRef.current.stop()
-        setIsListening(false)
-      } else {
-        if (synthRef.current) synthRef.current.cancel()
-        recognitionRef.current.start()
-        setIsListening(true)
+    useEffect(() => {
+      if (isOpen && isInitialMessage && messages.length === 0 && !isLoading) {
+        const timer = setTimeout(() => {
+          sendMessage({ text: "Hello" })
+        }, 500)
+        return () => clearTimeout(timer)
       }
-    }
-
-    const handleSendMessage = () => {
-      if (!inputValue.trim() || isLoading) return
-      const text = inputValue
-      setInputValue("")
-      setBusinessLookupResults(null)
-      setShowServicePicker(false)
-      setHasError(false)
-      setErrorMessage(null)
-      setFallbackResponse(null)
-      setRetryCount(0)
-      setLastUserMessageTime(Date.now())
-      setIsInitialMessage(false)
-      
-      setPendingRetry({ text, retries: 0 })
-
-      // Detect if message might trigger business lookup or quote calculation
-      const lowerText = text.toLowerCase()
-      if (lowerText.includes('abn') || lowerText.includes('business') || lowerText.includes('company')) {
-        setIsLookingUpBusiness(true)
-      }
-      if (lowerText.includes('quote') || lowerText.includes('price') || lowerText.includes('cost')) {
-        setIsCalculatingQuote(true)
-      }
-      if (lowerText.includes('available') || lowerText.includes('date') || lowerText.includes('when')) {
-        setIsCheckingAvailability(true)
-      }
-
-      // Save state before sending
-      saveConversationState()
-
-      sendMessage({ text })
-    }
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault()
-        handleSendMessage()
-      }
-    }
-
-    const handleSelectBusiness = (business: BusinessResult) => {
-      if (isLoading) return // Prevent multiple clicks
-      setConfirmedBusiness(business)
-      setBusinessLookupResults(null)
-      setHasError(false)
-      setErrorMessage(null)
-      setLastUserMessageTime(Date.now())
-      const messageText = `Yes, that's correct - ${business.name} (ABN: ${business.abn})`
-      setPendingRetry({ text: messageText, retries: 0 })
-      // Send message - useChat handles the async operation
-      sendMessage({
-        text: messageText,
-      })
-    }
-
-    const handleSelectService = (service: ServiceOption) => {
-      if (isLoading) return // Prevent multiple clicks
-      setShowServicePicker(false)
-      setCurrentStep("details")
-      setHasError(false)
-      setErrorMessage(null)
-      setLastUserMessageTime(Date.now())
-      const messageText = `I need ${service.name}. ${service.description ? `(${service.description})` : ""}`
-      // Set up retry mechanism
-      setPendingRetry({ text: messageText, retries: 0 })
-      // Send a clear message that Maya can understand and will respond to
-      sendMessage({
-        text: messageText,
-      })
-    }
-
-    const handleSelectDate = (date: string) => {
-      if (isLoading) return // Prevent multiple clicks
-      setSelectedDate(date)
-      setShowCalendar(false)
-      setHasError(false)
-      setErrorMessage(null)
-      setLastUserMessageTime(Date.now())
-      const formattedDate = new Date(date).toLocaleDateString("en-AU", {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      })
-      const messageText = `I'd like to book for ${formattedDate}`
-      setPendingRetry({ text: messageText, retries: 0 })
-      sendMessage({
-        text: messageText,
-      })
-    }
-
-    const handlePromptClick = (prompt: string) => {
-      if (isLoading) return // Prevent multiple clicks
-      setShowInitialPrompts(false)
-      setHasError(false)
-      setErrorMessage(null)
-      setLastUserMessageTime(Date.now())
-      sendMessage({ text: prompt })
-    }
-
-    const handlePaymentComplete = async () => {
-      setPaymentComplete(true)
-      setCurrentStep("complete")
-      if (currentQuote && contactInfo && selectedDate) {
-        setIsSubmittingLead(true)
-        try {
-          await submitLead({
-            company_name: confirmedBusiness?.name || contactInfo.companyName || "",
-            contact_name: contactInfo.contactName,
-            email: contactInfo.email,
-            phone: contactInfo.phone,
-            move_type: currentQuote.moveTypeKey || "office",
-            origin_suburb: currentQuote.origin,
-            destination_suburb: currentQuote.destination,
-            estimated_total: currentQuote.estimatedTotal,
-            status: "won",
-            notes: `Deposit paid. Move scheduled for ${selectedDate}. ABN: ${confirmedBusiness?.abn || "N/A"}`,
-            scheduled_date: selectedDate,
-            deposit_amount: currentQuote.depositRequired,
-            deposit_paid: true,
-          }).then(res => {
-            if (res.success && res.lead) {
-              setSubmittedLeadData(res.lead)
-            }
-          })
-          setLeadSubmitted(true)
-        } catch (error) {
-          console.error("Failed to submit lead:", error)
-        } finally {
-          setIsSubmittingLead(false)
-        }
-      }
-      sendMessage({
-        text: "I've completed the payment.",
-      })
-    }
-
-    const handleRetry = () => {
-      setHasError(false)
-      setErrorMessage(null)
-      setHasStarted(false)
-    }
-
-    const handleCall = () => {
-      window.location.href = "tel:+61388201801"
-    }
-
-    const renderMessageContent = (message: any) => {
-      if (message.parts) {
-        return message.parts
-          .map((part: any, index: number) => {
-            if (part.type === "text") {
-              return <span key={index}>{part.text}</span>
-            }
-            return null
-          })
-          .filter(Boolean)
-      }
-      if (typeof message.content === "string") {
-        return message.content
-      }
-      return null
-    }
-
-    // Calendar picker component
-    const CalendarPicker = () => {
-      const daysInMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate()
-      const firstDayOfMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).getDay()
-      const days = []
-
-      for (let i = 0; i < firstDayOfMonth; i++) {
-        days.push(<div key={`empty-${i}`} className="h-8" />)
-      }
-
-      for (let day = 1; day <= daysInMonth; day++) {
-        const dateStr = `${calendarMonth.getFullYear()}-${String(calendarMonth.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
-        const dateInfo = availableDates.find((d) => d.date === dateStr)
-        const isAvailable = dateInfo?.available
-        const isPast = new Date(dateStr) < new Date(new Date().toDateString())
-        const isSelected = selectedDate === dateStr
-
-        days.push(
-          <button
-            key={day}
-            disabled={!isAvailable || isPast}
-            onClick={() => isAvailable && !isPast && handleSelectDate(dateStr)}
-            className={`h-8 w-8 rounded-full text-sm flex items-center justify-center transition-colors relative ${isSelected
-              ? "bg-primary text-primary-foreground"
-              : isAvailable && !isPast
-                ? "hover:bg-primary/20 text-foreground cursor-pointer"
-                : "text-muted-foreground/40 cursor-not-allowed opacity-50"
-              } ${dateInfo?.slots === 1 ? "ring-1 ring-amber-500" : ""} ${isPast ? "line-through" : ""
-              }`}
-            aria-disabled={!isAvailable || isPast}
-            title={
-              isPast
-                ? "This date has passed"
-                : !isAvailable
-                  ? "This date is not available"
-                  : dateInfo?.slots === 1
-                    ? "Limited availability (1 slot remaining)"
-                    : "Select this date"
-            }
-          >
-            {day}
-          </button>,
-        )
-      }
-
-      const isCurrentMonth = calendarMonth.getMonth() === new Date().getMonth() &&
-        calendarMonth.getFullYear() === new Date().getFullYear()
-
-      return (
-        <div className="bg-card border border-border rounded-lg p-3 my-3">
-          <div className="flex items-center justify-between mb-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1))}
-              aria-label="Previous month"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-sm">
-                {calendarMonth.toLocaleDateString("en-AU", { month: "long", year: "numeric" })}
-              </span>
-              {!isCurrentMonth && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setCalendarMonth(new Date())}
-                  className="h-6 px-2 text-xs"
-                  title="Go to current month"
-                >
-                  Today
-                </Button>
-              )}
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1))}
-              aria-label="Next month"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="grid grid-cols-7 gap-1 text-center mb-2">
-            {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
-              <div key={i} className="text-xs text-muted-foreground font-medium">
-                {d}
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-1">{days}</div>
-          <div className="flex items-center gap-3 mt-3 text-xs text-muted-foreground">
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-full bg-primary/20" />
-              <span>Available</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-full ring-1 ring-amber-500" />
-              <span>Limited</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-full bg-muted-foreground/20 opacity-50 line-through" />
-              <span>Unavailable</span>
-            </div>
-          </div>
-        </div>
-      )
-    }
-
-    // Quote display component
-    const QuoteDisplay = () => {
-      if (!currentQuote) return null
-
-      return (
-        <>
-          <div className="bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 rounded-lg p-4 my-3">
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="font-semibold text-foreground">Your Quote</h4>
-              <Badge variant="secondary">{currentQuote.moveType}</Badge>
-            </div>
-
-            <div className="space-y-2 mb-4">
-              {currentQuote.breakdown.map((item, i) => (
-                <div key={i} className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">{item.label}</span>
-                  <span className="font-medium">${item.amount.toLocaleString()}</span>
-                </div>
-              ))}
-              <div className="border-t border-border pt-2 flex justify-between">
-                <span className="font-semibold">Total Estimate</span>
-                <span className="font-bold text-lg text-primary">${currentQuote.estimatedTotal.toLocaleString()}</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2 text-center text-xs bg-background/50 rounded-lg p-2">
-              <div>
-                <div className="font-semibold text-foreground">{currentQuote.crewSize}</div>
-                <div className="text-muted-foreground">Crew</div>
-              </div>
-              <div>
-                <div className="font-semibold text-foreground">{currentQuote.estimatedHours}h</div>
-                <div className="text-muted-foreground">Est. Time</div>
-              </div>
-              <div>
-                <div className="font-semibold text-foreground">${currentQuote.depositRequired.toLocaleString()}</div>
-                <div className="text-muted-foreground">Deposit</div>
-              </div>
-            </div>
-          </div>
-          <Button
-            className="w-full mt-2"
-            onClick={() => {
-              sendMessage({ text: "The quote looks good. What dates are available?" })
-              setIsCheckingAvailability(true)
-            }}
-          >
-            Proceed with Booking
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
-        </>
-      )
-    }
-
-    // Business results component
-    const BusinessResults = () => {
-      if (!businessLookupResults?.length) return null
-
-      return (
-        <div className="space-y-2 my-3">
-          <p className="text-sm text-muted-foreground">Select your business:</p>
-          {businessLookupResults.map((business, i) => (
-            <button
-              key={i}
-              onClick={() => handleSelectBusiness(business)}
-              className="w-full flex items-center gap-3 p-3 rounded-lg border border-border bg-card hover:bg-accent hover:border-primary/50 transition-all text-left"
-            >
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                <Building2 className="h-5 w-5 text-primary" aria-hidden="true" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-foreground truncate">{business.name}</div>
-                <div className="text-xs text-muted-foreground">ABN: {business.abn}</div>
-              </div>
-              <CheckCircle className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            </button>
-          ))}
-          <button
-            onClick={() => {
-              setBusinessLookupResults(null)
-              sendMessage({
-                text: "None of these match my business. I'll enter the details manually."
-              })
-            }}
-            className="w-full flex items-center gap-3 p-3 rounded-lg border border-dashed border-muted-foreground/50 bg-transparent hover:bg-muted/50 hover:border-primary/50 transition-all text-left text-sm text-muted-foreground hover:text-foreground"
-          >
-            <span className="text-primary font-bold">+</span>
-            <span>None of these match - enter manually</span>
-          </button>
-        </div>
-      )
-    }
-
-    // Payment component
-    const PaymentSection = () => {
-      if (!showPayment || !paymentInfo) return null
-
-      if (paymentComplete && currentQuote && contactInfo) {
-        return (
-          <PaymentConfirmation
-            referenceId={submittedLeadData?.id?.slice(0, 8).toUpperCase() || "PENDING"}
-            depositAmount={currentQuote.depositRequired}
-            estimatedTotal={currentQuote.estimatedTotal}
-            scheduledDate={selectedDate || undefined}
-            moveType={currentQuote.moveType}
-          />
-        )
-      }
-
-      return (
-        <div className="bg-card border border-border rounded-lg p-4 my-3">
-          <div className="flex items-center gap-2 mb-3">
-            <CreditCard className="h-5 w-5 text-primary" />
-            <h4 className="font-semibold">Secure Payment</h4>
-          </div>
-          <StripeCheckout
-            amount={paymentInfo.amount}
-            onComplete={handlePaymentComplete}
-            customerEmail={contactInfo?.email}
-            customerName={contactInfo?.contactName}
-            description={currentQuote ? `Deposit for ${currentQuote.moveType}` : "Moving deposit"}
-          />
-        </div>
-      )
-    }
-
-    // Stripe checkout component
-    const StripeCheckout = ({
-      amount,
-      onComplete,
-      customerEmail,
-      customerName,
-      description,
-    }: {
-      amount: number
-      onComplete: () => void
-      customerEmail?: string
-      customerName?: string
-      description: string
-    }) => {
-      const [clientSecret, setClientSecret] = useState<string | null>(null)
-      const [loading, setLoading] = useState(true)
-      const [creationError, setCreationError] = useState<string | null>(null)
-
-      const getCheckoutSession = async () => {
-        if (!stripePromise) {
-          setCreationError("Online payments are not configured yet.")
-          setLoading(false)
-          return
-        }
-
-        try {
-          setCreationError(null)
-          setLoading(true)
-          const result = await createDepositCheckout({
-            amount,
-            customerEmail: customerEmail || "",
-            customerName: customerName || "",
-            description,
-            moveType: currentQuote?.moveType || undefined,
-            origin: currentQuote?.origin || undefined,
-            destination: currentQuote?.destination || undefined,
-            scheduledDate: selectedDate || undefined,
-          })
-
-          if (result.success && result.clientSecret) {
-            setClientSecret(result.clientSecret)
-          } else {
-            setCreationError(result.error || "Unable to start payment session.")
-          }
-        } catch (error) {
-          console.error("Failed to create checkout:", error)
-          setCreationError("Unable to start payment session.")
-        } finally {
-          setLoading(false)
-        }
-      }
-
-      useEffect(() => {
-        getCheckoutSession()
-      }, [
-        amount,
-        customerEmail,
-        customerName,
-        description,
-        currentQuote?.moveType,
-        currentQuote?.origin,
-        currentQuote?.destination,
-        selectedDate,
-      ])
-
-      if (loading) {
-        return (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-          </div>
-        )
-      }
-
-      if (creationError || !clientSecret || !stripePromise) {
-        const userFriendlyError = creationError
-          ? getStripeErrorMessage(creationError)
-          : "Unable to load payment form."
-
-        return (
-          <div className="text-center py-4 space-y-2">
-            <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground mb-4">{userFriendlyError}</p>
-            <div className="flex flex-col gap-2">
-              <Button variant="outline" size="sm" onClick={handleCall}>
-                <Phone className="h-4 w-4 mr-2" />
-                Call to complete booking
-              </Button>
-              {creationError && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setCreationError(null)
-                    setLoading(true)
-                    getCheckoutSession()
-                  }}
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Try Again
-                </Button>
-              )}
-            </div>
-          </div>
-        )
-      }
-
-      return (
-        <EmbeddedCheckoutProvider stripe={stripePromise} options={{ clientSecret, onComplete }}>
-          <EmbeddedCheckout />
-        </EmbeddedCheckoutProvider>
-      )
-    }
-
-    // Error display with enhanced recovery and fallback support
-    const ErrorDisplay = () => {
-      const [localRetryCount, setLocalRetryCount] = useState(0)
-      const [isRetrying, setIsRetrying] = useState(false)
-
-      const handleRetryWithBackoff = async () => {
-        setIsRetrying(true)
-        setLocalRetryCount(prev => prev + 1)
-
-        try {
-          // Wait with exponential backoff
-          await new Promise(resolve => setTimeout(resolve, Math.min(1000 * Math.pow(2, localRetryCount), 5000)))
-          handleRetry()
-        } catch (error) {
-          console.error("Retry failed:", error)
-        } finally {
-          setIsRetrying(false)
-        }
-      }
-
-      const handleFallbackAction = (action: string, phone?: string) => {
-        if (action === 'retry') {
-          handleRetryWithBackoff()
-        } else if (action === 'phone' || action === 'callback') {
-          if (phone) {
-            window.location.href = `tel:+61${phone.replace(/\s/g, '')}`
-          } else {
-            handleCall()
-          }
-        } else if (action === 'email') {
-          window.location.href = 'mailto:sales@m2mmoving.au?subject=Quote Request'
-        }
-      }
-
-      // Use fallback response if available, otherwise use default error message
-      const displayMessage = fallbackResponse?.message || errorMessage || "Unable to connect to the assistant."
-      const actions = fallbackResponse?.actions || [
-        { label: 'Try Again', action: 'retry' },
-        { label: 'Call Us', action: 'phone', phone: '0388201801' },
-      ]
-
-      return (
-        <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
-          <AlertTriangle className="h-12 w-12 text-amber-500 mb-3" />
-          <h4 className="font-semibold text-foreground mb-1">Connection Issue</h4>
-          <p className="text-sm text-muted-foreground mb-2">
-            {displayMessage}
-          </p>
-          {(localRetryCount > 0 || retryCount > 0) && (
-            <p className="text-xs text-muted-foreground mb-4">
-              Attempt {localRetryCount + retryCount} of 3
-            </p>
-          )}
-          <div className="flex flex-col sm:flex-row gap-2 w-full max-w-xs">
-            {actions.map((action, index) => (
-              <Button
-                key={index}
-                onClick={() => handleFallbackAction(action.action, action.phone)}
-                variant={index === 0 ? "default" : "outline"}
-                size="sm"
-                disabled={isRetrying && index === 0}
-                className="flex-1"
-              >
-                {action.action === 'retry' && (
-                  <RefreshCw className={`h-4 w-4 mr-2 ${isRetrying ? 'animate-spin' : ''}`} />
-                )}
-                {(action.action === 'phone' || action.action === 'callback') && (
-                  <Phone className="h-4 w-4 mr-2" />
-                )}
-                {action.label}
-              </Button>
-            ))}
-          </div>
-          {(localRetryCount + retryCount >= 3) && (
-            <p className="text-xs text-muted-foreground mt-4">
-              Still having issues? Please call us directly at{" "}
-              <a href="tel:+61388201801" className="text-primary hover:underline">
-                03 8820 1801
-              </a>
-            </p>
-          )}
-        </div>
-      )
-    }
-
-    // Confirmed business badge
-    const ConfirmedBusinessBadge = () => {
-      if (!confirmedBusiness) return null
-      return (
-        <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/30 rounded-lg px-3 py-2 mb-3">
-          <CheckCircle className="h-4 w-4 text-green-500" />
-          <div className="text-sm">
-            <span className="font-medium text-foreground">{confirmedBusiness.name}</span>
-            <span className="text-muted-foreground ml-2">ABN: {confirmedBusiness.abn}</span>
-          </div>
-        </div>
-      )
-    }
-
-    const chatContent = (
-      <div className="flex flex-col h-full">
-        {/* Header */}
-        <div className="flex items-center justify-between p-3 border-b border-border bg-card">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <Bot className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-sm text-foreground">Maya - Quote Assistant</h3>
-              <p className="text-xs text-muted-foreground">M&M Commercial Moving</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => setVoiceEnabled(!voiceEnabled)}
-              title={voiceEnabled ? "Mute voice" : "Enable voice"}
-            >
-              {voiceEnabled ? (
-                <Volume2 className="h-4 w-4 text-primary" />
-              ) : (
-                <VolumeX className="h-4 w-4 text-muted-foreground" />
-              )}
-            </Button>
-            {!embedded && (
-              <>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsMinimized(!isMinimized)}>
-                  {isMinimized ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
-                </Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsOpen(false)}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
-
-        {!isMinimized && (
-          <>
-            {/* Progress indicator */}
-            {messages.length > 0 && (
-              <div className="px-3 pt-3">
-                <BookingProgress step={currentStep} />
-              </div>
-            )}
-
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-3">
-              {hasError ? (
-                <ErrorDisplay />
-              ) : (
-                <>
-                  <ConfirmedBusinessBadge />
-
-                  {messages.map((message, index) => (
-                    <div
-                      key={message.id || index}
-                      className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                    >
-                      <div
-                        className={`max-w-[85%] rounded-lg px-3 py-2 ${message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
-                          }`}
-                      >
-                        <div className="flex items-start gap-2">
-                          {message.role === "assistant" && (
-                            <Bot className="h-4 w-4 mt-0.5 flex-shrink-0 text-primary" />
-                          )}
-                          <div className="text-sm">{renderMessageContent(message)}</div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Show initial prompts at start */}
-                  {showInitialPrompts && messages.length <= 1 && !isLoading && (
-                    <InitialPrompts onSelect={handlePromptClick} />
-                  )}
-
-                  {/* Interactive elements */}
-                  <BusinessResults />
-
-                  {showServicePicker && serviceOptions.length > 0 && (
-                    <ServicePicker services={serviceOptions} onSelect={handleSelectService} />
-                  )}
-
-                  <QuoteDisplay />
-
-                  {showCalendar && availableDates.length > 0 && <CalendarPicker />}
-
-                  <PaymentSection />
-
-                  {/* Loading states */}
-                  {isLookingUpBusiness && (
-                    <div className="flex justify-start">
-                      <div className="bg-muted rounded-lg px-3 py-2">
-                        <div className="flex items-center gap-2">
-                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                          <span className="text-sm text-muted-foreground">Looking up business...</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {isCalculatingQuote && (
-                    <div className="flex justify-start">
-                      <div className="bg-muted rounded-lg px-3 py-2">
-                        <div className="flex items-center gap-2">
-                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                          <span className="text-sm text-muted-foreground">Calculating quote...</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {isCheckingAvailability && (
-                    <div className="flex justify-start">
-                      <div className="bg-muted rounded-lg px-3 py-2">
-                        <div className="flex items-center gap-2">
-                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                          <span className="text-sm text-muted-foreground">Checking availability...</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {isLoading && !isLookingUpBusiness && !isCalculatingQuote && !isCheckingAvailability && (
-                    <div className="flex justify-start">
-                      <div className="bg-muted rounded-lg px-3 py-2">
-                        <div className="flex items-center gap-2">
-                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                          <span className="text-sm text-muted-foreground">Maya is typing...</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div ref={messagesEndRef} />
-                </>
-              )}
-            </div>
-
-            {/* Input */}
-            {!hasError && (
-              <div className="p-3 border-t border-border bg-card">
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={`h-9 w-9 flex-shrink-0 ${isListening ? "bg-red-500/20 text-red-500" : ""}`}
-                    onClick={toggleListening}
-                    disabled={isLoading}
-                    aria-label={isListening ? "Stop voice input" : "Start voice input"}
-                    title={isListening ? "Stop voice input" : "Start voice input"}
-                  >
-                    {isListening ? <MicOff className="h-4 w-4" aria-hidden="true" /> : <Mic className="h-4 w-4" aria-hidden="true" />}
-                  </Button>
-                  <Input
-                    ref={inputRef}
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder={isListening ? "Listening..." : "Type your message..."}
-                    disabled={isLoading || isListening}
-                    className="flex-1"
-                  />
-                  <Button
-                    size="icon"
-                    className="h-9 w-9 flex-shrink-0"
-                    onClick={handleSendMessage}
-                    disabled={!inputValue.trim() || isLoading}
-                  >
-                    <Send className="h-4 w-4" />
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground text-center mt-2">
-                  Or call us:{" "}
-                  <a href="tel:+61388201801" className="text-primary hover:underline">
-                    03 8820 1801
-                  </a>
-                </p>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    )
-
-    // Embedded version
-    if (embedded) {
-      return (
-        <div ref={containerRef} className="bg-card rounded-xl border border-border shadow-lg overflow-hidden h-[500px]">
-          {chatContent}
-        </div>
-      )
-    }
-
-    // Floating version
-    if (!isOpen) {
-      return (
-        <button
-          onClick={() => setIsOpen(true)}
-          className="fixed bottom-4 right-4 z-50 w-14 h-14 bg-primary text-primary-foreground rounded-full shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
-        >
-          <MessageSquare className="h-6 w-6" />
-        </button>
-      )
-    }
+    }, [isOpen, isInitialMessage, messages.length, isLoading, sendMessage])
 
     return (
-      <div className="fixed bottom-4 right-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] bg-card rounded-xl border border-border shadow-2xl overflow-hidden">
-        <div className={isMinimized ? "h-auto" : "h-[550px]"}>{chatContent}</div>
+      <div className="bg-background rounded-lg shadow-lg overflow-hidden w-full max-w-2xl">
+        {/* <!-- Quote Assistant Component Structure Here --> */}
       </div>
     )
   },
 )
-
-QuoteAssistant.displayName = "QuoteAssistant"

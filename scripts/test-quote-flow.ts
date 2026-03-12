@@ -1,4 +1,3 @@
-
 import { OpenAI } from "openai";
 
 async function main() {
