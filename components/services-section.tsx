@@ -38,8 +38,8 @@ const services = [
 
 export function ServicesSection() {
   return (
-    <section id="services" className="py-16 md:py-24">
-      <div className="container mx-auto px-4">
+    <section id="services" className="w-full py-16 md:py-24">
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-12">
           <div className="flex items-center gap-3 mb-4">
             <div className="h-px flex-1 max-w-16 bg-primary" />
@@ -52,7 +52,7 @@ export function ServicesSection() {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {services.map((service, index) => (
             <Card key={index} className="group hover:border-primary/50 transition-colors bg-card">
               <CardHeader>
@@ -66,12 +66,7 @@ export function ServicesSection() {
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground leading-relaxed mb-4">{service.description}</p>
-                <Button 
-                  asChild 
-                  variant="outline" 
-                  size="sm" 
-                  className="w-full group/btn"
-                >
+                <Button asChild variant="outline" size="sm" className="w-full group/btn bg-transparent">
                   <Link href={`/quote?service=${service.id}`}>
                     Get Quote
                     <ArrowRight className="ml-2 h-4 w-4 group-hover/btn:translate-x-1 transition-transform" />

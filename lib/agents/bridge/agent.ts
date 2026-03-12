@@ -5,16 +5,13 @@
 
 import { BaseAgent, type AgentInput, type AgentOutput } from "../base-agent"
 import type { AgentIdentity, AgentConfig, InterAgentMessage } from "../types"
+import * as db from "./db"
 
 // =============================================================================
 // BRIDGE AGENT
 // =============================================================================
 
 export class BridgeAgent extends BaseAgent {
-  private escalationQueue: EscalationItem[] = []
-  private callbackQueue: CallbackItem[] = []
-  private humanAgents: HumanAgent[] = []
-
   constructor(config?: Partial<AgentConfig>) {
     super({
       codename: "BRIDGE_HH",
@@ -42,17 +39,6 @@ export class BridgeAgent extends BaseAgent {
       rateLimits: { requestsPerMinute: 40, tokensPerDay: 150000 },
       ...config,
     })
-
-    this.initializeHumanAgents()
-  }
-
-  private initializeHumanAgents() {
-    this.humanAgents = [
-      { id: "h1", name: "Sarah K.", role: "sales_lead", status: "available", skills: ["sales", "negotiation"] },
-      { id: "h2", name: "Mike T.", role: "operations_lead", status: "available", skills: ["operations", "scheduling"] },
-      { id: "h3", name: "Emma R.", role: "support_lead", status: "busy", skills: ["support", "complaints"] },
-      { id: "h4", name: "James L.", role: "manager", status: "available", skills: ["sales", "support", "operations"] },
-    ]
   }
 
   protected getIdentity(): AgentIdentity {
@@ -69,6 +55,7 @@ export class BridgeAgent extends BaseAgent {
         "Resolution Tracking",
         "Priority Routing",
         "Skills Matching",
+        "SLA Monitoring",
       ],
       status: "idle",
     }
@@ -84,11 +71,16 @@ export class BridgeAgent extends BaseAgent {
           fromAgent: { type: "string", description: "Originating agent" },
           reason: { type: "string", description: "Escalation reason" },
           priority: { type: "string", enum: ["low", "medium", "high", "urgent"], description: "Priority" },
+          customerEmail: { type: "string", description: "Customer email" },
+          customerName: { type: "string", description: "Customer name" },
+          customerPhone: { type: "string", description: "Customer phone" },
+          conversationId: { type: "string", description: "Conversation ID" },
+          conversationSummary: { type: "string", description: "Conversation summary" },
           context: { type: "object", description: "Context data" },
         },
         required: ["fromAgent", "reason", "priority"],
       },
-      handler: async (params) => this.createEscalation(params as EscalationParams),
+      handler: async (params) => this.handleCreateEscalation(params as EscalationParams),
     })
 
     this.registerTool({
@@ -97,15 +89,16 @@ export class BridgeAgent extends BaseAgent {
       parameters: {
         type: "object",
         properties: {
-          customerId: { type: "string", description: "Customer ID" },
+          customerEmail: { type: "string", description: "Customer email" },
+          customerName: { type: "string", description: "Customer name" },
           phone: { type: "string", description: "Phone number" },
           preferredTime: { type: "string", description: "Preferred callback time" },
           reason: { type: "string", description: "Callback reason" },
-          assignTo: { type: "string", description: "Specific human to assign" },
+          priority: { type: "string", description: "Priority level" },
         },
-        required: ["customerId", "phone", "reason"],
+        required: ["phone", "reason"],
       },
-      handler: async (params) => this.scheduleCallback(params as CallbackParams),
+      handler: async (params) => this.handleScheduleCallback(params as CallbackParams),
     })
 
     this.registerTool({
@@ -120,7 +113,7 @@ export class BridgeAgent extends BaseAgent {
         },
         required: ["escalationId"],
       },
-      handler: async (params) => this.assignToHuman(params as AssignParams),
+      handler: async (params) => this.handleAssignToHuman(params as AssignParams),
     })
 
     this.registerTool({
@@ -134,7 +127,7 @@ export class BridgeAgent extends BaseAgent {
         },
         required: [],
       },
-      handler: async (params) => this.getAvailableAgents(params as AvailableParams),
+      handler: async (params) => this.handleGetAvailableAgents(params as AvailableParams),
     })
 
     this.registerTool({
@@ -149,7 +142,7 @@ export class BridgeAgent extends BaseAgent {
         },
         required: ["escalationId"],
       },
-      handler: async (params) => this.prepareHandoffContext(params as ContextParams),
+      handler: async (params) => this.handlePrepareContext(params as ContextParams),
     })
 
     this.registerTool({
@@ -162,10 +155,11 @@ export class BridgeAgent extends BaseAgent {
           message: { type: "string", description: "Notification message" },
           channel: { type: "string", enum: ["slack", "sms", "email", "push"], description: "Notification channel" },
           urgency: { type: "string", enum: ["normal", "urgent"], description: "Urgency" },
+          escalationId: { type: "string", description: "Related escalation" },
         },
         required: ["humanId", "message"],
       },
-      handler: async (params) => this.notifyHuman(params as NotifyParams),
+      handler: async (params) => this.handleNotifyHuman(params as NotifyParams),
     })
 
     this.registerTool({
@@ -180,7 +174,7 @@ export class BridgeAgent extends BaseAgent {
         },
         required: ["escalationId", "outcome"],
       },
-      handler: async (params) => this.resolveEscalation(params as ResolveParams),
+      handler: async (params) => this.handleResolveEscalation(params as ResolveParams),
     })
 
     this.registerTool({
@@ -190,11 +184,10 @@ export class BridgeAgent extends BaseAgent {
         type: "object",
         properties: {
           period: { type: "string", description: "Tracking period" },
-          byAgent: { type: "boolean", description: "Group by agent" },
         },
         required: [],
       },
-      handler: async (params) => this.trackResolution(params as TrackParams),
+      handler: async (params) => this.handleTrackResolution(params as TrackParams),
     })
   }
 
@@ -208,7 +201,9 @@ export class BridgeAgent extends BaseAgent {
         case "event":
           return await this.handleEvent(input)
         case "escalation":
-          return await this.handleEscalation(input)
+          return await this.handleEscalationInput(input)
+        case "scheduled":
+          return await this.handleScheduledTask(input)
         default:
           return { success: false, error: "Unknown input type" }
       }
@@ -233,19 +228,32 @@ export class BridgeAgent extends BaseAgent {
         return await this.processCallbackRequest(event.data)
       case "human_available":
         return await this.processHumanAvailable(event.data)
+      case "sla_check":
+        return await this.processSLACheck()
       default:
         return { success: false, error: `Unknown event: ${event.name}` }
     }
   }
 
-  private async handleEscalation(input: AgentInput): Promise<AgentOutput> {
-    // Handle direct escalation input from other agents
+  private async handleEscalationInput(input: AgentInput): Promise<AgentOutput> {
     const escalation = input.metadata as EscalationParams
     return await this.processEscalationRequest(escalation)
   }
 
+  private async handleScheduledTask(input: AgentInput): Promise<AgentOutput> {
+    const taskType = input.metadata?.taskType as string
+
+    switch (taskType) {
+      case "sla_check":
+        return await this.processSLACheck()
+      case "pending_callbacks":
+        return await this.processPendingCallbacks()
+      default:
+        return { success: false, error: `Unknown task: ${taskType}` }
+    }
+  }
+
   public async handleInterAgentMessage(message: InterAgentMessage): Promise<void> {
-    // Process inter-agent escalation requests
     if (message.type === "escalation") {
       await this.processEscalationRequest({
         fromAgent: message.from,
@@ -257,266 +265,348 @@ export class BridgeAgent extends BaseAgent {
   }
 
   // =============================================================================
-  // ESCALATION WORKFLOWS
+  // ESCALATION WORKFLOWS - Using Database
   // =============================================================================
 
   private async processEscalationRequest(data: Record<string, unknown>): Promise<AgentOutput> {
-    const escalation = await this.createEscalation({
-      fromAgent: data.fromAgent as string,
+    const escalation = await db.createEscalation({
+      from_agent: data.fromAgent as string,
       reason: data.reason as string,
       priority: (data.priority as string) || "medium",
+      customer_email: data.customerEmail as string,
+      customer_name: data.customerName as string,
+      customer_phone: data.customerPhone as string,
+      conversation_id: data.conversationId as string,
+      conversation_summary: data.conversationSummary as string,
       context: data.context as Record<string, unknown>,
     })
 
+    if (!escalation) {
+      return { success: false, error: "Failed to create escalation" }
+    }
+
     // Find and assign appropriate human
     const skill = this.getRequiredSkill(data.reason as string)
-    const available = await this.getAvailableAgents({ skill, priority: data.priority as string })
+    const available = await db.getAvailableAgents({ skill, priority: data.priority as string })
 
-    if ((available.data as any)?.agents?.length > 0) {
-      const assignee = (available.data as any).agents[0]
-      await this.assignToHuman({
-        escalationId: (escalation.data as any).id,
-        humanId: assignee.id,
-      })
+    if (available.length > 0) {
+      const assignee = available[0]
+      await db.assignEscalation(escalation.id, assignee.id)
 
-      await this.notifyHuman({
-        humanId: assignee.id,
-        message: `New ${data.priority} escalation: ${data.reason}`,
+      // Notify the human
+      await db.createNotification({
+        agent_id: assignee.id,
+        type: "new_escalation",
         channel: data.priority === "urgent" ? "sms" : "slack",
         urgency: data.priority === "urgent" ? "urgent" : "normal",
+        title: `New ${data.priority} escalation`,
+        message: `Escalation from ${data.fromAgent}: ${data.reason}`,
+        related_escalation_id: escalation.id,
       })
+
+      this.log("info", "processEscalationRequest", `Assigned ${escalation.ticket_number} to ${assignee.name}`)
+    } else {
+      this.log("warn", "processEscalationRequest", `No agents available for escalation ${escalation.ticket_number}`)
     }
 
     return {
       success: true,
       response: "Escalation created and assigned",
-      data: escalation.data,
+      data: {
+        escalationId: escalation.id,
+        ticketNumber: escalation.ticket_number,
+        status: escalation.status,
+      },
     }
   }
 
   private async processCallbackRequest(data: Record<string, unknown>): Promise<AgentOutput> {
-    return await this.scheduleCallback({
-      customerId: data.customerId as string,
+    const callback = await db.scheduleCallback({
+      customer_email: data.customerEmail as string,
+      customer_name: data.customerName as string,
       phone: data.phone as string,
-      preferredTime: data.preferredTime as string,
+      preferred_time: data.preferredTime as string,
       reason: data.reason as string,
+      priority: data.priority as string,
     })
+
+    if (!callback) {
+      return { success: false, error: "Failed to schedule callback" }
+    }
+
+    return {
+      success: true,
+      response: "Callback scheduled",
+      data: {
+        callbackId: callback.id,
+        ticketNumber: callback.ticket_number,
+        scheduledFor: callback.scheduled_for,
+      },
+    }
   }
 
   private async processHumanAvailable(data: Record<string, unknown>): Promise<AgentOutput> {
     const humanId = data.humanId as string
 
-    // Update agent status
-    const agent = this.humanAgents.find((a) => a.id === humanId)
-    if (agent) {
-      agent.status = "available"
-    }
+    await db.updateAgentStatus(humanId, "available")
 
-    // Check if there are pending escalations to assign
-    const pending = this.escalationQueue.filter((e) => !e.assignedTo && e.status === "pending")
+    // Check for pending escalations
+    const pending = await db.getPendingEscalations()
+    const unassigned = pending.filter((e) => !e.assigned_to)
 
-    if (pending.length > 0) {
+    if (unassigned.length > 0) {
       // Sort by priority and assign first
-      const sorted = pending.sort((a, b) => this.priorityWeight(b.priority) - this.priorityWeight(a.priority))
-      await this.assignToHuman({
-        escalationId: sorted[0].id,
-        humanId,
-      })
+      const sorted = unassigned.sort((a, b) => this.priorityWeight(b.priority) - this.priorityWeight(a.priority))
+      await db.assignEscalation(sorted[0].id, humanId)
+
+      return {
+        success: true,
+        response: `Assigned pending escalation ${sorted[0].ticket_number}`,
+      }
     }
 
-    return { success: true, response: "Human availability processed" }
+    return { success: true, response: "Human availability updated" }
+  }
+
+  private async processSLACheck(): Promise<AgentOutput> {
+    const pending = await db.getPendingEscalations()
+    let breaches = 0
+
+    for (const escalation of pending) {
+      const breached = await db.checkSLABreach(escalation.id)
+      if (breached) {
+        breaches++
+        // Auto-escalate if SLA breached
+        this.log("warn", "processSLACheck", `SLA breached for ${escalation.ticket_number}`)
+      }
+    }
+
+    return {
+      success: true,
+      response: `SLA check completed. ${breaches} breaches detected.`,
+    }
+  }
+
+  private async processPendingCallbacks(): Promise<AgentOutput> {
+    const pending = await db.getPendingCallbacks()
+
+    return {
+      success: true,
+      response: `${pending.length} callbacks pending`,
+      data: { pending: pending.length },
+    }
   }
 
   // =============================================================================
-  // TOOL IMPLEMENTATIONS
+  // TOOL IMPLEMENTATIONS - Using Database
   // =============================================================================
 
-  private async createEscalation(params: EscalationParams) {
-    const item: EscalationItem = {
-      id: `ESC-${Date.now()}`,
-      fromAgent: params.fromAgent,
+  private async handleCreateEscalation(params: EscalationParams) {
+    const escalation = await db.createEscalation({
+      from_agent: params.fromAgent,
       reason: params.reason,
       priority: params.priority,
-      context: params.context || {},
-      status: "pending",
-      createdAt: new Date(),
-    }
+      customer_email: params.customerEmail,
+      customer_name: params.customerName,
+      customer_phone: params.customerPhone,
+      conversation_id: params.conversationId,
+      conversation_summary: params.conversationSummary,
+      context: params.context,
+    })
 
-    this.escalationQueue.push(item)
-    this.log("info", "createEscalation", `Created ${params.priority} escalation from ${params.fromAgent}`)
-
-    return { success: true, data: item }
-  }
-
-  private async scheduleCallback(params: CallbackParams) {
-    const callback: CallbackItem = {
-      id: `CB-${Date.now()}`,
-      customerId: params.customerId,
-      phone: params.phone,
-      preferredTime: params.preferredTime || "next_available",
-      reason: params.reason,
-      status: "scheduled",
-      createdAt: new Date(),
-    }
-
-    this.callbackQueue.push(callback)
-    this.log("info", "scheduleCallback", `Scheduled callback for ${params.customerId}`)
-
-    return {
-      success: true,
-      data: {
-        ...callback,
-        estimatedCallTime: this.estimateCallTime(params.preferredTime),
-      },
-    }
-  }
-
-  private async assignToHuman(params: AssignParams) {
-    const escalation = this.escalationQueue.find((e) => e.id === params.escalationId)
     if (!escalation) {
-      return { success: false, error: "Escalation not found" }
+      return { success: false, error: "Failed to create escalation" }
     }
 
-    // Auto-select if no human specified
-    const humanId = params.humanId || (await this.autoSelectHuman(escalation))
-    const human = this.humanAgents.find((a) => a.id === humanId)
-
-    if (!human) {
-      return { success: false, error: "No human agent available" }
-    }
-
-    escalation.assignedTo = humanId
-    escalation.status = "assigned"
-    escalation.assignedAt = new Date()
-    human.status = "busy"
-
-    this.log("info", "assignToHuman", `Assigned ${params.escalationId} to ${human.name}`)
-
-    return {
-      success: true,
-      data: {
-        escalationId: params.escalationId,
-        assignedTo: { id: human.id, name: human.name, role: human.role },
-      },
-    }
-  }
-
-  private async getAvailableAgents(params: AvailableParams) {
-    let available = this.humanAgents.filter((a) => a.status === "available")
-
-    if (params.skill) {
-      available = available.filter((a) => a.skills.includes(params.skill!))
-    }
-
-    // For urgent, include managers
-    if (params.priority === "urgent") {
-      available = available.concat(this.humanAgents.filter((a) => a.role === "manager" && a.status === "busy"))
-    }
-
-    return {
-      success: true,
-      data: {
-        agents: available.map((a) => ({ id: a.id, name: a.name, role: a.role, skills: a.skills })),
-        total: available.length,
-      },
-    }
-  }
-
-  private async prepareHandoffContext(params: ContextParams) {
-    const escalation = this.escalationQueue.find((e) => e.id === params.escalationId)
-    if (!escalation) {
-      return { success: false, error: "Escalation not found" }
-    }
-
-    const context: any = {
-      escalationId: escalation.id,
-      originalAgent: escalation.fromAgent,
-      reason: escalation.reason,
-      priority: escalation.priority,
-      createdAt: escalation.createdAt,
-    }
-
-    if (params.includeHistory !== false) {
-      context.conversationHistory = escalation.context.conversationHistory || []
-    }
-
-    if (params.includeSummary !== false) {
-      context.summary = this.generateSummary(escalation)
-    }
-
-    return { success: true, data: context }
-  }
-
-  private async notifyHuman(params: NotifyParams) {
-    const human = this.humanAgents.find((a) => a.id === params.humanId)
-    if (!human) {
-      return { success: false, error: "Human agent not found" }
-    }
-
-    const notification = {
-      to: human.name,
-      channel: params.channel || "slack",
-      message: params.message,
-      urgency: params.urgency || "normal",
-      sentAt: new Date(),
-    }
-
-    this.log("info", "notifyHuman", `Notified ${human.name} via ${params.channel}`)
-
-    return { success: true, data: notification }
-  }
-
-  private async resolveEscalation(params: ResolveParams) {
-    const escalation = this.escalationQueue.find((e) => e.id === params.escalationId)
-    if (!escalation) {
-      return { success: false, error: "Escalation not found" }
-    }
-
-    escalation.status = params.outcome
-    escalation.resolvedAt = new Date()
-    escalation.resolution = params.resolution
-
-    // Free up human agent
-    if (escalation.assignedTo) {
-      const human = this.humanAgents.find((a) => a.id === escalation.assignedTo)
-      if (human) human.status = "available"
-    }
-
-    this.log("info", "resolveEscalation", `Resolved ${params.escalationId}: ${params.outcome}`)
+    this.log("info", "handleCreateEscalation", `Created ${params.priority} escalation from ${params.fromAgent}`)
 
     return {
       success: true,
       data: {
         id: escalation.id,
-        outcome: params.outcome,
-        resolution: params.resolution,
-        timeToResolve: escalation.resolvedAt.getTime() - escalation.createdAt.getTime(),
+        ticketNumber: escalation.ticket_number,
+        status: escalation.status,
       },
     }
   }
 
-  private async trackResolution(params: TrackParams) {
-    const resolved = this.escalationQueue.filter((e) => e.status === "resolved")
+  private async handleScheduleCallback(params: CallbackParams) {
+    const callback = await db.scheduleCallback({
+      customer_email: params.customerEmail,
+      customer_name: params.customerName,
+      phone: params.phone,
+      preferred_time: params.preferredTime,
+      reason: params.reason,
+      priority: params.priority,
+    })
 
-    const avgTimeMs =
-      resolved.length > 0
-        ? resolved.reduce((sum, e) => sum + (e.resolvedAt?.getTime() || 0) - e.createdAt.getTime(), 0) / resolved.length
-        : 0
+    if (!callback) {
+      return { success: false, error: "Failed to schedule callback" }
+    }
+
+    this.log("info", "handleScheduleCallback", `Scheduled callback for ${params.phone}`)
+
+    return {
+      success: true,
+      data: {
+        id: callback.id,
+        ticketNumber: callback.ticket_number,
+        scheduledFor: callback.scheduled_for,
+        status: callback.status,
+      },
+    }
+  }
+
+  private async handleAssignToHuman(params: AssignParams) {
+    const escalation = await db.getEscalationById(params.escalationId)
+    if (!escalation) {
+      return { success: false, error: "Escalation not found" }
+    }
+
+    // Auto-select if no human specified
+    let humanId = params.humanId
+    if (!humanId) {
+      const skill = this.getRequiredSkill(escalation.reason)
+      const available = await db.getAvailableAgents({ skill, priority: escalation.priority })
+      if (available.length === 0) {
+        return { success: false, error: "No human agent available" }
+      }
+      humanId = available[0].id
+    }
+
+    const updated = await db.assignEscalation(params.escalationId, humanId, params.notes)
+    if (!updated) {
+      return { success: false, error: "Failed to assign escalation" }
+    }
+
+    const agent = await db.getAgentById(humanId)
+
+    this.log("info", "handleAssignToHuman", `Assigned ${params.escalationId} to ${agent?.name}`)
+
+    return {
+      success: true,
+      data: {
+        escalationId: params.escalationId,
+        assignedTo: { id: humanId, name: agent?.name, role: agent?.role },
+      },
+    }
+  }
+
+  private async handleGetAvailableAgents(params: AvailableParams) {
+    const agents = await db.getAvailableAgents(params)
+
+    return {
+      success: true,
+      data: {
+        agents: agents.map((a) => ({
+          id: a.id,
+          name: a.name,
+          role: a.role,
+          skills: a.skills,
+          currentLoad: a.current_load,
+        })),
+        total: agents.length,
+      },
+    }
+  }
+
+  private async handlePrepareContext(params: ContextParams) {
+    const escalation = await db.getEscalationById(params.escalationId)
+    if (!escalation) {
+      return { success: false, error: "Escalation not found" }
+    }
+
+    const context: Record<string, unknown> = {
+      escalationId: escalation.id,
+      ticketNumber: escalation.ticket_number,
+      originalAgent: escalation.from_agent,
+      reason: escalation.reason,
+      priority: escalation.priority,
+      customer: {
+        email: escalation.customer_email,
+        name: escalation.customer_name,
+        phone: escalation.customer_phone,
+      },
+      createdAt: escalation.created_at,
+    }
+
+    if (params.includeHistory !== false && escalation.context) {
+      context.conversationHistory = escalation.context
+    }
+
+    if (params.includeSummary !== false) {
+      context.summary = escalation.conversation_summary || this.generateSummary(escalation)
+    }
+
+    return { success: true, data: context }
+  }
+
+  private async handleNotifyHuman(params: NotifyParams) {
+    const agent = await db.getAgentById(params.humanId)
+    if (!agent) {
+      return { success: false, error: "Human agent not found" }
+    }
+
+    const notification = await db.createNotification({
+      agent_id: params.humanId,
+      type: "escalation_update",
+      channel: params.channel || "slack",
+      urgency: params.urgency || "normal",
+      title: params.urgency === "urgent" ? "URGENT" : "Notification",
+      message: params.message,
+      related_escalation_id: params.escalationId,
+    })
+
+    if (notification) {
+      await db.markNotificationSent(notification.id)
+    }
+
+    this.log("info", "handleNotifyHuman", `Notified ${agent.name} via ${params.channel}`)
+
+    return {
+      success: true,
+      data: {
+        notificationId: notification?.id,
+        to: agent.name,
+        channel: params.channel || "slack",
+        status: "sent",
+      },
+    }
+  }
+
+  private async handleResolveEscalation(params: ResolveParams) {
+    const escalation = await db.resolveEscalation(params.escalationId, params.resolution || "", params.outcome)
+
+    if (!escalation) {
+      return { success: false, error: "Failed to resolve escalation" }
+    }
+
+    this.log("info", "handleResolveEscalation", `Resolved ${escalation.ticket_number}: ${params.outcome}`)
+
+    return {
+      success: true,
+      data: {
+        id: escalation.id,
+        ticketNumber: escalation.ticket_number,
+        outcome: params.outcome,
+        resolution: params.resolution,
+        timeToResolve: escalation.time_to_resolve_ms
+          ? `${Math.round(escalation.time_to_resolve_ms / 60000)} minutes`
+          : null,
+      },
+    }
+  }
+
+  private async handleTrackResolution(params: TrackParams) {
+    const stats = await db.getEscalationStats()
 
     return {
       success: true,
       data: {
         period: params.period || "all",
-        totalEscalations: this.escalationQueue.length,
-        resolved: resolved.length,
-        pending: this.escalationQueue.filter((e) => e.status === "pending").length,
-        avgResolutionTime: `${Math.round(avgTimeMs / 60000)} minutes`,
-        byPriority: {
-          urgent: this.escalationQueue.filter((e) => e.priority === "urgent").length,
-          high: this.escalationQueue.filter((e) => e.priority === "high").length,
-          medium: this.escalationQueue.filter((e) => e.priority === "medium").length,
-          low: this.escalationQueue.filter((e) => e.priority === "low").length,
-        },
+        ...stats,
+        avgTimeToAssign: `${stats.avgTimeToAssign} minutes`,
+        avgTimeToResolve: `${stats.avgTimeToResolve} minutes`,
       },
     }
   }
@@ -532,6 +622,8 @@ export class BridgeAgent extends BaseAgent {
       compliance_issue: "operations",
       complex_quote: "sales",
       technical_issue: "operations",
+      customer_complaint: "support",
+      pricing_dispute: "sales",
     }
     return skillMap[reason] || "support"
   }
@@ -541,30 +633,22 @@ export class BridgeAgent extends BaseAgent {
     return weights[priority] || 0
   }
 
-  private async autoSelectHuman(escalation: EscalationItem): Promise<string> {
-    const skill = this.getRequiredSkill(escalation.reason)
-    const available = this.humanAgents.filter((a) => a.status === "available" && a.skills.includes(skill))
-
-    return available.length > 0 ? available[0].id : this.humanAgents.find((a) => a.role === "manager")?.id || ""
+  private generateSummary(escalation: db.Escalation): string {
+    return (
+      `Escalation from ${escalation.from_agent} regarding "${escalation.reason}". ` +
+      `Priority: ${escalation.priority}. ` +
+      `Customer: ${escalation.customer_name || escalation.customer_email || "Unknown"}. ` +
+      `Created: ${new Date(escalation.created_at).toLocaleString()}.`
+    )
   }
 
-  private estimateCallTime(preferredTime?: string): string {
-    if (preferredTime && preferredTime !== "next_available") {
-      return preferredTime
-    }
-
-    const now = new Date()
-    now.setMinutes(now.getMinutes() + 30) // Within 30 minutes
-    return now.toISOString()
-  }
-
-  private generateSummary(escalation: EscalationItem): string {
-    return `Escalation from ${escalation.fromAgent} regarding "${escalation.reason}". Priority: ${escalation.priority}. Created: ${escalation.createdAt.toLocaleString()}.`
+  public async getEscalationStats(): Promise<Awaited<ReturnType<typeof db.getEscalationStats>>> {
+    return db.getEscalationStats()
   }
 }
 
 // =============================================================================
-// TYPES & CONFIG
+// TYPES
 // =============================================================================
 
 const BRIDGE_SYSTEM_PROMPT = `You are Bridge, an AI Human Handoff Agent for M&M Commercial Moving.
@@ -572,96 +656,76 @@ const BRIDGE_SYSTEM_PROMPT = `You are Bridge, an AI Human Handoff Agent for M&M 
 ## Your Role
 - Manage escalations from AI to humans
 - Schedule customer callbacks
-- Match escalations to appropriate human agents
+- Match escalations to appropriate human agents based on skills
+- Track SLAs and resolution times
 - Prepare context for smooth handoffs
-- Track resolution metrics
 
-## Escalation Priority
-- URGENT: Security, compliance, angry VIP customers
-- HIGH: Negative sentiment, complex deals, complaints
-- MEDIUM: Standard questions AI can't handle
-- LOW: Requests for human preference
+## Priority Levels
+- URGENT: 15 min first response, 60 min resolution
+- HIGH: 30 min first response, 2 hour resolution  
+- MEDIUM: 1 hour first response, 4 hour resolution
+- LOW: 2 hour first response, 8 hour resolution
 
-## Key Principles
-- Speed matters - urgent items get immediate attention
-- Context is king - provide complete handoff packages
-- Track everything for improvement
-- Never leave customers waiting`
-
-interface EscalationItem {
-  id: string
-  fromAgent: string
-  reason: string
-  priority: string
-  context: Record<string, unknown>
-  status: string
-  createdAt: Date
-  assignedTo?: string
-  assignedAt?: Date
-  resolvedAt?: Date
-  resolution?: string
-}
-
-interface CallbackItem {
-  id: string
-  customerId: string
-  phone: string
-  preferredTime: string
-  reason: string
-  status: string
-  createdAt: Date
-  completedAt?: Date
-}
-
-interface HumanAgent {
-  id: string
-  name: string
-  role: string
-  status: string
-  skills: string[]
-}
+## Skills Matching
+- Sales issues → sales, negotiation skills
+- Support issues → support, complaints skills
+- Operations issues → operations, scheduling skills
+- Complex escalations → manager level`
 
 interface EscalationParams {
   fromAgent: string
   reason: string
   priority: string
+  customerEmail?: string
+  customerName?: string
+  customerPhone?: string
+  conversationId?: string
+  conversationSummary?: string
   context?: Record<string, unknown>
 }
+
 interface CallbackParams {
-  customerId: string
+  customerEmail?: string
+  customerName?: string
   phone: string
   preferredTime?: string
   reason: string
-  assignTo?: string
+  priority?: string
 }
+
 interface AssignParams {
   escalationId: string
   humanId?: string
   notes?: string
 }
+
 interface AvailableParams {
   skill?: string
   priority?: string
 }
+
 interface ContextParams {
   escalationId: string
   includeHistory?: boolean
   includeSummary?: boolean
 }
+
 interface NotifyParams {
   humanId: string
   message: string
   channel?: string
   urgency?: string
+  escalationId?: string
 }
+
 interface ResolveParams {
   escalationId: string
   resolution?: string
   outcome: string
 }
+
 interface TrackParams {
   period?: string
-  byAgent?: boolean
 }
 
 // =============================================================================

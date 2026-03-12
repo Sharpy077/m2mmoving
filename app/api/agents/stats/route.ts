@@ -6,23 +6,21 @@
 import { NextResponse } from "next/server"
 import { getCortex, AGENT_REGISTRY } from "@/lib/agents"
 
-export const runtime = "edge"
+// API routes use Node.js runtime by default which is more compatible
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const agentId = searchParams.get("agent")
     const period = searchParams.get("period") || "24h"
-    
+
     const cortex = getCortex()
     const status = cortex.getStatus()
-    
+
     // Get all agent identities
-    const agents = cortex.getAgentIdentities().map(identity => {
-      const registryInfo = Object.values(AGENT_REGISTRY).find(
-        r => r.codename === identity.codename
-      )
-      
+    const agents = cortex.getAgentIdentities().map((identity) => {
+      const registryInfo = Object.values(AGENT_REGISTRY).find((r) => r.codename === identity.codename)
+
       return {
         ...identity,
         category: registryInfo?.category || "unknown",
@@ -30,32 +28,28 @@ export async function GET(request: Request) {
         metrics: generateSimulatedMetrics(identity.codename),
       }
     })
-    
+
     // If specific agent requested
     if (agentId) {
-      const agent = agents.find(a => a.codename === agentId.toUpperCase())
+      const agent = agents.find((a) => a.codename === agentId.toUpperCase())
       if (!agent) {
         return NextResponse.json({ error: "Agent not found" }, { status: 404 })
       }
       return NextResponse.json({ agent })
     }
-    
+
     // Aggregate metrics
     const aggregatedMetrics = {
       totalConversations: agents.reduce((sum, a) => sum + a.metrics.conversations, 0),
       activeConversations: Math.floor(Math.random() * 20) + 5,
-      avgResponseTime: Math.round(
-        agents.reduce((sum, a) => sum + a.metrics.avgResponseTimeMs, 0) / agents.length
-      ),
-      successRate: Math.round(
-        agents.reduce((sum, a) => sum + a.metrics.successRate, 0) / agents.length * 10
-      ) / 10,
+      avgResponseTime: Math.round(agents.reduce((sum, a) => sum + a.metrics.avgResponseTimeMs, 0) / agents.length),
+      successRate: Math.round((agents.reduce((sum, a) => sum + a.metrics.successRate, 0) / agents.length) * 10) / 10,
       escalations: Math.floor(Math.random() * 10) + 2,
       quotesGenerated: Math.floor(Math.random() * 50) + 30,
       leadsQualified: Math.floor(Math.random() * 30) + 15,
       revenue: Math.floor(Math.random() * 50000) + 25000,
     }
-    
+
     return NextResponse.json({
       status,
       period,
@@ -65,10 +59,7 @@ export async function GET(request: Request) {
     })
   } catch (error) {
     console.error("Error fetching agent stats:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch agent statistics" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch agent statistics" }, { status: 500 })
   }
 }
 
@@ -89,15 +80,15 @@ function generateSimulatedMetrics(codename: string) {
     BRIDGE_HH: 0.3,
     GUARDIAN_QA: 0.8,
   }
-  
+
   const multiplier = baseMultipliers[codename] || 1.0
-  
+
   return {
     conversations: Math.floor((Math.random() * 200 + 100) * multiplier),
     messagesHandled: Math.floor((Math.random() * 500 + 200) * multiplier),
     avgResponseTimeMs: Math.floor(Math.random() * 1500 + 500),
     successRate: Math.round((85 + Math.random() * 14) * 10) / 10,
-    escalationRate: Math.round((Math.random() * 5) * 10) / 10,
+    escalationRate: Math.round(Math.random() * 5 * 10) / 10,
     avgSentiment: Math.round((Math.random() * 0.6 + 0.2) * 100) / 100,
     lastActive: new Date(Date.now() - Math.random() * 3600000).toISOString(),
   }
