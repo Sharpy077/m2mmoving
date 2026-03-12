@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, useCallback } from "react"
 import { useChat } from "@ai-sdk/react"
 
 import {
@@ -41,6 +41,15 @@ import { createDepositCheckout } from "@/app/actions/stripe"
 import { useFormPersistence } from "@/hooks/use-form-persistence"
 import { PaymentConfirmation } from "@/components/payment-confirmation"
 import { getStripeErrorMessage } from "@/lib/stripe-errors"
+import {
+  ResponseMonitor,
+  getResponseMonitor,
+  ErrorClassifier,
+  RetryHandler,
+  ConversationStateManager,
+  FallbackProvider,
+  type ConversationState,
+} from "@/lib/conversation"
 
 const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null
@@ -160,8 +169,10 @@ const ServicePicker = ({
 const InitialPrompts = ({ onSelect }: { onSelect: (prompt: string) => void }) => {
   const prompts = [
     { text: "I need to move my office", icon: Building2 },
-    { text: "Data centre relocation", icon: Server },
-    { text: "Just need IT equipment moved", icon: Monitor },
+    { text: "Warehouse relocation", icon: Warehouse },
+    { text: "Data centre migration", icon: Server },
+    { text: "Retail store move", icon: Store },
+    { text: "IT equipment transport", icon: Monitor },
     { text: "I'd like to speak to someone", icon: Phone },
   ]
 
@@ -233,7 +244,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const [currentQuote, setCurrentQuote] = useState<QuoteEstimate | null>(null)
     const [isSubmittingLead, setIsSubmittingLead] = useState(false)
     const [leadSubmitted, setLeadSubmitted] = useState(false)
-    const [submittedLeadId, setSubmittedLeadId] = useState<string | null>(null)
+    const [submittedLeadData, setSubmittedLeadData] = useState<any>(null)
     const [businessLookupResults, setBusinessLookupResults] = useState<BusinessResult[] | null>(null)
     const [confirmedBusiness, setConfirmedBusiness] = useState<BusinessResult | null>(null)
     const [showCalendar, setShowCalendar] = useState(false)
@@ -253,6 +264,11 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       "business" | "service" | "details" | "quote" | "date" | "contact" | "payment" | "complete"
     >("business")
     const [showInitialPrompts, setShowInitialPrompts] = useState(true)
+    const [lastUserMessageTime, setLastUserMessageTime] = useState<number | null>(null)
+    const [conversationId] = useState(() => `conv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`)
+    const [isInitialMessage, setIsInitialMessage] = useState(true)
+    const [retryCount, setRetryCount] = useState(0)
+    const [fallbackResponse, setFallbackResponse] = useState<ReturnType<typeof FallbackProvider.getFallback> | null>(null)
 
     // Loading states
     const [isLookingUpBusiness, setIsLookingUpBusiness] = useState(false)
@@ -264,6 +280,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     const recognitionRef = useRef<any>(null)
     const synthRef = useRef<SpeechSynthesis | null>(null)
     const containerRef = useRef<HTMLDivElement>(null)
+    const responseMonitorRef = useRef<ResponseMonitor>(getResponseMonitor())
+    const retryHandlerRef = useRef<RetryHandler>(new RetryHandler())
 
     useImperativeHandle(ref, () => ({
       open: () => {
@@ -272,15 +290,87 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       },
     }))
 
-    const { messages, sendMessage, status, error } = useChat({
-      api: "/api/quote-assistant",
-      onError: (err) => {
+    const [pendingRetry, setPendingRetry] = useState<{ text: string; retries: number } | null>(null)
+
+    // Enhanced error handling with retry logic
+    const handleErrorWithRetry = useCallback(async (error: unknown, messageText: string) => {
+      const classified = ErrorClassifier.classify(error)
+      const newRetryCount = retryCount + 1
+      setRetryCount(newRetryCount)
+
+      if (classified.retryable && classified.retryConfig) {
+        const retryConfig = classified.retryConfig
+        if (newRetryCount < retryConfig.maxAttempts) {
+          // Retry will be handled by the onError callback
+          // Just update the pending retry state
+          setPendingRetry({ text: messageText, retries: newRetryCount })
+        } else {
+          // Max retries exceeded, use fallback
+          const fallback = FallbackProvider.getFallback({
+            conversationId,
+            lastUserMessage: messageText,
+            conversationStep: currentStep,
+            errorType: classified.type,
+            retryCount: newRetryCount,
+          })
+          setFallbackResponse(fallback)
+          setHasError(true)
+          setErrorMessage(fallback.message)
+          setPendingRetry(null)
+        }
+      } else {
+        // Not retryable, show error immediately
+        const fallback = FallbackProvider.getFallback({
+          conversationId,
+          lastUserMessage: messageText,
+          conversationStep: currentStep,
+          errorType: classified.type,
+          retryCount: newRetryCount,
+        })
+        setFallbackResponse(fallback)
         setHasError(true)
-        setErrorMessage(err.message || "Failed to connect to the quote assistant")
+        setErrorMessage(classified.message)
+        setPendingRetry(null)
+      }
+    }, [conversationId, currentStep, retryCount])
+
+    const { messages, sendMessage, status, error } = useChat({
+      // @ts-ignore
+      api: "/api/quote-assistant",
+      id: conversationId,
+      onError: (err) => {
+        console.log("[v0] Chat error:", err.message)
+        const classified = ErrorClassifier.classify(err)
+        
+        // Cancel response monitor timer
+        if (lastUserMessageTime) {
+          responseMonitorRef.current.cancelTimer(`msg-${lastUserMessageTime}`)
+        }
+
+        // Handle error with retry logic
+        if (pendingRetry) {
+          handleErrorWithRetry(err, pendingRetry.text)
+        } else {
+          setHasError(true)
+          setErrorMessage(classified.message)
+        }
       },
       onFinish: () => {
         setHasError(false)
         setErrorMessage(null)
+        setPendingRetry(null)
+        setRetryCount(0)
+        setFallbackResponse(null)
+        setLastUserMessageTime(null)
+        setIsInitialMessage(false)
+        
+        // Cancel any monitoring timers
+        if (lastUserMessageTime) {
+          responseMonitorRef.current.cancelTimer(`msg-${lastUserMessageTime}`)
+        }
+
+        // Save conversation state
+        saveConversationState()
       },
     })
 
@@ -292,40 +382,102 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       confirmedBusiness,
       businessLookupResults,
       serviceOptions,
-      showServicePicker,
+      showServicePicker
     }
 
     const { loadSavedData, clearSavedData } = useFormPersistence(
       formState,
-      "quote-assistant-state",
-      !paymentComplete && !leadSubmitted,
+      'quote-assistant-state',
+      !paymentComplete && !leadSubmitted
     )
+
+    // Save conversation state
+    const saveConversationState = () => {
+      const state: ConversationState = {
+        id: conversationId,
+        messages: messages.map((msg) => ({
+          id: msg.id || `msg-${Date.now()}`,
+          role: msg.role,
+          content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+          timestamp: new Date(),
+        })),
+        step: currentStep,
+        selectedOptions: {
+          business: confirmedBusiness || undefined,
+          service: serviceOptions.find(s => true) || undefined,
+          date: selectedDate || undefined,
+        },
+        formData: {
+          contactInfo: contactInfo || undefined,
+          quote: currentQuote || undefined,
+        },
+        errorState: hasError
+          ? {
+              lastError: errorMessage || 'Unknown error',
+              retryCount,
+              lastRetryTime: new Date(),
+            }
+          : undefined,
+        createdAt: new Date(),
+        lastUpdated: new Date(),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      }
+      ConversationStateManager.save(state)
+    }
 
     // Load saved state on mount
     useEffect(() => {
       if (embedded && messages.length === 0) {
-        const saved = loadSavedData()
-        if (saved) {
-          if (saved.currentQuote) setCurrentQuote(saved.currentQuote)
-          if (saved.contactInfo) setContactInfo(saved.contactInfo)
-          if (saved.selectedDate) setSelectedDate(saved.selectedDate)
-          if (saved.confirmedBusiness) setConfirmedBusiness(saved.confirmedBusiness)
+        // Try to load from new state manager first
+        const savedState = ConversationStateManager.load(conversationId)
+        if (savedState) {
+          // Restore from saved state
+          if (savedState.formData.quote) setCurrentQuote(savedState.formData.quote)
+          if (savedState.formData.contactInfo) setContactInfo(savedState.formData.contactInfo)
+          if (savedState.selectedOptions.date) setSelectedDate(savedState.selectedOptions.date)
+          if (savedState.selectedOptions.business) setConfirmedBusiness(savedState.selectedOptions.business)
+          if (savedState.step) setCurrentStep(savedState.step)
+          setIsInitialMessage(false)
+        } else {
+          // Fallback to old persistence
+          const saved = loadSavedData()
+          if (saved) {
+            if (saved.currentQuote) setCurrentQuote(saved.currentQuote)
+            if (saved.contactInfo) setContactInfo(saved.contactInfo)
+            if (saved.selectedDate) setSelectedDate(saved.selectedDate)
+            if (saved.confirmedBusiness) setConfirmedBusiness(saved.confirmedBusiness)
+          }
         }
       }
-    }, [embedded])
+    }, [embedded, conversationId])
 
     // Clear on successful completion
     useEffect(() => {
       if (paymentComplete || leadSubmitted) {
         clearSavedData()
+        ConversationStateManager.clear(conversationId)
       }
-    }, [paymentComplete, leadSubmitted])
+    }, [paymentComplete, leadSubmitted, conversationId])
 
-    const isLoading = status === "in_progress" || status === "streaming" || status === "submitted"
+    // Periodically save conversation state
+    useEffect(() => {
+      const interval = setInterval(() => {
+        if (messages.length > 0 && !paymentComplete && !leadSubmitted) {
+          saveConversationState()
+        }
+      }, 30000) // Save every 30 seconds
+
+      return () => clearInterval(interval)
+    }, [messages, currentStep, confirmedBusiness, selectedDate, contactInfo, currentQuote, paymentComplete, leadSubmitted])
+
+    const isLoading = status === "streaming" || status === "submitted"
 
     useEffect(() => {
       const lastMessage = messages[messages.length - 1]
       if (lastMessage?.role === "assistant") {
+        // Reset watchdog when Maya responds
+        setLastUserMessageTime(null)
+        
         if (lastMessage.parts) {
           lastMessage.parts.forEach((part: any) => {
             if (part.type?.startsWith("tool-") && part.state === "output-available") {
@@ -362,8 +514,26 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
 
               if (toolName === "calculateQuote") {
                 setIsCalculatingQuote(false)
-                if (result?.estimatedTotal) {
-                  setCurrentQuote(result)
+                // Handle both direct result (flat object) and nested data structure from agent
+                const quoteData = result?.quote || result
+
+                if (quoteData?.estimatedTotal) {
+                  // Transform breakdown object to array if needed
+                  let breakdownArray = quoteData.breakdown
+                  if (quoteData.breakdown && typeof quoteData.breakdown === 'object' && !Array.isArray(quoteData.breakdown)) {
+                    breakdownArray = [
+                      { label: "Base Rate", amount: quoteData.breakdown.baseRate },
+                      { label: "Distance Charge", amount: quoteData.breakdown.distanceCharge },
+                      { label: "Square Meters Charge", amount: quoteData.breakdown.sqmCharge },
+                      { label: "Additional Services", amount: quoteData.breakdown.additionalServices },
+                      { label: "GST", amount: quoteData.breakdown.gst },
+                    ].filter(item => item.amount > 0)
+                  }
+
+                  setCurrentQuote({
+                    ...quoteData,
+                    breakdown: breakdownArray || []
+                  })
                   setCurrentStep("quote")
                   if (result.showAvailability) {
                     setShowCalendar(true)
@@ -408,8 +578,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         }
 
         // Backwards compatibility with toolInvocations
-        if (lastMessage.toolInvocations) {
-          lastMessage.toolInvocations.forEach((toolCall: any) => {
+        if ((lastMessage as any).toolInvocations) {
+          (lastMessage as any).toolInvocations.forEach((toolCall: any) => {
             if (toolCall.state === "result") {
               const result = toolCall.result
 
@@ -482,13 +652,72 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       }
     }, [messages])
 
+    // Enhanced watchdog with ResponseMonitor
+    useEffect(() => {
+      const monitor = responseMonitorRef.current
+      
+      // Set up timeout callback
+      const unsubscribe = monitor.onTimeout((messageId) => {
+        console.warn(`[ResponseMonitor] Timeout detected for message: ${messageId}`)
+        
+        // Check if we still haven't received a response
+        const lastMessage = messages[messages.length - 1]
+        if (lastMessage?.role === "user" && pendingRetry && !isLoading) {
+          // Trigger retry
+          console.log("[ResponseMonitor] Triggering retry due to timeout")
+          handleErrorWithRetry(new Error("Response timeout"), pendingRetry.text)
+        }
+      })
+
+      return () => {
+        unsubscribe()
+      }
+    }, [messages, pendingRetry, isLoading, handleErrorWithRetry])
+
+    // Monitor response times
+    useEffect(() => {
+      if (lastUserMessageTime && !isLoading) {
+        const messageId = `msg-${lastUserMessageTime}`
+        const timeoutType = isInitialMessage ? 'initial' : 'normal'
+        responseMonitorRef.current.startTimer(messageId, timeoutType)
+        
+        return () => {
+          responseMonitorRef.current.cancelTimer(messageId)
+        }
+      }
+    }, [lastUserMessageTime, isLoading, isInitialMessage])
+
+    // Initial message handling with health check
     useEffect(() => {
       if ((isOpen || embedded) && !hasStarted && messages.length === 0) {
         setHasStarted(true)
-        const timer = setTimeout(() => {
-          sendMessage({ text: "Hi, I'd like to get a quote for a commercial move." })
-        }, 800)
-        return () => clearTimeout(timer)
+        setIsInitialMessage(true)
+        
+        // Pre-flight health check
+        const checkHealth = async () => {
+          try {
+            const response = await fetch('/api/quote-assistant/health')
+            if (response.ok) {
+              // Health check passed, send initial message
+              const timer = setTimeout(() => {
+                setLastUserMessageTime(Date.now())
+                sendMessage({ text: "Hi, I'd like to get a quote for a commercial move." })
+              }, 800)
+              return () => clearTimeout(timer)
+            }
+          } catch (error) {
+            console.warn("[InitialMessage] Health check failed, proceeding anyway:", error)
+          }
+          
+          // Send message even if health check fails (graceful degradation)
+          const timer = setTimeout(() => {
+            setLastUserMessageTime(Date.now())
+            sendMessage({ text: "Hi, I'd like to get a quote for a commercial move." })
+          }, 800)
+          return () => clearTimeout(timer)
+        }
+        
+        checkHealth()
       }
     }, [isOpen, embedded, hasStarted, messages.length, sendMessage])
 
@@ -497,16 +726,16 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
 
     useEffect(() => {
       // Check for reduced motion preference
-      if (typeof window !== "undefined") {
-        const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)")
+      if (typeof window !== 'undefined') {
+        const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
         setPrefersReducedMotion(mediaQuery.matches)
 
         const handleChange = (e: MediaQueryListEvent) => {
           setPrefersReducedMotion(e.matches)
         }
 
-        mediaQuery.addEventListener("change", handleChange)
-        return () => mediaQuery.removeEventListener("change", handleChange)
+        mediaQuery.addEventListener('change', handleChange)
+        return () => mediaQuery.removeEventListener('change', handleChange)
       }
     }, [])
 
@@ -521,8 +750,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             setUserHasScrolledUp(!isNearBottom)
           }
 
-          container.addEventListener("scroll", handleScroll)
-          return () => container.removeEventListener("scroll", handleScroll)
+          container.addEventListener('scroll', handleScroll)
+          return () => container.removeEventListener('scroll', handleScroll)
         }
       }
     }, [])
@@ -535,20 +764,11 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
           // Use smooth scroll if motion is allowed, instant if reduced
           container.scrollTo({
             top: container.scrollHeight,
-            behavior: prefersReducedMotion ? "auto" : "smooth",
+            behavior: prefersReducedMotion ? 'auto' : 'smooth'
           })
         }
       }
-    }, [
-      messages,
-      businessLookupResults,
-      currentQuote,
-      showCalendar,
-      showPayment,
-      showServicePicker,
-      prefersReducedMotion,
-      userHasScrolledUp,
-    ])
+    }, [messages, businessLookupResults, currentQuote, showCalendar, showPayment, showServicePicker, prefersReducedMotion, userHasScrolledUp])
 
     useEffect(() => {
       if (typeof window !== "undefined") {
@@ -567,8 +787,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
               textContent += part.text
             }
           })
-        } else if (typeof lastMessage.content === "string") {
-          textContent = lastMessage.content
+        } else if (typeof (lastMessage as any).content === "string") {
+          textContent = (lastMessage as any).content
         }
 
         if (textContent && textContent.length < 500) {
@@ -595,6 +815,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             setInputValue(transcript)
             setIsListening(false)
             setTimeout(() => {
+              setLastUserMessageTime(Date.now())
+              setPendingRetry({ text: transcript, retries: 0 })
+              saveConversationState()
               sendMessage({ text: transcript })
               setInputValue("")
             }, 300)
@@ -624,18 +847,29 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       setInputValue("")
       setBusinessLookupResults(null)
       setShowServicePicker(false)
+      setHasError(false)
+      setErrorMessage(null)
+      setFallbackResponse(null)
+      setRetryCount(0)
+      setLastUserMessageTime(Date.now())
+      setIsInitialMessage(false)
+      
+      setPendingRetry({ text, retries: 0 })
 
       // Detect if message might trigger business lookup or quote calculation
       const lowerText = text.toLowerCase()
-      if (lowerText.includes("abn") || lowerText.includes("business") || lowerText.includes("company")) {
+      if (lowerText.includes('abn') || lowerText.includes('business') || lowerText.includes('company')) {
         setIsLookingUpBusiness(true)
       }
-      if (lowerText.includes("quote") || lowerText.includes("price") || lowerText.includes("cost")) {
+      if (lowerText.includes('quote') || lowerText.includes('price') || lowerText.includes('cost')) {
         setIsCalculatingQuote(true)
       }
-      if (lowerText.includes("available") || lowerText.includes("date") || lowerText.includes("when")) {
+      if (lowerText.includes('available') || lowerText.includes('date') || lowerText.includes('when')) {
         setIsCheckingAvailability(true)
       }
+
+      // Save state before sending
+      saveConversationState()
 
       sendMessage({ text })
     }
@@ -648,37 +882,62 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     }
 
     const handleSelectBusiness = (business: BusinessResult) => {
+      if (isLoading) return // Prevent multiple clicks
       setConfirmedBusiness(business)
       setBusinessLookupResults(null)
+      setHasError(false)
+      setErrorMessage(null)
+      setLastUserMessageTime(Date.now())
+      const messageText = `Yes, that's correct - ${business.name} (ABN: ${business.abn})`
+      setPendingRetry({ text: messageText, retries: 0 })
+      // Send message - useChat handles the async operation
       sendMessage({
-        text: `Yes, that's correct - ${business.name} (ABN: ${business.abn})`,
+        text: messageText,
       })
     }
 
     const handleSelectService = (service: ServiceOption) => {
+      if (isLoading) return // Prevent multiple clicks
       setShowServicePicker(false)
       setCurrentStep("details")
+      setHasError(false)
+      setErrorMessage(null)
+      setLastUserMessageTime(Date.now())
+      const messageText = `I need ${service.name}. ${service.description ? `(${service.description})` : ""}`
+      // Set up retry mechanism
+      setPendingRetry({ text: messageText, retries: 0 })
+      // Send a clear message that Maya can understand and will respond to
       sendMessage({
-        text: `I need ${service.name}`,
+        text: messageText,
       })
     }
 
     const handleSelectDate = (date: string) => {
+      if (isLoading) return // Prevent multiple clicks
       setSelectedDate(date)
       setShowCalendar(false)
+      setHasError(false)
+      setErrorMessage(null)
+      setLastUserMessageTime(Date.now())
       const formattedDate = new Date(date).toLocaleDateString("en-AU", {
         weekday: "long",
         day: "numeric",
         month: "long",
         year: "numeric",
       })
+      const messageText = `I'd like to book for ${formattedDate}`
+      setPendingRetry({ text: messageText, retries: 0 })
       sendMessage({
-        text: `I'd like to book for ${formattedDate}`,
+        text: messageText,
       })
     }
 
     const handlePromptClick = (prompt: string) => {
+      if (isLoading) return // Prevent multiple clicks
       setShowInitialPrompts(false)
+      setHasError(false)
+      setErrorMessage(null)
+      setLastUserMessageTime(Date.now())
       sendMessage({ text: prompt })
     }
 
@@ -688,7 +947,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       if (currentQuote && contactInfo && selectedDate) {
         setIsSubmittingLead(true)
         try {
-          const submittedLead = await submitLead({
+          await submitLead({
             company_name: confirmedBusiness?.name || contactInfo.companyName || "",
             contact_name: contactInfo.contactName,
             email: contactInfo.email,
@@ -697,15 +956,17 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             origin_suburb: currentQuote.origin,
             destination_suburb: currentQuote.destination,
             estimated_total: currentQuote.estimatedTotal,
+            status: "won",
             notes: `Deposit paid. Move scheduled for ${selectedDate}. ABN: ${confirmedBusiness?.abn || "N/A"}`,
             scheduled_date: selectedDate,
             deposit_amount: currentQuote.depositRequired,
             deposit_paid: true,
+          }).then(res => {
+            if (res.success && res.lead) {
+              setSubmittedLeadData(res.lead)
+            }
           })
           setLeadSubmitted(true)
-          if (submittedLead.success && submittedLead.lead?.id) {
-            setSubmittedLeadId(submittedLead.lead.id)
-          }
         } catch (error) {
           console.error("Failed to submit lead:", error)
         } finally {
@@ -728,8 +989,6 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
     }
 
     const renderMessageContent = (message: any) => {
-      // Debug log
-
       if (message.parts) {
         return message.parts
           .map((part: any, index: number) => {
@@ -773,7 +1032,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
               : isAvailable && !isPast
                 ? "hover:bg-primary/20 text-foreground cursor-pointer"
                 : "text-muted-foreground/40 cursor-not-allowed opacity-50"
-              } ${dateInfo?.slots === 1 ? "ring-1 ring-amber-500" : ""} ${isPast ? "line-through" : ""}`}
+              } ${dateInfo?.slots === 1 ? "ring-1 ring-amber-500" : ""} ${isPast ? "line-through" : ""
+              }`}
             aria-disabled={!isAvailable || isPast}
             title={
               isPast
@@ -790,8 +1050,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         )
       }
 
-      const isCurrentMonth =
-        calendarMonth.getMonth() === new Date().getMonth() && calendarMonth.getFullYear() === new Date().getFullYear()
+      const isCurrentMonth = calendarMonth.getMonth() === new Date().getMonth() &&
+        calendarMonth.getFullYear() === new Date().getFullYear()
 
       return (
         <div className="bg-card border border-border rounded-lg p-3 my-3">
@@ -860,40 +1120,52 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       if (!currentQuote) return null
 
       return (
-        <div className="bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 rounded-lg p-4 my-3">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-semibold text-foreground">Your Quote</h4>
-            <Badge variant="secondary">{currentQuote.moveType}</Badge>
-          </div>
+        <>
+          <div className="bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 rounded-lg p-4 my-3">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-semibold text-foreground">Your Quote</h4>
+              <Badge variant="secondary">{currentQuote.moveType}</Badge>
+            </div>
 
-          <div className="space-y-2 mb-4">
-            {currentQuote.breakdown.map((item, i) => (
-              <div key={i} className="flex justify-between text-sm">
-                <span className="text-muted-foreground">{item.label}</span>
-                <span className="font-medium">${item.amount.toLocaleString()}</span>
+            <div className="space-y-2 mb-4">
+              {currentQuote.breakdown.map((item, i) => (
+                <div key={i} className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">{item.label}</span>
+                  <span className="font-medium">${item.amount.toLocaleString()}</span>
+                </div>
+              ))}
+              <div className="border-t border-border pt-2 flex justify-between">
+                <span className="font-semibold">Total Estimate</span>
+                <span className="font-bold text-lg text-primary">${currentQuote.estimatedTotal.toLocaleString()}</span>
               </div>
-            ))}
-            <div className="border-t border-border pt-2 flex justify-between">
-              <span className="font-semibold">Total Estimate</span>
-              <span className="font-bold text-lg text-primary">${currentQuote.estimatedTotal.toLocaleString()}</span>
             </div>
-          </div>
 
-          <div className="grid grid-cols-3 gap-2 text-center text-xs bg-background/50 rounded-lg p-2">
-            <div>
-              <div className="font-semibold text-foreground">{currentQuote.crewSize}</div>
-              <div className="text-muted-foreground">Crew</div>
-            </div>
-            <div>
-              <div className="font-semibold text-foreground">{currentQuote.estimatedHours}h</div>
-              <div className="text-muted-foreground">Est. Time</div>
-            </div>
-            <div>
-              <div className="font-semibold text-foreground">${currentQuote.depositRequired.toLocaleString()}</div>
-              <div className="text-muted-foreground">Deposit</div>
+            <div className="grid grid-cols-3 gap-2 text-center text-xs bg-background/50 rounded-lg p-2">
+              <div>
+                <div className="font-semibold text-foreground">{currentQuote.crewSize}</div>
+                <div className="text-muted-foreground">Crew</div>
+              </div>
+              <div>
+                <div className="font-semibold text-foreground">{currentQuote.estimatedHours}h</div>
+                <div className="text-muted-foreground">Est. Time</div>
+              </div>
+              <div>
+                <div className="font-semibold text-foreground">${currentQuote.depositRequired.toLocaleString()}</div>
+                <div className="text-muted-foreground">Deposit</div>
+              </div>
             </div>
           </div>
-        </div>
+          <Button
+            className="w-full mt-2"
+            onClick={() => {
+              sendMessage({ text: "The quote looks good. What dates are available?" })
+              setIsCheckingAvailability(true)
+            }}
+          >
+            Proceed with Booking
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        </>
       )
     }
 
@@ -924,7 +1196,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             onClick={() => {
               setBusinessLookupResults(null)
               sendMessage({
-                text: "None of these match my business. I'll enter the details manually.",
+                text: "None of these match my business. I'll enter the details manually."
               })
             }}
             className="w-full flex items-center gap-3 p-3 rounded-lg border border-dashed border-muted-foreground/50 bg-transparent hover:bg-muted/50 hover:border-primary/50 transition-all text-left text-sm text-muted-foreground hover:text-foreground"
@@ -943,7 +1215,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       if (paymentComplete && currentQuote && contactInfo) {
         return (
           <PaymentConfirmation
-            referenceId={submittedLeadId?.slice(0, 8).toUpperCase() || ""}
+            referenceId={submittedLeadData?.id?.slice(0, 8).toUpperCase() || "PENDING"}
             depositAmount={currentQuote.depositRequired}
             estimatedTotal={currentQuote.estimatedTotal}
             scheduledDate={selectedDate || undefined}
@@ -986,13 +1258,8 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       const [clientSecret, setClientSecret] = useState<string | null>(null)
       const [loading, setLoading] = useState(true)
       const [creationError, setCreationError] = useState<string | null>(null)
-      const sessionCreated = useRef(false)
 
       const getCheckoutSession = async () => {
-        if (sessionCreated.current) {
-          return
-        }
-
         if (!stripePromise) {
           setCreationError("Online payments are not configured yet.")
           setLoading(false)
@@ -1000,7 +1267,6 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         }
 
         try {
-          sessionCreated.current = true // Mark as created before the call
           setCreationError(null)
           setLoading(true)
           const result = await createDepositCheckout({
@@ -1012,19 +1278,16 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
             origin: currentQuote?.origin || undefined,
             destination: currentQuote?.destination || undefined,
             scheduledDate: selectedDate || undefined,
-            leadId: submittedLeadId || undefined,
           })
 
           if (result.success && result.clientSecret) {
             setClientSecret(result.clientSecret)
           } else {
             setCreationError(result.error || "Unable to start payment session.")
-            sessionCreated.current = false // Allow retry on error
           }
         } catch (error) {
           console.error("Failed to create checkout:", error)
           setCreationError("Unable to start payment session.")
-          sessionCreated.current = false // Allow retry on error
         } finally {
           setLoading(false)
         }
@@ -1032,8 +1295,16 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
 
       useEffect(() => {
         getCheckoutSession()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [])
+      }, [
+        amount,
+        customerEmail,
+        customerName,
+        description,
+        currentQuote?.moveType,
+        currentQuote?.origin,
+        currentQuote?.destination,
+        selectedDate,
+      ])
 
       if (loading) {
         return (
@@ -1044,7 +1315,9 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       }
 
       if (creationError || !clientSecret || !stripePromise) {
-        const userFriendlyError = creationError ? getStripeErrorMessage(creationError) : "Unable to load payment form."
+        const userFriendlyError = creationError
+          ? getStripeErrorMessage(creationError)
+          : "Unable to load payment form."
 
         return (
           <div className="text-center py-4 space-y-2">
@@ -1081,18 +1354,18 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
       )
     }
 
-    // Error display with enhanced recovery
+    // Error display with enhanced recovery and fallback support
     const ErrorDisplay = () => {
-      const [retryCount, setRetryCount] = useState(0)
+      const [localRetryCount, setLocalRetryCount] = useState(0)
       const [isRetrying, setIsRetrying] = useState(false)
 
       const handleRetryWithBackoff = async () => {
         setIsRetrying(true)
-        setRetryCount((prev) => prev + 1)
+        setLocalRetryCount(prev => prev + 1)
 
         try {
           // Wait with exponential backoff
-          await new Promise((resolve) => setTimeout(resolve, Math.min(1000 * Math.pow(2, retryCount), 5000)))
+          await new Promise(resolve => setTimeout(resolve, Math.min(1000 * Math.pow(2, localRetryCount), 5000)))
           handleRetry()
         } catch (error) {
           console.error("Retry failed:", error)
@@ -1101,29 +1374,60 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
         }
       }
 
+      const handleFallbackAction = (action: string, phone?: string) => {
+        if (action === 'retry') {
+          handleRetryWithBackoff()
+        } else if (action === 'phone' || action === 'callback') {
+          if (phone) {
+            window.location.href = `tel:+61${phone.replace(/\s/g, '')}`
+          } else {
+            handleCall()
+          }
+        } else if (action === 'email') {
+          window.location.href = 'mailto:sales@m2mmoving.au?subject=Quote Request'
+        }
+      }
+
+      // Use fallback response if available, otherwise use default error message
+      const displayMessage = fallbackResponse?.message || errorMessage || "Unable to connect to the assistant."
+      const actions = fallbackResponse?.actions || [
+        { label: 'Try Again', action: 'retry' },
+        { label: 'Call Us', action: 'phone', phone: '0388201801' },
+      ]
+
       return (
         <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
           <AlertTriangle className="h-12 w-12 text-amber-500 mb-3" />
           <h4 className="font-semibold text-foreground mb-1">Connection Issue</h4>
-          <p className="text-sm text-muted-foreground mb-2">{errorMessage || "Unable to connect to the assistant."}</p>
-          {retryCount > 0 && <p className="text-xs text-muted-foreground mb-4">Attempt {retryCount} of 3</p>}
+          <p className="text-sm text-muted-foreground mb-2">
+            {displayMessage}
+          </p>
+          {(localRetryCount > 0 || retryCount > 0) && (
+            <p className="text-xs text-muted-foreground mb-4">
+              Attempt {localRetryCount + retryCount} of 3
+            </p>
+          )}
           <div className="flex flex-col sm:flex-row gap-2 w-full max-w-xs">
-            <Button
-              onClick={handleRetryWithBackoff}
-              variant="default"
-              size="sm"
-              disabled={isRetrying || retryCount >= 3}
-              className="flex-1"
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isRetrying ? "animate-spin" : ""}`} />
-              {isRetrying ? "Retrying..." : "Try Again"}
-            </Button>
-            <Button onClick={handleCall} variant="outline" size="sm" className="flex-1 bg-transparent">
-              <Phone className="h-4 w-4 mr-2" />
-              Call Us
-            </Button>
+            {actions.map((action, index) => (
+              <Button
+                key={index}
+                onClick={() => handleFallbackAction(action.action, action.phone)}
+                variant={index === 0 ? "default" : "outline"}
+                size="sm"
+                disabled={isRetrying && index === 0}
+                className="flex-1"
+              >
+                {action.action === 'retry' && (
+                  <RefreshCw className={`h-4 w-4 mr-2 ${isRetrying ? 'animate-spin' : ''}`} />
+                )}
+                {(action.action === 'phone' || action.action === 'callback') && (
+                  <Phone className="h-4 w-4 mr-2" />
+                )}
+                {action.label}
+              </Button>
+            ))}
           </div>
-          {retryCount >= 3 && (
+          {(localRetryCount + retryCount >= 3) && (
             <p className="text-xs text-muted-foreground mt-4">
               Still having issues? Please call us directly at{" "}
               <a href="tel:+61388201801" className="text-primary hover:underline">
@@ -1306,11 +1610,7 @@ export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantPro
                     aria-label={isListening ? "Stop voice input" : "Start voice input"}
                     title={isListening ? "Stop voice input" : "Start voice input"}
                   >
-                    {isListening ? (
-                      <MicOff className="h-4 w-4" aria-hidden="true" />
-                    ) : (
-                      <Mic className="h-4 w-4" aria-hidden="true" />
-                    )}
+                    {isListening ? <MicOff className="h-4 w-4" aria-hidden="true" /> : <Mic className="h-4 w-4" aria-hidden="true" />}
                   </Button>
                   <Input
                     ref={inputRef}

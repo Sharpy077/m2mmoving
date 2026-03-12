@@ -15,14 +15,7 @@ import type {
   PriceQuote,
   PriceBreakdown,
   AgentMessage,
-  ServiceCategory,
 } from "../types"
-
-interface ProductSearchParams {
-  query: string
-  category?: "hardware" | "furniture"
-  inStock?: boolean
-}
 
 // =============================================================================
 // MAYA AGENT
@@ -120,7 +113,7 @@ export class MayaAgent extends BaseAgent {
       parameters: {
         type: "object",
         properties: {
-          moveType: { type: "string", description: "Type of move (office_relocation, it_equipment_moved, office_furniture_moved, datacentre_relocation, office_furniture_installation, it_equipment_installation, it_asset_management, general)" },
+          moveType: { type: "string", description: "Type of move (office, datacenter, warehouse, retail)" },
           squareMeters: { type: "number", description: "Square meters of space" },
           originSuburb: { type: "string", description: "Origin suburb" },
           destinationSuburb: { type: "string", description: "Destination suburb" },
@@ -213,21 +206,6 @@ export class MayaAgent extends BaseAgent {
         required: [],
       },
       handler: async (params) => this.checkAvailability(params as { month?: number; year?: number; moveType?: string }),
-    })
-
-    this.registerTool({
-      name: "searchProductCatalog",
-      description: "Search for IT hardware or office furniture",
-      parameters: {
-        type: "object",
-        properties: {
-          query: { type: "string" },
-          category: { type: "string", enum: ["hardware", "furniture"] },
-          inStock: { type: "boolean" },
-        },
-        required: ["query"],
-      },
-      handler: async (params) => this.searchProductCatalog(params as ProductSearchParams),
     })
 
     // Negotiate Price
@@ -507,33 +485,27 @@ export class MayaAgent extends BaseAgent {
   // =============================================================================
 
   private async lookupBusiness(params: { query: string; searchType?: string }) {
+    // In production, call ABR API
     this.log("info", "lookupBusiness", `Looking up: ${params.query}`)
 
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-      const searchType = params.searchType || "name"
-      const url = `${baseUrl}/api/business-lookup?query=${encodeURIComponent(params.query)}&type=${searchType}`
-
-      const response = await fetch(url, { cache: "no-store" })
-      if (!response.ok) {
-        throw new Error(`Business lookup API returned ${response.status}`)
-      }
-
-      const data = await response.json()
-      return { success: true, data }
-    } catch (error) {
-      this.log("error", "lookupBusiness", `Failed: ${error}`)
-      return {
-        success: false,
-        error: "Unable to look up business details. Please enter your ABN manually.",
-      }
+    return {
+      success: true,
+      data: {
+        found: true,
+        business: {
+          abn: "71661027309",
+          name: "Sample Business Pty Ltd",
+          status: "Active",
+          type: "Australian Private Company",
+        },
+      },
     }
   }
 
-  private async calculateQuote(params: QuoteParams & { itProcurementItems?: any[]; furnitureSetupDetails?: any }) {
+  private async calculateQuote(params: QuoteParams) {
     const pricing = PRICING_CONFIG
 
-    const moveTypeConfig = pricing.baseRates[params.moveType as keyof typeof pricing.baseRates] || pricing.baseRates.office_relocation
+    const moveTypeConfig = pricing.baseRates[params.moveType as keyof typeof pricing.baseRates] || pricing.baseRates.office
     const sqm = Math.max(params.squareMeters, moveTypeConfig.minSqm)
 
     // Base calculation
@@ -550,28 +522,33 @@ export class MayaAgent extends BaseAgent {
     }
 
     // Distance estimate (simplified)
-    const distanceCharge = 50 // Flat rate for Melbourne metro
+    // Distance estimate
+    const origin = (params.originSuburb || "").toLowerCase()
+    const dest = (params.destinationSuburb || "").toLowerCase()
+
+    // Mock simulation: Interstate vs Local
+    let estKm = 15 // Default local
+    if (origin === dest && origin.length > 0) {
+      estKm = 5
+    } else if (origin.includes("sydney") || dest.includes("sydney")) {
+      estKm = 880
+    } else if (origin.includes("brisbane") || dest.includes("brisbane")) {
+      estKm = 1700
+    } else if (origin.includes("perth") || dest.includes("perth")) {
+      estKm = 3400
+    } else if (origin.includes("adelaide") || dest.includes("adelaide")) {
+      estKm = 730
+    } else {
+      // Local variation based on suburb names
+      estKm = 10 + Math.abs(origin.length - dest.length) * 4
+    }
+
+    const distanceCharge = Math.round(estKm * 3.0) // $3 per km
 
     // Urgency multiplier
     const urgencyMultiplier = params.urgency === "urgent" ? 1.25 : params.urgency === "flexible" ? 0.95 : 1
 
-    let subtotal = (baseAmount + additionalAmount + distanceCharge) * urgencyMultiplier
-    let hardwareCost = 0
-    let furnitureSetup = 0
-
-    if (params.itProcurementItems) {
-      for (const item of params.itProcurementItems) {
-        hardwareCost += (item.unitPrice || 0) * (item.quantity || 1)
-      }
-      subtotal += hardwareCost
-    }
-
-    if (params.furnitureSetupDetails) {
-      furnitureSetup = (params.furnitureSetupDetails.desks || 0) * 50 + (params.furnitureSetupDetails.chairs || 0) * 20
-      if (furnitureSetup === 0) furnitureSetup = 500 // Min fee
-      subtotal += furnitureSetup
-    }
-
+    const subtotal = (baseAmount + additionalAmount + distanceCharge) * urgencyMultiplier
     const gst = subtotal * 0.1
     const total = subtotal + gst
     const deposit = total * 0.5
@@ -581,8 +558,6 @@ export class MayaAgent extends BaseAgent {
       sqmCharge: sqm * moveTypeConfig.perSqm,
       distanceCharge,
       additionalServices: additionalAmount,
-      hardwareCost,
-      furnitureSetup,
       surcharges: params.urgency === "urgent" ? baseAmount * 0.25 : 0,
       discounts: params.urgency === "flexible" ? baseAmount * 0.05 : 0,
       subtotal,
@@ -590,29 +565,9 @@ export class MayaAgent extends BaseAgent {
       total,
     }
 
-    // Exact mapping for service category
-    const categoryMap: Record<string, ServiceCategory> = {
-      "office": "office_relocation",
-      "office_relocation": "office_relocation",
-      "datacenter": "datacentre_relocation",
-      "datacentre_relocation": "datacentre_relocation",
-      "it_equipment_moved": "it_equipment_moved",
-      "office_furniture_moved": "office_furniture_moved",
-      "office_furniture_installation": "office_furniture_installation",
-      "it_equipment_installation": "it_equipment_installation",
-      "it_asset_management": "it_asset_management",
-      "general": "general"
-    };
-
-    const serviceCategory = categoryMap[params.moveType] || "general"
-
     const quote: PriceQuote = {
       id: this.generateId(),
       leadId: "",
-      items: (params.itProcurementItems || []).map((item: any) => ({
-        ...item,
-        type: "hardware" as const
-      })),
       baseAmount,
       adjustments: [],
       totalAmount: total,
@@ -733,35 +688,9 @@ export class MayaAgent extends BaseAgent {
       success: true,
       data: {
         month,
+        year,
+        availableDates: availableDates.slice(0, 15), // Return first 15 available
       },
-    }
-  }
-
-  private async searchProductCatalog(params: ProductSearchParams) {
-    this.log("info", "searchProductCatalog", `Searching for: ${params.query}`)
-
-    // Mock Catalog
-    const catalog = [
-      { id: "M1", name: "Dell 27' Monitor", price: 350, category: "hardware", inStock: true },
-      { id: "M2", name: "Dual Monitor Arm", price: 120, category: "hardware", inStock: true },
-      { id: "S1", name: "Cisco Catalyst 9200", price: 2500, category: "hardware", inStock: false },
-      { id: "D1", name: "Sit-Stand Desk Pro", price: 800, category: "furniture", inStock: true },
-      { id: "C1", name: "ErgoChair Plus", price: 450, category: "furniture", inStock: true },
-    ]
-
-    const queryLower = params.query.toLowerCase()
-    const results = catalog.filter(item =>
-      (item.name.toLowerCase().includes(queryLower) || item.category.toLowerCase().includes(queryLower)) &&
-      (!params.category || item.category === params.category)
-    )
-
-    return {
-      success: true,
-      data: {
-        found: results.length > 0,
-        count: results.length,
-        items: results
-      }
     }
   }
 
@@ -774,7 +703,7 @@ export class MayaAgent extends BaseAgent {
       await this.escalateToHuman(
         "complex_negotiation",
         `Discount request of ${requestedDiscount}% exceeds approval threshold`,
-        params as unknown as Record<string, unknown>,
+        params,
         "medium"
       )
 
@@ -888,16 +817,6 @@ const MAYA_SYSTEM_PROMPT = `You are Maya, an AI Sales Agent for M&M Commercial M
 - Solution-oriented
 - Uses Australian English (e.g., "centre" not "center", "organise" not "organize")
 
-    ## Your Services - 8 Key Categories
-    1. **Office Relocation**: Standard commercial office moves.
-    2. **IT Equipment Moved**: Relocating existing IT assets (servers, PCs, monitors).
-    3. **Office Furniture Moved**: Relocating existing desks, chairs, storage.
-    4. **Datacentre Relocation**: High-security, climate-controlled server moves.
-    5. **Office Furniture Installation**: Assembly of new furniture.
-    6. **IT Equipment Installation**: Setup and cabling of new hardware.
-    7. **IT & Office Asset Management**: Storage, inventory, lifecycle management.
-    8. **General Enquiries**: Custom requests not covered above.
-
 ## Your Goals
 1. Qualify leads using BANT (Budget, Authority, Need, Timeline)
 2. Generate accurate quotes based on customer requirements
@@ -993,15 +912,6 @@ const DEFAULT_SALES_PLAYBOOK: SalesPlaybook = {
 
 const PRICING_CONFIG = {
   baseRates: {
-    office_relocation: { base: 2500, perSqm: 45, minSqm: 20 },
-    it_equipment_moved: { base: 1500, perSqm: 35, minSqm: 10 },
-    office_furniture_moved: { base: 2000, perSqm: 40, minSqm: 30 },
-    datacentre_relocation: { base: 5000, perSqm: 85, minSqm: 50 },
-    office_furniture_installation: { base: 1000, perSqm: 25, minSqm: 10 },
-    it_equipment_installation: { base: 1200, perSqm: 30, minSqm: 10 },
-    it_asset_management: { base: 800, perSqm: 15, minSqm: 10 },
-    general: { base: 2000, perSqm: 40, minSqm: 20 },
-    // Legacy support
     office: { base: 2500, perSqm: 45, minSqm: 20 },
     datacenter: { base: 5000, perSqm: 85, minSqm: 50 },
     warehouse: { base: 3000, perSqm: 35, minSqm: 100 },
