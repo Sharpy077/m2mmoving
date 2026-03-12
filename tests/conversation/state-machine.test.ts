@@ -54,8 +54,15 @@ describe("ConversationStateMachine", () => {
     })
 
     it("should check required fields for transition", () => {
-      // Try to go to quote_generated without required fields
+      // Navigate to location_destination stage with required context data
       machine.transitionTo("service_select")
+      machine.updateContext({ serviceType: "office" })
+      machine.transitionTo("qualifying_questions")
+      machine.updateContext({ squareMeters: 200 })
+      machine.transitionTo("location_origin")
+      machine.updateContext({ originSuburb: "Melbourne CBD" })
+      machine.transitionTo("location_destination")
+      // Now try to go to quote_generated - missing destinationSuburb
       const result = machine.canTransitionTo("quote_generated")
       expect(result.allowed).toBe(false)
       expect(result.missingFields).toBeDefined()

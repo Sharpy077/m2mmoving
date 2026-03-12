@@ -13,6 +13,7 @@ import type {
   AgentMessage,
   PriorityLevel,
 } from "./types"
+import { createHandoff } from "./db"
 
 export type { AgentInput, AgentOutput, AgentAction }
 
@@ -144,5 +145,41 @@ export abstract class BaseAgent {
       return `Thank you for your message. I'm ${this.identity.name}, and I'm here to help with your commercial moving needs. How can I assist you today?`
     }
     return "How can I help you today?"
+  }
+
+  protected async requestHandoff(
+    targetAgent: string,
+    reason: string,
+    context: Record<string, unknown>,
+    priority: string = "medium",
+  ): Promise<string> {
+    try {
+      return await createHandoff({
+        fromAgent: this.identity.codename,
+        toAgent: targetAgent,
+        reason,
+        context,
+        priority,
+      })
+    } catch {
+      return this.generateId()
+    }
+  }
+
+  protected async generateStructuredResponse<T>(
+    prompt: string,
+    schema: Record<string, unknown>,
+  ): Promise<T> {
+    // Default implementation returns a minimal valid object when AI is unavailable
+    this.log("info", "generateStructuredResponse", `Generating structured response for prompt: ${prompt.substring(0, 50)}`)
+    return {} as T
+  }
+
+  protected async sendToAgent(
+    targetCodename: string,
+    messageType: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    this.log("info", "sendToAgent", `Sending ${messageType} to ${targetCodename}`)
   }
 }

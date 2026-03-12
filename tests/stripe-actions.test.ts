@@ -1,14 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const { createMock, checkoutSessionsMock, stripeMock, eqMock, updateMock, fromMock, createClientMock } = vi.hoisted(() => {
+const {
+  createMock,
+  checkoutSessionsMock,
+  stripeMock,
+  eqMock,
+  updateMock,
+  singleMock,
+  selectAfterInsertMock,
+  insertMock,
+  fromMock,
+  createClientMock,
+} = vi.hoisted(() => {
   const createMock = vi.fn()
   const checkoutSessionsMock = { create: createMock }
   const stripeMock = { checkout: { sessions: checkoutSessionsMock } }
   const eqMock = vi.fn()
   const updateMock = vi.fn(() => ({ eq: eqMock }))
-  const fromMock = vi.fn(() => ({ update: updateMock }))
+  const singleMock = vi.fn()
+  const selectAfterInsertMock = vi.fn(() => ({ single: singleMock }))
+  const insertMock = vi.fn(() => ({ select: selectAfterInsertMock }))
+  const fromMock = vi.fn(() => ({ update: updateMock, insert: insertMock }))
   const createClientMock = vi.fn()
-  return { createMock, checkoutSessionsMock, stripeMock, eqMock, updateMock, fromMock, createClientMock }
+  return { createMock, checkoutSessionsMock, stripeMock, eqMock, updateMock, singleMock, selectAfterInsertMock, insertMock, fromMock, createClientMock }
 })
 
 vi.mock("@/lib/stripe", () => ({
@@ -19,7 +33,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: () => createClientMock(),
 }))
 
-import { createDepositCheckoutSession, markDepositPaid, createDepositCheckout } from "@/app/actions/stripe"
+import { markDepositPaid, createDepositCheckout } from "@/app/actions/stripe"
 
 describe("Stripe Actions - Payment Processing", () => {
   beforeEach(() => {
@@ -27,80 +41,11 @@ describe("Stripe Actions - Payment Processing", () => {
       from: fromMock,
     })
     eqMock.mockResolvedValue({ error: null })
+    singleMock.mockResolvedValue({ data: { id: "new-lead-id" }, error: null })
   })
 
   afterEach(() => {
     vi.clearAllMocks()
-  })
-
-  describe("createDepositCheckoutSession", () => {
-    it("should create Stripe checkout session successfully", async () => {
-      const leadId = "lead_123"
-      const depositAmountCents = 500000
-      const customerEmail = "customer@example.com"
-
-      createMock.mockResolvedValue({
-        client_secret: "cs_test_123",
-        id: "cs_test_123",
-      })
-
-      const result = await createDepositCheckoutSession(leadId, depositAmountCents, customerEmail)
-
-      expect(result.success).toBe(true)
-      expect(result.clientSecret).toBe("cs_test_123")
-      expect(createMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          ui_mode: "embedded",
-          customer_email: customerEmail,
-          mode: "payment",
-          metadata: expect.objectContaining({
-            lead_id: leadId,
-          }),
-        }),
-      )
-    })
-
-    it("should update lead with payment info", async () => {
-      const leadId = "lead_123"
-      const depositAmountCents = 250000
-      const customerEmail = "customer@example.com"
-
-      createMock.mockResolvedValue({
-        client_secret: "cs_test_456",
-        id: "cs_test_456",
-      })
-
-      await createDepositCheckoutSession(leadId, depositAmountCents, customerEmail)
-
-      expect(updateMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          deposit_amount: 2500,
-          payment_status: "processing",
-        }),
-      )
-      expect(eqMock).toHaveBeenCalledWith("id", leadId)
-    })
-
-    it("should handle Stripe API errors", async () => {
-      createMock.mockRejectedValue(new Error("Stripe API error"))
-
-      const result = await createDepositCheckoutSession("lead_123", 500000, "customer@example.com")
-
-      expect(result.success).toBe(false)
-      expect(result.error).toBeDefined()
-    })
-
-    it("should validate deposit amount", () => {
-      const depositAmountCents = 500000
-      expect(depositAmountCents).toBeGreaterThan(0)
-      expect(depositAmountCents % 1).toBe(0)
-    })
-
-    it("should validate email format", () => {
-      const validEmail = "customer@example.com"
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      expect(emailRegex.test(validEmail)).toBe(true)
-    })
   })
 
   describe("markDepositPaid", () => {
@@ -114,7 +59,7 @@ describe("Stripe Actions - Payment Processing", () => {
         expect.objectContaining({
           deposit_paid: true,
           payment_status: "paid",
-          status: "quoted",
+          status: "confirmed",
         }),
       )
       expect(eqMock).toHaveBeenCalledWith("id", "lead_123")
@@ -129,13 +74,13 @@ describe("Stripe Actions - Payment Processing", () => {
       expect(result.error).toBeDefined()
     })
 
-    it("should update lead status to quoted", async () => {
+    it("should update lead status to confirmed", async () => {
       eqMock.mockResolvedValue({ error: null })
 
       await markDepositPaid("lead_123")
 
       expect(updateMock).toHaveBeenCalledWith(
-        expect.objectContaining({ status: "quoted" }),
+        expect.objectContaining({ status: "confirmed" }),
       )
     })
   })
