@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Shield, Zap, Target, Phone, MessageSquare } from "lucide-react"
-import { QuoteAssistant, type QuoteAssistantHandle } from "@/components/quote-assistant"
+import { QuoteAssistant } from "@/components/quote-assistant"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { Card, CardContent } from "@/components/ui/card"
 
@@ -35,160 +35,137 @@ function QuoteAssistantFallback() {
 }
 
 export function HeroSection() {
-  const [showFloatingAssistant, setShowFloatingAssistant] = useState(false)
   const assistantContainerRef = useRef<HTMLDivElement>(null)
-  const floatingAssistantRef = useRef<QuoteAssistantHandle>(null)
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        setShowFloatingAssistant(!entry.isIntersecting)
-      },
-      { threshold: 0.1 },
-    )
-
-    if (assistantContainerRef.current) {
-      observer.observe(assistantContainerRef.current)
-    }
-
-    return () => observer.disconnect()
-  }, [])
 
   const scrollToAssistant = () => {
     assistantContainerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
   }
 
   return (
-    <>
-      <section id="quote-assistant" className="relative pt-20 pb-16 md:pt-28 md:pb-24 overflow-hidden">
-        <div className="absolute inset-0 opacity-10">
-          <div
-            className="absolute inset-0"
-            style={{
-              backgroundImage: `linear-gradient(to right, var(--primary) 1px, transparent 1px),
-                                linear-gradient(to bottom, var(--primary) 1px, transparent 1px)`,
-              backgroundSize: "40px 40px",
-            }}
-          />
-        </div>
+    <section id="quote-assistant" className="relative pt-20 pb-16 md:pt-28 md:pb-24 overflow-hidden">
+      <div className="absolute inset-0 opacity-10">
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage: `linear-gradient(to right, var(--primary) 1px, transparent 1px),
+                              linear-gradient(to bottom, var(--primary) 1px, transparent 1px)`,
+            backgroundSize: "40px 40px",
+          }}
+        />
+      </div>
 
-        <div className="absolute inset-0 pointer-events-none opacity-5">
-          <div
-            className="absolute inset-0"
-            style={{
-              backgroundImage:
-                "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.3) 2px, rgba(0,0,0,0.3) 4px)",
-            }}
-          />
-        </div>
+      <div className="absolute inset-0 pointer-events-none opacity-5">
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage:
+              "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.3) 2px, rgba(0,0,0,0.3) 4px)",
+          }}
+        />
+      </div>
 
-        <div className="container mx-auto px-4 relative z-10">
-          <div className="grid lg:grid-cols-2 gap-12 items-start">
-            <div>
-              <div className="inline-flex items-center gap-2 px-4 py-2 bg-card border border-border mb-6">
-                <div className="w-2 h-2 bg-secondary animate-pulse" />
-                <span className="text-xs uppercase tracking-widest text-muted-foreground font-mono">
-                  System Active // Commercial Operations Online
-                </span>
-              </div>
-
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-6 text-balance">
-                <span className="text-foreground">Get Your Office</span>
-                <br />
-                <span className="text-primary">Moved Fast</span>
-                <span className="text-foreground">_</span>
-              </h1>
-
-              <p className="text-lg md:text-xl text-muted-foreground max-w-xl mb-8 leading-relaxed">
-                Melbourne's commercial moving specialists. Office relocations, data centres, and IT equipment handled with
-                precision. <span className="text-foreground font-semibold">Free instant quotes via AI or phone.</span>
-              </p>
-
-              <div className="flex flex-col sm:flex-row gap-4 mb-8">
-                <Button 
-                  size="lg" 
-                  className="uppercase tracking-wider group text-lg min-h-[44px] min-w-[120px] px-6" 
-                  onClick={scrollToAssistant}
-                >
-                  Get Free Quote
-                  <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </Button>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="uppercase tracking-wider bg-transparent min-h-[44px] min-w-[120px] px-6 text-lg"
-                  asChild
-                >
-                  <a href="tel:+61388201801" className="flex items-center justify-center gap-2 min-h-[44px]">
-                    <Phone className="w-5 h-5" aria-hidden="true" />
-                    03 8820 1801
-                  </a>
-                </Button>
-              </div>
-
-              <div className="flex flex-wrap gap-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-primary/20 border border-primary/50 flex items-center justify-center">
-                    <Shield className="w-5 h-5 text-primary" aria-hidden="true" />
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground uppercase tracking-wider">Fully Insured</div>
-                    <div className="text-sm font-bold text-foreground">$10M+ Coverage</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-secondary/20 border border-secondary/50 flex items-center justify-center">
-                    <Zap className="w-5 h-5 text-secondary" aria-hidden="true" />
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground uppercase tracking-wider">Fast Turnaround</div>
-                    <div className="text-sm font-bold text-foreground">24-48 Hours</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-accent/20 border border-accent/50 flex items-center justify-center">
-                    <Target className="w-5 h-5 text-accent" aria-hidden="true" />
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground uppercase tracking-wider">Track Record</div>
-                    <div className="text-sm font-bold text-foreground">$0 Damage Claims</div>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Social Proof */}
-              <div className="mt-8 pt-6 border-t border-border/50">
-                <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-foreground">500+</span>
-                    <span>Commercial Moves</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-foreground">98%</span>
-                    <span>Customer Satisfaction</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-foreground">15+</span>
-                    <span>Years Experience</span>
-                  </div>
-                </div>
-              </div>
+      <div className="container mx-auto px-4 relative z-10">
+        <div className="grid lg:grid-cols-2 gap-12 items-start">
+          <div>
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-card border border-border mb-6">
+              <div className="w-2 h-2 bg-secondary animate-pulse" />
+              <span className="text-xs uppercase tracking-widest text-muted-foreground font-mono">
+                System Active // Commercial Operations Online
+              </span>
             </div>
 
-            <div ref={assistantContainerRef} className="lg:mt-0">
+            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-6 text-balance">
+              <span className="text-foreground">Get Your Office</span>
+              <br />
+              <span className="text-primary">Moved Fast</span>
+              <span className="text-foreground">_</span>
+            </h1>
+
+            <p className="text-lg md:text-xl text-muted-foreground max-w-xl mb-8 leading-relaxed">
+              Melbourne's commercial moving specialists. Office relocations, data centres, and IT equipment handled with
+              precision. <span className="text-foreground font-semibold">Free instant quotes via AI or phone.</span>
+            </p>
+
+            <div ref={assistantContainerRef} className="mb-8">
               <ErrorBoundary fallback={<QuoteAssistantFallback />}>
                 <QuoteAssistant embedded />
               </ErrorBoundary>
             </div>
-          </div>
-        </div>
-      </section>
 
-      {showFloatingAssistant && (
-        <ErrorBoundary fallback={null}>
-          <QuoteAssistant ref={floatingAssistantRef} />
-        </ErrorBoundary>
-      )}
-    </>
+            <div className="flex flex-col sm:flex-row gap-4 mb-8">
+              <Button
+                size="lg"
+                className="uppercase tracking-wider group text-lg min-h-[44px] min-w-[120px] px-6"
+                onClick={scrollToAssistant}
+              >
+                Get Free Quote
+                <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                className="uppercase tracking-wider bg-transparent min-h-[44px] min-w-[120px] px-6 text-lg"
+                asChild
+              >
+                <a href="tel:+61388201801" className="flex items-center justify-center gap-2 min-h-[44px]">
+                  <Phone className="w-5 h-5" aria-hidden="true" />
+                  03 8820 1801
+                </a>
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap gap-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-primary/20 border border-primary/50 flex items-center justify-center">
+                  <Shield className="w-5 h-5 text-primary" aria-hidden="true" />
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Fully Insured</div>
+                  <div className="text-sm font-bold text-foreground">$10M+ Coverage</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-secondary/20 border border-secondary/50 flex items-center justify-center">
+                  <Zap className="w-5 h-5 text-secondary" aria-hidden="true" />
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Fast Turnaround</div>
+                  <div className="text-sm font-bold text-foreground">24-48 Hours</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-accent/20 border border-accent/50 flex items-center justify-center">
+                  <Target className="w-5 h-5 text-accent" aria-hidden="true" />
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Track Record</div>
+                  <div className="text-sm font-bold text-foreground">$0 Damage Claims</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 pt-6 border-t border-border/50">
+              <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-foreground">500+</span>
+                  <span>Commercial Moves</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-foreground">98%</span>
+                  <span>Customer Satisfaction</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-foreground">15+</span>
+                  <span>Years Experience</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right column empty on desktop - chat is in left column for all sizes */}
+          <div className="hidden lg:block" />
+        </div>
+      </div>
+    </section>
   )
 }

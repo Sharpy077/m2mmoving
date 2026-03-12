@@ -1,21 +1,12 @@
-/**
- * SENTINEL - Customer Support Agent
- * 24/7 customer support, issue resolution, and satisfaction management
- */
-
-import { z } from "zod"
 import { BaseAgent, type AgentInput, type AgentOutput, type AgentAction } from "../base-agent"
 import type {
   AgentIdentity,
   AgentConfig,
-  ToolDefinition,
   InterAgentMessage,
   SupportTicket,
-  TicketMessage,
   TicketStatus,
   TicketPriority,
   TicketCategory,
-  Job,
   AgentMessage,
 } from "../types"
 
@@ -31,7 +22,7 @@ export class SentinelAgent extends BaseAgent {
     super({
       codename: "SENTINEL_CS",
       enabled: true,
-      model: "gpt-4o",
+      model: "anthropic/claude-sonnet-4-20250514", // Updated model to Claude
       temperature: 0.5, // Lower temperature for more consistent support responses
       maxTokens: 1500,
       systemPrompt: SENTINEL_SYSTEM_PROMPT,
@@ -74,7 +65,8 @@ export class SentinelAgent extends BaseAgent {
     return {
       codename: "SENTINEL_CS",
       name: "Sentinel",
-      description: "AI Customer Support Agent - Handles inquiries, complaints, booking management, and issue resolution",
+      description:
+        "AI Customer Support Agent - Handles inquiries, complaints, booking management, and issue resolution",
       version: "1.0.0",
       capabilities: [
         "Inquiry Handling",
@@ -119,7 +111,11 @@ export class SentinelAgent extends BaseAgent {
         type: "object",
         properties: {
           bookingId: { type: "string", description: "Booking ID to modify" },
-          action: { type: "string", enum: ["reschedule", "update_address", "add_service", "cancel"], description: "Type of modification" },
+          action: {
+            type: "string",
+            enum: ["reschedule", "update_address", "add_service", "cancel"],
+            description: "Type of modification",
+          },
           newDate: { type: "string", description: "New date for reschedule" },
           newAddress: { type: "string", description: "New address" },
           additionalService: { type: "string", description: "Service to add" },
@@ -138,7 +134,11 @@ export class SentinelAgent extends BaseAgent {
         type: "object",
         properties: {
           customerId: { type: "string", description: "Customer ID" },
-          category: { type: "string", enum: ["inquiry", "booking", "complaint", "damage", "refund", "other"], description: "Ticket category" },
+          category: {
+            type: "string",
+            enum: ["inquiry", "booking", "complaint", "damage", "refund", "other"],
+            description: "Ticket category",
+          },
           priority: { type: "string", enum: ["low", "medium", "high", "urgent"], description: "Priority level" },
           subject: { type: "string", description: "Ticket subject" },
           description: { type: "string", description: "Detailed description" },
@@ -157,7 +157,11 @@ export class SentinelAgent extends BaseAgent {
         type: "object",
         properties: {
           ticketId: { type: "string", description: "Ticket ID" },
-          status: { type: "string", enum: ["open", "pending", "in_progress", "resolved", "closed"], description: "New status" },
+          status: {
+            type: "string",
+            enum: ["open", "pending", "in_progress", "resolved", "closed"],
+            description: "New status",
+          },
           resolution: { type: "string", description: "Resolution details" },
           note: { type: "string", description: "Internal note to add" },
         },
@@ -190,7 +194,11 @@ export class SentinelAgent extends BaseAgent {
         properties: {
           customerId: { type: "string", description: "Customer ID" },
           channel: { type: "string", enum: ["email", "sms", "both"], description: "Notification channel" },
-          type: { type: "string", enum: ["status_update", "reminder", "confirmation", "follow_up"], description: "Notification type" },
+          type: {
+            type: "string",
+            enum: ["status_update", "reminder", "confirmation", "follow_up"],
+            description: "Notification type",
+          },
           message: { type: "string", description: "Custom message" },
         },
         required: ["customerId", "channel", "type"],
@@ -304,12 +312,13 @@ export class SentinelAgent extends BaseAgent {
           escalationCheck.reason!,
           `Customer ${sentiment} sentiment detected. Intent: ${intent}. Message: ${content}`,
           { messages, ticketId: ticketResult.data?.ticketId, ...input.metadata },
-          escalationCheck.priority
+          escalationCheck.priority,
         )
 
         return {
           success: true,
-          response: "I understand this is frustrating, and I want to make sure you get the help you deserve. I'm connecting you with our specialist team who will reach out within the hour. Can I get your preferred contact number?",
+          response:
+            "I understand this is frustrating, and I want to make sure you get the help you deserve. I'm connecting you with our specialist team who will reach out within the hour. Can I get your preferred contact number?",
           escalation,
           data: { intent, sentiment, ticketId: ticketResult.data?.ticketId },
         }
@@ -335,12 +344,6 @@ export class SentinelAgent extends BaseAgent {
         break
       case "question":
         response = await this.handleGeneralQuestion(messages, input.metadata)
-        break
-      case "it_support":
-        response = await this.handleITSupport(messages, input.metadata)
-        break
-      case "procurement":
-        response = await this.handleProcurementInquiry(messages, input.metadata)
         break
       default:
         response = await this.generateResponse(messages)
@@ -398,7 +401,7 @@ export class SentinelAgent extends BaseAgent {
           timestamp: new Date(),
         },
       ],
-      handoff.context
+      handoff.context,
     )
 
     return {
@@ -456,7 +459,10 @@ export class SentinelAgent extends BaseAgent {
     return `I'd be happy to help you reschedule your move. To do this, I'll need:\n\n1. Your booking reference or email address\n2. Your preferred new date\n\nPlease note that rescheduling requests made less than 48 hours before your move may incur a fee. What's your booking reference?`
   }
 
-  private async handleCancellationRequest(messages: AgentMessage[], metadata?: Record<string, unknown>): Promise<string> {
+  private async handleCancellationRequest(
+    messages: AgentMessage[],
+    metadata?: Record<string, unknown>,
+  ): Promise<string> {
     return `I'm sorry to hear you need to cancel. Before I process this, I want to make sure I understand - is there anything we could do differently to keep your business? Perhaps reschedule to a more convenient time?\n\nIf you do need to cancel, please be aware:\n- Cancellations 7+ days out: Full deposit refund\n- Cancellations 3-7 days out: 50% deposit refund\n- Cancellations under 3 days: Deposit forfeit\n\nWould you like to proceed with the cancellation, or would you like to explore other options?`
   }
 
@@ -465,37 +471,11 @@ export class SentinelAgent extends BaseAgent {
     await this.createTicket({
       category: "complaint",
       subject: "Customer Complaint - Requires Attention",
-      description: messages.map(m => m.content).join("\n"),
+      description: messages.map((m) => m.content).join("\n"),
       priority: "high",
     })
 
     return `I'm truly sorry to hear about your experience - that's not the standard we strive for at M&M Commercial Moving. I want to make this right.\n\nCould you please tell me more about what happened? I'll make sure this is escalated to our management team and we'll work to resolve this as quickly as possible.`
-  }
-
-  private async handleITSupport(messages: AgentMessage[], metadata?: Record<string, unknown>) {
-    // Create a ticket immediately for IT issues
-    const ticketResult = await this.createTicket({
-      customerId: (metadata?.userId as string) || "unknown",
-      category: "it_support",
-      subject: "IT Support Request",
-      description: messages[messages.length - 1].content,
-      priority: "high", // IT issues are usually high priority
-    })
-
-    return `I've logged a high-priority IT support ticket (ID: ${ticketResult.data?.ticketId}) for you. Our technical team has been alerted and will check your network status immediately.`
-  }
-
-  private async handleProcurementInquiry(messages: AgentMessage[], metadata?: Record<string, unknown>) {
-    // Procurement is a sales function, but we'll log it and direct them
-    const ticketResult = await this.createTicket({
-      customerId: (metadata?.userId as string) || "unknown",
-      category: "procurement",
-      subject: "Procurement Request",
-      description: messages[messages.length - 1].content,
-      priority: "medium",
-    })
-
-    return `I've noted your request for new hardware (Ticket: ${ticketResult.data?.ticketId}). I'll have our Sales specialist (Maya) contact you shortly to provide a quote.`
   }
 
   private async handleGeneralQuestion(messages: AgentMessage[], metadata?: Record<string, unknown>): Promise<string> {
@@ -607,7 +587,10 @@ export class SentinelAgent extends BaseAgent {
       ticket.bookingId = params.bookingId
     }
 
-    this.log("info", "createTicket", `Ticket created: ${ticket.id}`, { category: params.category, priority: params.priority })
+    this.log("info", "createTicket", `Ticket created: ${ticket.id}`, {
+      category: params.category,
+      priority: params.priority,
+    })
 
     return {
       success: true,
@@ -633,10 +616,8 @@ export class SentinelAgent extends BaseAgent {
   }
 
   private async searchFAQ(params: { query: string; category?: string }) {
-    const faqMatch = FAQ_DATABASE.find(faq =>
-      faq.keywords.some(keyword =>
-        params.query.toLowerCase().includes(keyword.toLowerCase())
-      )
+    const faqMatch = FAQ_DATABASE.find((faq) =>
+      faq.keywords.some((keyword) => params.query.toLowerCase().includes(keyword.toLowerCase())),
     )
 
     if (faqMatch) {
@@ -655,7 +636,7 @@ export class SentinelAgent extends BaseAgent {
       success: true,
       data: {
         found: false,
-        suggestions: FAQ_DATABASE.slice(0, 3).map(f => f.question),
+        suggestions: FAQ_DATABASE.slice(0, 3).map((f) => f.question),
       },
     }
   }
@@ -684,7 +665,7 @@ export class SentinelAgent extends BaseAgent {
         "high_value_deal",
         `Compensation request of $${amount} exceeds auto-approve limit of $${maxAutoApprove}`,
         params,
-        "medium"
+        "medium",
       )
 
       return {
@@ -738,21 +719,24 @@ export class SentinelAgent extends BaseAgent {
     if (textLower.includes("cancel") || textLower.includes("refund")) {
       return "cancel"
     }
-    if (textLower.includes("complaint") || textLower.includes("unhappy") || textLower.includes("disappointed") || textLower.includes("terrible")) {
+    if (
+      textLower.includes("complaint") ||
+      textLower.includes("unhappy") ||
+      textLower.includes("disappointed") ||
+      textLower.includes("terrible")
+    ) {
       return "complaint"
     }
     if (textLower.includes("damage") || textLower.includes("broken") || textLower.includes("destroyed")) {
       return "damage"
     }
-    if (textLower.includes("?") || textLower.includes("how") || textLower.includes("what") || textLower.includes("when")) {
+    if (
+      textLower.includes("?") ||
+      textLower.includes("how") ||
+      textLower.includes("what") ||
+      textLower.includes("when")
+    ) {
       return "question"
-    }
-
-    if (textLower.includes("monitor") || textLower.includes("server") || textLower.includes("hardware") || textLower.includes("laptop")) {
-      return "procurement"
-    }
-    if (textLower.includes("network") || textLower.includes("wifi") || textLower.includes("internet") || textLower.includes("connection")) {
-      return "it_support"
     }
 
     return "general"
@@ -760,19 +744,42 @@ export class SentinelAgent extends BaseAgent {
 
   private async analyzeSentiment(text: string): Promise<"positive" | "neutral" | "negative"> {
     const negativeTriggers = [
-      "angry", "frustrated", "terrible", "awful", "worst", "scam", "rip off",
-      "complaint", "sue", "horrible", "disgusting", "unacceptable", "disappointed",
-      "never again", "waste", "ridiculous"
+      "angry",
+      "frustrated",
+      "terrible",
+      "awful",
+      "worst",
+      "scam",
+      "rip off",
+      "complaint",
+      "sue",
+      "horrible",
+      "disgusting",
+      "unacceptable",
+      "disappointed",
+      "never again",
+      "waste",
+      "ridiculous",
     ]
     const positiveTriggers = [
-      "great", "excellent", "amazing", "wonderful", "perfect", "love", "fantastic",
-      "thank you", "appreciate", "happy", "satisfied", "recommend"
+      "great",
+      "excellent",
+      "amazing",
+      "wonderful",
+      "perfect",
+      "love",
+      "fantastic",
+      "thank you",
+      "appreciate",
+      "happy",
+      "satisfied",
+      "recommend",
     ]
 
     const textLower = text.toLowerCase()
 
-    const negativeCount = negativeTriggers.filter(t => textLower.includes(t)).length
-    const positiveCount = positiveTriggers.filter(t => textLower.includes(t)).length
+    const negativeCount = negativeTriggers.filter((t) => textLower.includes(t)).length
+    const positiveCount = positiveTriggers.filter((t) => textLower.includes(t)).length
 
     if (negativeCount > positiveCount) return "negative"
     if (positiveCount > negativeCount) return "positive"
@@ -781,11 +788,7 @@ export class SentinelAgent extends BaseAgent {
 
   private extractBookingReference(text: string): string | null {
     // Look for booking reference patterns
-    const patterns = [
-      /BK-\d{4}-\d{3}/i,
-      /booking[:\s#]*([A-Z0-9-]+)/i,
-      /reference[:\s#]*([A-Z0-9-]+)/i,
-    ]
+    const patterns = [/BK-\d{4}-\d{3}/i, /booking[:\s#]*([A-Z0-9-]+)/i, /reference[:\s#]*([A-Z0-9-]+)/i]
 
     for (const pattern of patterns) {
       const match = text.match(pattern)
@@ -812,7 +815,8 @@ export class SentinelAgent extends BaseAgent {
   private async handleComplaintEvent(data: Record<string, unknown>): Promise<AgentOutput> {
     return {
       success: true,
-      response: "I understand you've had an issue. I'm here to help resolve this as quickly as possible. Can you tell me more about what happened?",
+      response:
+        "I understand you've had an issue. I'm here to help resolve this as quickly as possible. Can you tell me more about what happened?",
     }
   }
 
@@ -820,7 +824,8 @@ export class SentinelAgent extends BaseAgent {
     // Send satisfaction survey
     return {
       success: true,
-      response: "Thank you for choosing M&M Commercial Moving! We hope everything went smoothly. Would you mind taking a moment to rate your experience?",
+      response:
+        "Thank you for choosing M&M Commercial Moving! We hope everything went smoothly. Would you mind taking a moment to rate your experience?",
       actions: [
         {
           type: "send_email",
@@ -841,23 +846,19 @@ export class SentinelAgent extends BaseAgent {
         "PHOENIX_RET",
         "Positive feedback received - opportunity for testimonial/referral",
         data,
-        "low"
+        "low",
       )
     } else if (rating <= 2) {
       // Escalate for recovery
-      await this.escalateToHuman(
-        "negative_sentiment",
-        `Low satisfaction rating: ${rating}/5`,
-        data,
-        "high"
-      )
+      await this.escalateToHuman("negative_sentiment", `Low satisfaction rating: ${rating}/5`, data, "high")
     }
 
     return {
       success: true,
-      response: rating >= 4
-        ? "Thank you so much for the positive feedback! We'd love if you could share your experience with others. Would you be willing to leave us a Google review?"
-        : "We're sorry to hear about your experience. Your feedback is important to us. Can you tell us more about what we could improve?",
+      response:
+        rating >= 4
+          ? "Thank you so much for the positive feedback! We'd love if you could share your experience with others. Would you be willing to leave us a Google review?"
+          : "We're sorry to hear about your experience. Your feedback is important to us. Can you tell us more about what we could improve?",
     }
   }
 }
@@ -938,37 +939,43 @@ const FAQ_DATABASE = [
   {
     category: "booking",
     question: "How do I check my booking status?",
-    answer: "You can check your booking status by providing your booking reference number (format: BK-YYYY-XXX) or the email address used during booking. I can look this up for you right now!",
+    answer:
+      "You can check your booking status by providing your booking reference number (format: BK-YYYY-XXX) or the email address used during booking. I can look this up for you right now!",
     keywords: ["status", "booking", "check", "where", "tracking"],
   },
   {
     category: "booking",
     question: "How can I reschedule my move?",
-    answer: "You can reschedule your move up to 48 hours before the scheduled date free of charge. Rescheduling requests within 48 hours may incur a $150 fee. Just provide your booking reference and preferred new date, and I'll help you reschedule.",
+    answer:
+      "You can reschedule your move up to 48 hours before the scheduled date free of charge. Rescheduling requests within 48 hours may incur a $150 fee. Just provide your booking reference and preferred new date, and I'll help you reschedule.",
     keywords: ["reschedule", "change date", "different day", "postpone"],
   },
   {
     category: "booking",
     question: "What is your cancellation policy?",
-    answer: "Our cancellation policy:\n• 7+ days before move: Full deposit refund\n• 3-7 days before move: 50% deposit refund\n• Less than 3 days: Deposit is non-refundable\n\nWe understand plans change - let me know if you need to cancel and I'll help process it.",
+    answer:
+      "Our cancellation policy:\n• 7+ days before move: Full deposit refund\n• 3-7 days before move: 50% deposit refund\n• Less than 3 days: Deposit is non-refundable\n\nWe understand plans change - let me know if you need to cancel and I'll help process it.",
     keywords: ["cancel", "cancellation", "refund", "policy"],
   },
   {
     category: "services",
     question: "What additional services do you offer?",
-    answer: "We offer several additional services:\n• Professional Packing: $450\n• Temporary Storage: $300/week\n• Post-Move Cleaning: $350\n• Premium Insurance: $200\n• After Hours Service: $500\n• IT Setup Assistance: $600\n\nWould you like to add any of these to your booking?",
+    answer:
+      "We offer several additional services:\n• Professional Packing: $450\n• Temporary Storage: $300/week\n• Post-Move Cleaning: $350\n• Premium Insurance: $200\n• After Hours Service: $500\n• IT Setup Assistance: $600\n\nWould you like to add any of these to your booking?",
     keywords: ["services", "additional", "packing", "storage", "cleaning", "insurance"],
   },
   {
     category: "payment",
     question: "What payment methods do you accept?",
-    answer: "We accept:\n• Credit/Debit cards (Visa, Mastercard, Amex)\n• Bank transfer (EFT)\n• PayPal\n\nA 50% deposit is required to confirm your booking, with the balance due on move day.",
+    answer:
+      "We accept:\n• Credit/Debit cards (Visa, Mastercard, Amex)\n• Bank transfer (EFT)\n• PayPal\n\nA 50% deposit is required to confirm your booking, with the balance due on move day.",
     keywords: ["payment", "pay", "credit card", "bank transfer"],
   },
   {
     category: "insurance",
     question: "Is my move insured?",
-    answer: "All moves include basic coverage up to $10,000. For additional peace of mind, we offer Premium Insurance at $200 which provides coverage up to $100,000 and includes coverage for high-value items. Would you like to add premium insurance to your booking?",
+    answer:
+      "All moves include basic coverage up to $10,000. For additional peace of mind, we offer Premium Insurance at $200 which provides coverage up to $100,000 and includes coverage for high-value items. Would you like to add premium insurance to your booking?",
     keywords: ["insurance", "covered", "damage", "protection"],
   },
 ]

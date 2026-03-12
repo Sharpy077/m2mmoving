@@ -1,16 +1,8 @@
-/**
- * MAYA - Sales Agent
- * Full-cycle sales from qualification to close
- */
-
-import { z } from "zod"
 import { BaseAgent, type AgentInput, type AgentOutput, type AgentAction } from "../base-agent"
 import type {
   AgentIdentity,
   AgentConfig,
-  ToolDefinition,
   InterAgentMessage,
-  Lead,
   LeadScore,
   PriceQuote,
   PriceBreakdown,
@@ -29,7 +21,7 @@ export class MayaAgent extends BaseAgent {
     super({
       codename: "MAYA_SALES",
       enabled: true,
-      model: "gpt-4o",
+      model: "anthropic/claude-sonnet-4-20250514",
       temperature: 0.7,
       maxTokens: 2000,
       systemPrompt: MAYA_SYSTEM_PROMPT,
@@ -157,7 +149,8 @@ export class MayaAgent extends BaseAgent {
         },
         required: ["leadId", "quoteId"],
       },
-      handler: async (params) => this.generateProposal(params as { leadId: string; quoteId: string; customizations?: Record<string, unknown> }),
+      handler: async (params) =>
+        this.generateProposal(params as { leadId: string; quoteId: string; customizations?: Record<string, unknown> }),
     })
 
     // Handle Objection
@@ -189,7 +182,8 @@ export class MayaAgent extends BaseAgent {
         },
         required: ["leadId"],
       },
-      handler: async (params) => this.scheduleCallback(params as { leadId: string; preferredTime?: string; reason?: string; notes?: string }),
+      handler: async (params) =>
+        this.scheduleCallback(params as { leadId: string; preferredTime?: string; reason?: string; notes?: string }),
     })
 
     // Check Availability
@@ -282,12 +276,13 @@ export class MayaAgent extends BaseAgent {
         escalationCheck.reason!,
         `Customer message: ${content}`,
         { messages, ...input.metadata },
-        escalationCheck.priority || "medium"
+        escalationCheck.priority || "medium",
       )
 
       return {
         success: true,
-        response: "I'd like to connect you with one of our specialists who can better assist you. Someone will reach out shortly.",
+        response:
+          "I'd like to connect you with one of our specialists who can better assist you. Someone will reach out shortly.",
         escalation,
       }
     }
@@ -372,7 +367,7 @@ export class MayaAgent extends BaseAgent {
           timestamp: new Date(),
         },
       ],
-      context
+      context,
     )
 
     return {
@@ -410,7 +405,7 @@ export class MayaAgent extends BaseAgent {
 
     const recentContent = messages
       .slice(-5)
-      .map(m => m.content)
+      .map((m) => m.content)
       .join(" ")
       .toLowerCase()
 
@@ -505,11 +500,12 @@ export class MayaAgent extends BaseAgent {
   private async calculateQuote(params: QuoteParams) {
     const pricing = PRICING_CONFIG
 
-    const moveTypeConfig = pricing.baseRates[params.moveType as keyof typeof pricing.baseRates] || pricing.baseRates.office
+    const moveTypeConfig =
+      pricing.baseRates[params.moveType as keyof typeof pricing.baseRates] || pricing.baseRates.office
     const sqm = Math.max(params.squareMeters, moveTypeConfig.minSqm)
 
     // Base calculation
-    const baseAmount = moveTypeConfig.base + (sqm * moveTypeConfig.perSqm)
+    const baseAmount = moveTypeConfig.base + sqm * moveTypeConfig.perSqm
 
     // Additional services
     let additionalAmount = 0
@@ -602,7 +598,7 @@ export class MayaAgent extends BaseAgent {
     }
 
     scores.overall = Math.round(
-      (scores.budget + scores.authority + scores.need + scores.timeline + scores.engagement + scores.fit) / 6
+      (scores.budget + scores.authority + scores.need + scores.timeline + scores.engagement + scores.fit) / 6,
     )
 
     const qualified = scores.overall >= 6
@@ -620,7 +616,11 @@ export class MayaAgent extends BaseAgent {
     }
   }
 
-  private async generateProposal(params: { leadId: string; quoteId: string; customizations?: Record<string, unknown> }) {
+  private async generateProposal(params: {
+    leadId: string
+    quoteId: string
+    customizations?: Record<string, unknown>
+  }) {
     // In production, generate PDF proposal
     return {
       success: true,
@@ -704,7 +704,7 @@ export class MayaAgent extends BaseAgent {
         "complex_negotiation",
         `Discount request of ${requestedDiscount}% exceeds approval threshold`,
         params,
-        "medium"
+        "medium",
       )
 
       return {
@@ -737,32 +737,45 @@ export class MayaAgent extends BaseAgent {
   private async initiateQuoteConversation(data: Record<string, unknown>): Promise<AgentOutput> {
     return {
       success: true,
-      response: "Hi! I'm Maya, your commercial moving specialist. I'd love to help you get a quote for your business relocation. What type of move are you planning?",
+      response:
+        "Hi! I'm Maya, your commercial moving specialist. I'd love to help you get a quote for your business relocation. What type of move are you planning?",
     }
   }
 
   private async followUpLead(data: Record<string, unknown>): Promise<AgentOutput> {
     return {
       success: true,
-      response: "Hi! I wanted to follow up on the quote we discussed. Have you had a chance to review it? I'm happy to answer any questions.",
+      response:
+        "Hi! I wanted to follow up on the quote we discussed. Have you had a chance to review it? I'm happy to answer any questions.",
     }
   }
 
   private async handlePaymentCompleted(data: Record<string, unknown>): Promise<AgentOutput> {
     return {
       success: true,
-      response: "Excellent! Your deposit has been received and your move is now confirmed. You'll receive a confirmation email shortly with all the details.",
+      response:
+        "Excellent! Your deposit has been received and your move is now confirmed. You'll receive a confirmation email shortly with all the details.",
     }
   }
 
   private async analyzeSentiment(text: string): Promise<"positive" | "neutral" | "negative"> {
-    const negativeTriggers = ["angry", "frustrated", "terrible", "awful", "worst", "scam", "rip off", "complaint", "sue"]
+    const negativeTriggers = [
+      "angry",
+      "frustrated",
+      "terrible",
+      "awful",
+      "worst",
+      "scam",
+      "rip off",
+      "complaint",
+      "sue",
+    ]
     const positiveTriggers = ["great", "excellent", "amazing", "wonderful", "perfect", "love", "fantastic"]
 
     const textLower = text.toLowerCase()
 
-    if (negativeTriggers.some(t => textLower.includes(t))) return "negative"
-    if (positiveTriggers.some(t => textLower.includes(t))) return "positive"
+    if (negativeTriggers.some((t) => textLower.includes(t))) return "negative"
+    if (positiveTriggers.some((t) => textLower.includes(t))) return "positive"
     return "neutral"
   }
 
@@ -929,10 +942,14 @@ const PRICING_CONFIG = {
 }
 
 const OBJECTION_HANDLERS = {
-  price: "I understand budget is important. Our pricing reflects our commitment to zero-damage moves and white-glove service. However, I may be able to offer some flexibility - can you tell me more about your budget constraints?",
-  competitor: "I appreciate you're comparing options. What sets us apart is our technology-driven approach and 100% satisfaction guarantee. May I ask what the other quote included?",
-  timing: "I completely understand. When would be a better time to discuss this? I can also send you information to review at your convenience.",
-  decision: "Of course, take your time. This is an important decision. What information would help you decide? I'm happy to answer any questions.",
+  price:
+    "I understand budget is important. Our pricing reflects our commitment to zero-damage moves and white-glove service. However, I may be able to offer some flexibility - can you tell me more about your budget constraints?",
+  competitor:
+    "I appreciate you're comparing options. What sets us apart is our technology-driven approach and 100% satisfaction guarantee. May I ask what the other quote included?",
+  timing:
+    "I completely understand. When would be a better time to discuss this? I can also send you information to review at your convenience.",
+  decision:
+    "Of course, take your time. This is an important decision. What information would help you decide? I'm happy to answer any questions.",
   default: "I hear you. Let me see how I can help address that concern.",
 }
 

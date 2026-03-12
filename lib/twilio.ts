@@ -1,28 +1,3 @@
-import twilio from "twilio"
-
-const accountSid = process.env.TWILIO_ACCOUNT_SID
-const authToken = process.env.TWILIO_AUTH_TOKEN
-
-export const twilioClient = accountSid && authToken ? twilio(accountSid, authToken) : null
-
-/**
- * Validates that an incoming request genuinely came from Twilio.
- * Returns true in development (TWILIO_AUTH_TOKEN not set) to allow local testing.
- * In production, verifies the X-Twilio-Signature header.
- */
-export function validateTwilioRequest(request: Request, params: Record<string, string>): boolean {
-  if (!authToken) {
-    // Skip validation in dev/test environments where Twilio credentials are not configured
-    console.warn("[twilio] TWILIO_AUTH_TOKEN not set — skipping webhook signature validation")
-    return true
-  }
-
-  const twilioSignature = request.headers.get("X-Twilio-Signature") || ""
-  const url = request.url
-
-  return twilio.validateRequest(authToken, twilioSignature, url, params)
-}
-
 // Business hours configuration (Melbourne time)
 export const BUSINESS_HOURS = {
   timezone: "Australia/Melbourne",
@@ -62,4 +37,50 @@ export function formatAustralianNumber(number: string): string {
     return number
   }
   return number
+}
+
+export async function sendSMS(to: string, body: string): Promise<boolean> {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID
+  const authToken = process.env.TWILIO_AUTH_TOKEN
+  const fromNumber = process.env.TWILIO_PHONE_NUMBER
+
+  if (!accountSid || !authToken || !fromNumber) {
+    console.error("[v0] Missing Twilio credentials")
+    return false
+  }
+
+  const formattedTo = formatAustralianNumber(to)
+
+  try {
+    const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: "Basic " + Buffer.from(`${accountSid}:${authToken}`).toString("base64"),
+      },
+      body: new URLSearchParams({
+        To: formattedTo,
+        From: fromNumber,
+        Body: body,
+      }).toString(),
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      console.error("[v0] Twilio API error:", error)
+      return false
+    }
+
+    return true
+  } catch (error) {
+    console.error("[v0] Failed to send SMS:", error)
+    return false
+  }
+}
+
+// Keep legacy export for backwards compatibility (deprecated)
+export const twilioClient = null
+export async function getTwilioClient() {
+  console.warn("[v0] getTwilioClient is deprecated, use sendSMS instead")
+  return null
 }

@@ -1,1057 +1,831 @@
 "use client"
 
 import type React from "react"
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState, useCallback } from "react"
+import {
+  useState,
+  useRef,
+  useEffect,
+  forwardRef,
+  useImperativeHandle,
+  useMemo,
+  useCallback,
+  lazy,
+  Suspense,
+} from "react"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
-
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import {
+  Send,
   Building2,
-  CheckCircle,
-  Phone,
   Warehouse,
   Server,
+  ShoppingBag,
   Monitor,
-  Store,
-  ArrowRight,
-  AlertCircle,
+  Stethoscope,
+  Factory,
+  Truck,
+  CalendarIcon,
   Clock,
-  PhoneCall,
-  RotateCcw,
+  MapPin,
+  Search,
+  CreditCard,
+  CheckCircle2,
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { loadStripe } from "@stripe/stripe-js"
-import { submitLead } from "@/app/actions/leads"
-import {
-  type ResponseMonitor,
-  getResponseMonitor,
-  ErrorClassifier,
-  RetryHandler,
-  ConversationStateManager,
-  FallbackProvider,
-  type ConversationState,
-} from "@/lib/conversation"
-import { SessionRecoveryManager, type SavedSession } from "@/lib/conversation/session-recovery"
-import { HumanEscalationService, detectHumanRequest } from "@/lib/conversation/human-escalation"
-import { ConversationAnalytics } from "@/lib/conversation/analytics"
-import type { ConversationContext, ConversationStage } from "@/lib/conversation/state-machine"
+import { createCheckoutSession } from "@/app/actions/create-checkout-session"
+import { sendBookingConfirmation } from "@/app/actions/send-confirmation"
+import { formatDate } from "@/utils/date-utils" // Import formatDate function
 
-const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null
+const M2M_PHONE = "03 8820 1801"
+const M2M_PHONE_LINK = "tel:0388201801"
 
-interface ServiceOption {
-  id: string
-  name: string
-  icon: string
-  description: string
-}
+const StripeCheckoutWrapper = lazy(() => import("@/components/stripe-checkout-wrapper"))
 
-interface BusinessResult {
+// Service options for the picker
+const serviceOptions = [
+  { id: "office", label: "Office Relocation", icon: Building2, description: "Corporate office moves" },
+  { id: "warehouse", label: "Warehouse Move", icon: Warehouse, description: "Industrial relocations" },
+  { id: "datacentre", label: "Data Centre", icon: Server, description: "IT infrastructure" },
+  { id: "retail", label: "Retail Fit-out", icon: ShoppingBag, description: "Shop relocations" },
+  { id: "it-equipment", label: "IT Equipment", icon: Monitor, description: "Tech & electronics" },
+  { id: "medical", label: "Medical & Lab", icon: Stethoscope, description: "Healthcare moves" },
+  { id: "factory", label: "Factory & Plant", icon: Factory, description: "Manufacturing" },
+  { id: "logistics", label: "Logistics Hub", icon: Truck, description: "Distribution centres" },
+]
+
+// Types
+interface BusinessInfo {
   name: string
   abn: string
-  type: string
+  entityType?: string
+  state?: string
+}
+
+interface AddressInfo {
+  street: string
+  suburb: string
   state: string
-  status: string
-  tradingNames?: string[]
-  address?: string
-  gstRegistered?: boolean
+  postcode: string
 }
 
-interface QuoteEstimate {
-  moveType: string
-  moveTypeKey?: string
-  estimatedTotal: number
-  depositRequired: number
-  hourlyRate?: number
-  estimatedHours: number
-  crewSize: number
-  truckSize: string
-  squareMeters: number
-  origin: string
-  destination: string
-  additionalServices?: string[]
-  breakdown: {
-    label: string
-    amount: number
-  }[]
-  showAvailability?: boolean
-}
-
-interface AvailableDate {
-  date: string
-  available: boolean
-  slots?: number
-}
-
-interface ContactInfo {
+interface BookingData {
+  serviceType: string
+  business: BusinessInfo | null
+  originAddress: AddressInfo | null
+  destinationAddress: AddressInfo | null
+  preferredDate: Date | null
+  preferredTime: string
+  inventory: string
+  specialRequirements: string
   contactName: string
-  email: string
-  phone: string
-  companyName?: string
+  contactEmail: string
+  contactPhone: string
+  quoteAmount: number
+  quoteReference: string
 }
 
-interface PaymentInfo {
-  clientSecret: string
-  amount: number
-}
-
-export interface QuoteAssistantHandle {
+export interface QuoteAssistantRef {
   open: () => void
+  close: () => void
 }
 
 interface QuoteAssistantProps {
-  embedded?: boolean
-  onScrolledAway?: (isAway: boolean) => void
+  isOpen?: boolean
+  onClose?: () => void
 }
 
-const ServiceIcon = ({ icon, className }: { icon: string; className?: string }) => {
-  const iconClass = className || "h-6 w-6"
-  switch (icon) {
-    case "building":
-      return <Building2 className={iconClass} />
-    case "warehouse":
-      return <Warehouse className={iconClass} />
-    case "server":
-      return <Server className={iconClass} />
-    case "computer":
-      return <Monitor className={iconClass} />
-    case "store":
-      return <Store className={iconClass} />
-    default:
-      return <Building2 className={iconClass} />
-  }
+// Helper to extract text from message
+function getTextFromMessage(message: { parts?: Array<{ type: string; text?: string }> }): string {
+  if (!message?.parts || !Array.isArray(message.parts)) return ""
+  const textPart = message.parts.find((p) => p.type === "text")
+  return textPart && "text" in textPart ? textPart.text || "" : ""
 }
 
-const ServicePicker = ({
-  services,
-  onSelect,
-}: {
-  services: ServiceOption[]
-  onSelect: (service: ServiceOption) => void
-}) => {
-  return (
-    <div className="grid grid-cols-1 gap-2 my-3">
-      {services.map((service) => (
-        <button
-          key={service.id}
-          onClick={() => onSelect(service)}
-          className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card hover:bg-accent hover:border-primary/50 transition-all text-left group"
-        >
-          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-            <ServiceIcon icon={service.icon} className="h-5 w-5" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-medium text-foreground">{service.name}</div>
-            <div className="text-xs text-muted-foreground truncate">{service.description}</div>
-          </div>
-          <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-        </button>
-      ))}
-    </div>
+const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isOpen = true, onClose }, ref) => {
+  const [isVisible, setIsVisible] = useState(isOpen)
+  const [input, setInput] = useState("")
+  const [showServicePicker, setShowServicePicker] = useState(true)
+  const [bookingData, setBookingData] = useState<BookingData>({
+    serviceType: "",
+    business: null,
+    originAddress: null,
+    destinationAddress: null,
+    preferredDate: null,
+    preferredTime: "",
+    inventory: "",
+    specialRequirements: "",
+    contactName: "",
+    contactEmail: "",
+    contactPhone: "",
+    quoteAmount: 0,
+    quoteReference: "",
+  })
+
+  // UI State for interactive components
+  const [showDatePicker, setShowDatePicker] = useState(false)
+  const [showTimePicker, setShowTimePicker] = useState(false)
+  const [showABNLookup, setShowABNLookup] = useState(false)
+  const [showAddressInput, setShowAddressInput] = useState<"origin" | "destination" | null>(null)
+  const [showPayment, setShowPayment] = useState(false)
+  const [showConfirmation, setShowConfirmation] = useState(false)
+  const [abnSearchQuery, setAbnSearchQuery] = useState("")
+  const [abnSearchResults, setAbnSearchResults] = useState<BusinessInfo[]>([])
+  const [isSearchingABN, setIsSearchingABN] = useState(false)
+  const [paymentClientSecret, setPaymentClientSecret] = useState<string | null>(null)
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false)
+
+  // Address input state
+  const [addressInput, setAddressInput] = useState<AddressInfo>({
+    street: "",
+    suburb: "",
+    state: "VIC",
+    postcode: "",
+  })
+
+  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
+  const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
+
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const chatContainerRef = useRef<HTMLDivElement>(null)
+
+  // Memoize transport to prevent recreation
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: "/api/quote-assistant",
+      }),
+    [],
   )
-}
 
-const InitialPrompts = ({ onSelect }: { onSelect: (prompt: string) => void }) => {
-  const prompts = [
-    { text: "I need to move my office", icon: Building2 },
-    { text: "Warehouse relocation", icon: Warehouse },
-    { text: "Data centre migration", icon: Server },
-    { text: "Retail store move", icon: Store },
-    { text: "IT equipment transport", icon: Monitor },
-    { text: "I'd like to speak to someone", icon: Phone },
-  ]
+  const { messages, sendMessage, status, error } = useChat({
+    transport,
+    onError: (err) => {
+      console.error("[v0] Chat error:", err)
+    },
+  })
 
-  return (
-    <div className="space-y-3 my-4">
-      <p className="text-sm text-muted-foreground text-center">Quick start - select an option or type below:</p>
+  const isLoading = status === "streaming" || status === "submitted"
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" })
+    }
+  }, [messages, isLoading])
+
+  useEffect(() => {
+    if (
+      !showServicePicker &&
+      isVisible &&
+      !showABNLookup &&
+      !showAddressInput &&
+      !showDatePicker &&
+      !showTimePicker &&
+      !showPayment &&
+      !showConfirmation
+    ) {
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => {
+        inputRef.current?.focus()
+      }, 300)
+      return () => clearTimeout(timer)
+    }
+  }, [
+    showServicePicker,
+    isVisible,
+    showABNLookup,
+    showAddressInput,
+    showDatePicker,
+    showTimePicker,
+    showPayment,
+    showConfirmation,
+  ])
+
+  useEffect(() => {
+    const handleViewportResize = () => {
+      // Scroll messages into view when keyboard opens
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" })
+      }
+    }
+
+    // Listen for visual viewport changes (mobile keyboard)
+    if (typeof window !== "undefined" && window.visualViewport) {
+      window.visualViewport.addEventListener("resize", handleViewportResize)
+      window.visualViewport.addEventListener("scroll", handleViewportResize)
+    }
+
+    return () => {
+      if (typeof window !== "undefined" && window.visualViewport) {
+        window.visualViewport.removeEventListener("resize", handleViewportResize)
+        window.visualViewport.removeEventListener("scroll", handleViewportResize)
+      }
+    }
+  }, [])
+
+  useImperativeHandle(ref, () => ({
+    open: () => setIsVisible(true),
+    close: () => {
+      setIsVisible(false)
+      onClose?.()
+    },
+  }))
+
+  // Handle service selection
+  const handleServiceSelect = useCallback(
+    (serviceId: string, serviceLabel: string) => {
+      setShowServicePicker(false)
+      setBookingData((prev) => ({ ...prev, serviceType: serviceId }))
+      sendMessage({ text: `I need help with ${serviceLabel}` })
+      // Show ABN lookup after service selection
+      setTimeout(() => setShowABNLookup(true), 1000)
+    },
+    [sendMessage],
+  )
+
+  // ABN Lookup
+  const handleABNSearch = async () => {
+    if (!abnSearchQuery.trim()) return
+    setIsSearchingABN(true)
+    try {
+      const searchType = /^\d+$/.test(abnSearchQuery.replace(/\s/g, "")) ? "abn" : "name"
+      const response = await fetch(`/api/business-lookup?q=${encodeURIComponent(abnSearchQuery)}&type=${searchType}`)
+      const data = await response.json()
+      setAbnSearchResults(data.results || [])
+    } catch (err) {
+      console.error("ABN lookup failed:", err)
+    } finally {
+      setIsSearchingABN(false)
+    }
+  }
+
+  const handleSelectBusiness = (business: BusinessInfo) => {
+    setBookingData((prev) => ({ ...prev, business }))
+    setShowABNLookup(false)
+    setAbnSearchResults([])
+    setAbnSearchQuery("")
+    sendMessage({ text: `My business is ${business.name}, ABN: ${business.abn}` })
+    // Show address input after business selection
+    setTimeout(() => setShowAddressInput("origin"), 1000)
+  }
+
+  // Address handling
+  const handleAddressSubmit = (type: "origin" | "destination") => {
+    const address = { ...addressInput }
+    const addressString = `${address.street}, ${address.suburb} ${address.state} ${address.postcode}`
+
+    if (type === "origin") {
+      setBookingData((prev) => ({ ...prev, originAddress: address }))
+      sendMessage({ text: `Moving FROM: ${addressString}` })
+      setShowAddressInput("destination")
+    } else {
+      setBookingData((prev) => ({ ...prev, destinationAddress: address }))
+      sendMessage({ text: `Moving TO: ${addressString}` })
+      setShowAddressInput(null)
+      // Show date picker after addresses
+      setTimeout(() => setShowDatePicker(true), 1000)
+    }
+    setAddressInput({ street: "", suburb: "", state: "VIC", postcode: "" })
+  }
+
+  // Date/Time handling
+  const handleDateSelect = (date: Date | undefined) => {
+    if (date) {
+      setBookingData((prev) => ({ ...prev, preferredDate: date }))
+      setShowDatePicker(false)
+      setShowTimePicker(true)
+    }
+  }
+
+  const handleTimeSelect = (time: string) => {
+    setBookingData((prev) => ({ ...prev, preferredTime: time }))
+    setShowTimePicker(false)
+    const dateStr = bookingData.preferredDate ? formatDate(bookingData.preferredDate, "full") : ""
+    sendMessage({ text: `I'd like to book for ${dateStr} at ${time}` })
+  }
+
+  // Payment handling
+  const initiatePayment = async () => {
+    setIsProcessingPayment(true)
+    try {
+      // Calculate 50% deposit - if quoteAmount is 0, default to minimum $500 quote = $250 deposit
+      const quoteTotal = bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 500
+      const depositAmount = Math.round(quoteTotal * 0.5 * 100) // 50% in cents
+
+      const result = await createCheckoutSession({
+        amount: depositAmount,
+        description: `M&M Moving 50% Deposit - ${bookingData.serviceType} (Total Quote: $${quoteTotal})`,
+        metadata: {
+          serviceType: bookingData.serviceType,
+          businessName: bookingData.business?.name || "",
+          contactEmail: bookingData.contactEmail,
+          quoteTotal: quoteTotal.toString(),
+          depositPercent: "50",
+        },
+      })
+
+      if (result.clientSecret) {
+        setPaymentClientSecret(result.clientSecret)
+        setShowPayment(true)
+      }
+    } catch (err) {
+      console.error("Payment initiation failed:", err)
+    } finally {
+      setIsProcessingPayment(false)
+    }
+  }
+
+  const handlePaymentComplete = async () => {
+    const quoteTotal = bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 500
+    const depositPaid = quoteTotal * 0.5
+
+    // Generate quote reference
+    const quoteRef = `MM-${Date.now().toString(36).toUpperCase()}`
+    setBookingData((prev) => ({ ...prev, quoteReference: quoteRef }))
+
+    // Send confirmation email and SMS
+    try {
+      await sendBookingConfirmation({
+        quoteReference: quoteRef,
+        customerName: bookingData.contactName || "Customer",
+        customerEmail: bookingData.contactEmail,
+        customerPhone: bookingData.contactPhone,
+        businessName: bookingData.business?.name || "",
+        businessABN: bookingData.business?.abn || "",
+        serviceType: bookingData.serviceType,
+        originAddress: bookingData.originAddress
+          ? `${bookingData.originAddress.street}, ${bookingData.originAddress.suburb} ${bookingData.originAddress.state} ${bookingData.originAddress.postcode}`
+          : "",
+        destinationAddress: bookingData.destinationAddress
+          ? `${bookingData.destinationAddress.street}, ${bookingData.destinationAddress.suburb} ${bookingData.destinationAddress.state} ${bookingData.destinationAddress.postcode}`
+          : "",
+        moveDate: bookingData.preferredDate ? formatDate(bookingData.preferredDate, "short") : "",
+        moveTime: bookingData.preferredTime,
+        quoteAmount: quoteTotal,
+        depositPaid: depositPaid,
+      })
+    } catch (error) {
+      console.error("Failed to send confirmations:", error)
+    }
+
+    setShowPayment(false)
+    setShowConfirmation(true)
+  }
+
+  // Render service picker
+  const renderServicePicker = () => (
+    <div className="p-4">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center">
+          <Truck className="h-5 w-5 text-white" />
+        </div>
+        <div>
+          <p className="font-semibold text-foreground">Maya</p>
+          <p className="text-sm text-muted-foreground">M&M Moving Assistant</p>
+        </div>
+      </div>
+      <p className="text-foreground mb-4">
+        Hi! I'm Maya, your commercial moving specialist. What type of move can I help you with today?
+      </p>
       <div className="grid grid-cols-2 gap-2">
-        {prompts.map((prompt, i) => (
-          <button
-            key={i}
-            onClick={() => onSelect(prompt.text)}
-            className="flex items-center gap-2 p-3 rounded-lg border border-border bg-card hover:bg-accent hover:border-primary/50 transition-all text-left text-sm"
-            aria-label={prompt.text}
+        {serviceOptions.map((service) => (
+          <Card
+            key={service.id}
+            className="cursor-pointer hover:border-orange-500 transition-colors"
+            onClick={() => handleServiceSelect(service.id, service.label)}
           >
-            <prompt.icon className="h-4 w-4 text-primary flex-shrink-0" aria-hidden="true" />
-            <span className="truncate">{prompt.text}</span>
-          </button>
+            <CardContent className="p-3 flex flex-col items-center text-center">
+              <service.icon className="h-6 w-6 text-orange-500 mb-2" />
+              <p className="text-sm font-medium text-foreground">{service.label}</p>
+              <p className="text-xs text-muted-foreground">{service.description}</p>
+            </CardContent>
+          </Card>
         ))}
       </div>
     </div>
   )
-}
 
-const BookingProgress = ({
-  step,
-}: {
-  step: "business" | "service" | "details" | "quote" | "date" | "contact" | "payment" | "complete"
-}) => {
-  const steps = [
-    { id: "business", label: "Business" },
-    { id: "service", label: "Service" },
-    { id: "details", label: "Details" },
-    { id: "quote", label: "Quote" },
-    { id: "date", label: "Date" },
-    { id: "payment", label: "Book" },
-  ]
-
-  const currentIndex = steps.findIndex((s) => s.id === step)
-
-  return (
-    <div className="flex items-center justify-between px-2 py-2 bg-muted/50 rounded-lg mb-3">
-      {steps.map((s, i) => (
-        <div key={s.id} className="flex items-center">
-          <div
-            className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium transition-colors ${
-              i < currentIndex
-                ? "bg-primary text-primary-foreground"
-                : i === currentIndex
-                  ? "bg-primary text-primary-foreground ring-2 ring-primary/30"
-                  : "bg-muted text-muted-foreground"
-            }`}
-          >
-            {i < currentIndex ? <CheckCircle className="h-3 w-3" /> : i + 1}
-          </div>
-          {i < steps.length - 1 && <div className={`w-4 h-0.5 mx-1 ${i < currentIndex ? "bg-primary" : "bg-muted"}`} />}
+  // Render ABN Lookup
+  const renderABNLookup = () => (
+    <Card className="m-4 border-orange-200 bg-orange-50 dark:bg-orange-950/20">
+      <CardContent className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Search className="h-5 w-5 text-orange-500" />
+          <p className="font-medium text-foreground">Business Lookup</p>
         </div>
-      ))}
-    </div>
-  )
-}
-
-const SessionRecoveryBanner = ({
-  session,
-  onRestore,
-  onStartFresh,
-}: {
-  session: SavedSession
-  onRestore: () => void
-  onStartFresh: () => void
-}) => {
-  const age = SessionRecoveryManager.getSessionAge(session)
-  const prompt = SessionRecoveryManager.generateRecoveryPrompt(session)
-
-  return (
-    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 mx-4">
-      <div className="flex items-start gap-3">
-        <Clock className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
-        <div className="flex-1">
-          <h4 className="font-medium text-blue-900 text-sm">Continue where you left off?</h4>
-          <p className="text-blue-700 text-sm mt-1">{prompt}</p>
-          <div className="flex gap-2 mt-3">
-            <Button size="sm" onClick={onRestore} className="bg-blue-600 hover:bg-blue-700 text-white">
-              <RotateCcw className="h-3 w-3 mr-1" />
-              Continue
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onStartFresh}
-              className="border-blue-300 text-blue-700 bg-transparent"
-            >
-              Start Fresh
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-const ReEngagementPrompt = ({
-  idleMinutes,
-  onContinue,
-  onRequestCallback,
-}: {
-  idleMinutes: number
-  onContinue: () => void
-  onRequestCallback: () => void
-}) => {
-  return (
-    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mx-4 my-2">
-      <div className="flex items-center gap-2">
-        <AlertCircle className="h-4 w-4 text-amber-600" />
-        <p className="text-amber-800 text-sm">Still there? No rush - just let me know when you're ready to continue.</p>
-      </div>
-      <div className="flex gap-2 mt-2">
-        <Button size="sm" variant="outline" onClick={onContinue} className="text-xs bg-transparent">
-          I'm here
-        </Button>
-        <Button size="sm" variant="outline" onClick={onRequestCallback} className="text-xs bg-transparent">
-          <PhoneCall className="h-3 w-3 mr-1" />
-          Call me instead
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-const EscalationConfirmation = ({
-  ticketId,
-  estimatedWait,
-  onClose,
-}: {
-  ticketId: string
-  estimatedWait: string
-  onClose: () => void
-}) => {
-  return (
-    <div className="bg-green-50 border border-green-200 rounded-lg p-4 mx-4 my-2">
-      <div className="flex items-start gap-3">
-        <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
-        <div>
-          <h4 className="font-medium text-green-900 text-sm">Callback Scheduled!</h4>
-          <p className="text-green-700 text-sm mt-1">
-            Our team will contact you {estimatedWait}. Reference: {ticketId}
-          </p>
-          <Button size="sm" variant="ghost" onClick={onClose} className="mt-2 text-green-700 hover:text-green-900 p-0">
-            Continue chatting
+        <p className="text-sm text-muted-foreground mb-3">Search by ABN or business name to auto-fill your details</p>
+        <div className="flex gap-2 mb-3">
+          <Input
+            value={abnSearchQuery}
+            onChange={(e) => setAbnSearchQuery(e.target.value)}
+            placeholder="Enter ABN or business name..."
+            onKeyDown={(e) => e.key === "Enter" && handleABNSearch()}
+          />
+          <Button onClick={handleABNSearch} disabled={isSearchingABN} className="bg-orange-500 hover:bg-orange-600">
+            {isSearchingABN ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
           </Button>
         </div>
+        {abnSearchResults.length > 0 && (
+          <div className="space-y-2 max-h-40 overflow-y-auto">
+            {abnSearchResults.map((biz, idx) => (
+              <div
+                key={idx}
+                className="p-2 bg-background rounded border cursor-pointer hover:border-orange-500"
+                onClick={() => handleSelectBusiness(biz)}
+              >
+                <p className="font-medium text-sm text-foreground">{biz.name}</p>
+                <p className="text-xs text-muted-foreground">ABN: {biz.abn}</p>
+              </div>
+            ))}
+          </div>
+        )}
+        <Button
+          variant="ghost"
+          className="mt-2 text-sm"
+          onClick={() => {
+            setShowABNLookup(false)
+            sendMessage({ text: "I'll provide my business details manually" })
+          }}
+        >
+          Skip - Enter manually
+        </Button>
+      </CardContent>
+    </Card>
+  )
+
+  // Render Address Input
+  const renderAddressInput = () => (
+    <Card className="m-4 border-blue-200 bg-blue-50 dark:bg-blue-950/20">
+      <CardContent className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <MapPin className="h-5 w-5 text-blue-500" />
+          <p className="font-medium text-foreground">{showAddressInput === "origin" ? "Moving FROM" : "Moving TO"}</p>
+        </div>
+        <div className="space-y-3">
+          <Input
+            value={addressInput.street}
+            onChange={(e) => setAddressInput((prev) => ({ ...prev, street: e.target.value }))}
+            placeholder="Street address (e.g., 123 Main Street)"
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              value={addressInput.suburb}
+              onChange={(e) => setAddressInput((prev) => ({ ...prev, suburb: e.target.value }))}
+              placeholder="Suburb"
+            />
+            <select
+              value={addressInput.state}
+              onChange={(e) => setAddressInput((prev) => ({ ...prev, state: e.target.value }))}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="VIC">VIC</option>
+              <option value="NSW">NSW</option>
+              <option value="QLD">QLD</option>
+              <option value="SA">SA</option>
+              <option value="WA">WA</option>
+              <option value="TAS">TAS</option>
+              <option value="NT">NT</option>
+              <option value="ACT">ACT</option>
+            </select>
+          </div>
+          <Input
+            value={addressInput.postcode}
+            onChange={(e) => setAddressInput((prev) => ({ ...prev, postcode: e.target.value }))}
+            placeholder="Postcode"
+            maxLength={4}
+          />
+          <Button
+            onClick={() => handleAddressSubmit(showAddressInput!)}
+            className="w-full bg-blue-500 hover:bg-blue-600"
+            disabled={!addressInput.street || !addressInput.suburb || !addressInput.postcode}
+          >
+            Confirm Address
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+
+  // Render Date Picker
+  const renderDatePicker = () => {
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate()
+    const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay()
+    const monthNames = [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ]
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+    const days: (number | null)[] = []
+    for (let i = 0; i < firstDayOfMonth; i++) {
+      days.push(null)
+    }
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push(i)
+    }
+
+    const handlePrevMonth = () => {
+      if (currentMonth === 0) {
+        setCurrentMonth(11)
+        setCurrentYear(currentYear - 1)
+      } else {
+        setCurrentMonth(currentMonth - 1)
+      }
+    }
+
+    const handleNextMonth = () => {
+      if (currentMonth === 11) {
+        setCurrentMonth(0)
+        setCurrentYear(currentYear + 1)
+      } else {
+        setCurrentMonth(currentMonth + 1)
+      }
+    }
+
+    const isDateDisabled = (day: number) => {
+      const date = new Date(currentYear, currentMonth, day)
+      return date < new Date()
+    }
+
+    const handleDayClick = (day: number) => {
+      if (!isDateDisabled(day)) {
+        const selectedDate = new Date(currentYear, currentMonth, day)
+        handleDateSelect(selectedDate)
+      }
+    }
+
+    return (
+      <Card className="m-4 border-green-200 bg-green-50 dark:bg-green-950/20">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <CalendarIcon className="h-5 w-5 text-green-500" />
+            <p className="font-medium text-foreground">Select Move Date</p>
+          </div>
+          <div className="bg-background rounded-md border p-3">
+            <div className="flex items-center justify-between mb-4">
+              <Button variant="ghost" size="icon" onClick={handlePrevMonth}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="font-medium">
+                {monthNames[currentMonth]} {currentYear}
+              </span>
+              <Button variant="ghost" size="icon" onClick={handleNextMonth}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-center text-xs text-muted-foreground mb-2">
+              {dayNames.map((day) => (
+                <div key={day}>{day}</div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {days.map((day, index) => (
+                <div key={index} className="aspect-square">
+                  {day && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={`w-full h-full p-0 ${isDateDisabled(day) ? "opacity-30 cursor-not-allowed" : "hover:bg-green-100 dark:hover:bg-green-900/30"}`}
+                      onClick={() => handleDayClick(day)}
+                      disabled={isDateDisabled(day)}
+                    >
+                      {day}
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Render Time Picker
+  const renderTimePicker = () => (
+    <Card className="m-4 border-green-200 bg-green-50 dark:bg-green-950/20">
+      <CardContent className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Clock className="h-5 w-5 text-green-500" />
+          <p className="font-medium text-foreground">Select Time Slot</p>
+        </div>
+        <p className="text-sm text-muted-foreground mb-3">
+          {bookingData.preferredDate && formatDate(bookingData.preferredDate, "short")}
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          {["7:00 AM - 12:00 PM", "12:00 PM - 5:00 PM", "Custom Time"].map((time) => (
+            <Button
+              key={time}
+              variant="outline"
+              className="justify-start bg-transparent"
+              onClick={() => handleTimeSelect(time)}
+            >
+              {time}
+            </Button>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+
+  // Render Payment
+  const renderPayment = () => {
+    const quoteTotal = bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 500
+    const depositAmount = quoteTotal * 0.5
+
+    return (
+      <Card className="m-4 border-purple-200 bg-purple-50 dark:bg-purple-950/20">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <CreditCard className="h-5 w-5 text-purple-500" />
+            <p className="font-medium text-foreground">Secure Payment</p>
+          </div>
+          <div className="bg-white dark:bg-background rounded-lg p-3 mb-4 border">
+            <div className="flex justify-between text-sm mb-1">
+              <span>Quote Total:</span>
+              <span className="font-medium">${quoteTotal.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-sm mb-1">
+              <span>Deposit Required (50%):</span>
+              <span className="font-semibold text-purple-600">${depositAmount.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>Balance Due on Move Day:</span>
+              <span>${depositAmount.toFixed(2)}</span>
+            </div>
+          </div>
+          {paymentClientSecret ? (
+            <Suspense
+              fallback={
+                <div className="text-center py-4">
+                  <Loader2 className="h-8 w-8 animate-spin mx-auto text-purple-500" />
+                  <p className="text-sm text-muted-foreground mt-2">Loading payment form...</p>
+                </div>
+              }
+            >
+              <StripeCheckoutWrapper clientSecret={paymentClientSecret} onComplete={handlePaymentComplete} />
+            </Suspense>
+          ) : (
+            <div className="text-center py-4">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto text-purple-500" />
+              <p className="text-sm text-muted-foreground mt-2">Loading payment form...</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Render Confirmation
+  const renderConfirmation = () => (
+    <Card className="m-4 border-green-200 bg-green-50 dark:bg-green-950/20">
+      <CardContent className="p-4 text-center">
+        <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-3" />
+        <p className="font-semibold text-lg text-foreground mb-2">Booking Confirmed!</p>
+        <p className="text-muted-foreground mb-4">Reference: {bookingData.quoteReference || "MM-" + Date.now()}</p>
+        <div className="text-sm text-left space-y-1">
+          <p>
+            <strong>Service:</strong> {bookingData.serviceType}
+          </p>
+          <p>
+            <strong>Business:</strong> {bookingData.business?.name}
+          </p>
+          <p>
+            <strong>Date:</strong> {bookingData.preferredDate && formatDate(bookingData.preferredDate, "short")}
+          </p>
+          <p>
+            <strong>Time:</strong> {bookingData.preferredTime}
+          </p>
+        </div>
+        <p className="text-sm text-muted-foreground mt-4">
+          Confirmation sent to your email and phone. Our team will contact you 24 hours before your move.
+        </p>
+      </CardContent>
+    </Card>
+  )
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (input.trim()) {
+      sendMessage({ text: input })
+      setInput("")
+    }
+  }
+
+  if (!isVisible) return null
+
+  return (
+    <div
+      ref={chatContainerRef}
+      className="flex flex-col h-[500px] max-h-[80dvh] md:max-h-[500px] bg-background rounded-lg border shadow-lg"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-orange-500 to-red-500 shrink-0">
+        <div className="flex items-center gap-2">
+          <Truck className="h-5 w-5 text-white" />
+          <span className="font-semibold text-white">M&M Moving</span>
+        </div>
+        <Badge variant="secondary" className="bg-white/20 text-white">
+          {isLoading ? "Maya is typing..." : "Online"}
+        </Badge>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto scroll-smooth overscroll-contain">
+        {showServicePicker && messages.length === 0 ? (
+          renderServicePicker()
+        ) : (
+          <div className="p-4 space-y-4">
+            {messages.map((message) => (
+              <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div
+                  className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                    message.role === "user" ? "bg-orange-500 text-white" : "bg-muted text-foreground"
+                  }`}
+                >
+                  {message.role === "assistant" && (
+                    <div className="flex items-center gap-2 mb-1">
+                      <Truck className="h-4 w-4 text-orange-500" />
+                      <span className="text-xs font-medium text-orange-500">Maya</span>
+                    </div>
+                  )}
+                  <p className="text-sm whitespace-pre-wrap">{getTextFromMessage(message)}</p>
+                </div>
+              </div>
+            ))}
+
+            {/* Interactive Components */}
+            {showABNLookup && renderABNLookup()}
+            {showAddressInput && renderAddressInput()}
+            {showDatePicker && renderDatePicker()}
+            {showTimePicker && renderTimePicker()}
+            {showPayment && renderPayment()}
+            {showConfirmation && renderConfirmation()}
+
+            {/* Loading indicator */}
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="bg-muted rounded-lg px-4 py-2">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-orange-500" />
+                    <span className="text-sm text-muted-foreground">Maya is thinking...</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+        )}
+      </div>
+
+      {/* Input */}
+      <div className="p-4 border-t shrink-0 bg-background">
+        <form onSubmit={handleSubmit} className="flex gap-2">
+          <Input
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Type your message..."
+            disabled={isLoading}
+            className="flex-1"
+            autoComplete="off"
+            autoFocus={false}
+          />
+          <Button type="submit" disabled={!input.trim() || isLoading} className="bg-orange-500 hover:bg-orange-600">
+            <Send className="h-4 w-4" />
+          </Button>
+        </form>
+        <p className="text-xs text-muted-foreground text-center mt-2">
+          Or call us:{" "}
+          <a href={M2M_PHONE_LINK} className="text-orange-500 font-medium">
+            {M2M_PHONE}
+          </a>
+        </p>
       </div>
     </div>
   )
-}
+})
 
-export const QuoteAssistant = forwardRef<QuoteAssistantHandle, QuoteAssistantProps>(
-  ({ embedded = false, onScrolledAway }, ref) => {
-    // ============================================
-    // STATE DECLARATIONS
-    // ============================================
-    const [isOpen, setIsOpen] = useState(embedded)
-    const [isMinimized, setIsMinimized] = useState(false)
-    const [inputValue, setInputValue] = useState("")
-    const [isListening, setIsListening] = useState(false)
-    const [isSpeaking, setIsSpeaking] = useState(false)
-    const [voiceEnabled, setVoiceEnabled] = useState(false)
-    const [currentQuote, setCurrentQuote] = useState<QuoteEstimate | null>(null)
-    const [isSubmittingLead, setIsSubmittingLead] = useState(false)
-    const [leadSubmitted, setLeadSubmitted] = useState(false)
-    const [submittedLeadData, setSubmittedLeadData] = useState<any>(null)
-    const [businessLookupResults, setBusinessLookupResults] = useState<BusinessResult[] | null>(null)
-    const [confirmedBusiness, setConfirmedBusiness] = useState<BusinessResult | null>(null)
-    const [showCalendar, setShowCalendar] = useState(false)
-    const [availableDates, setAvailableDates] = useState<AvailableDate[]>([])
-    const [selectedDate, setSelectedDate] = useState<string | null>(null)
-    const [calendarMonth, setCalendarMonth] = useState(new Date())
-    const [contactInfo, setContactInfo] = useState<ContactInfo | null>(null)
-    const [showPayment, setShowPayment] = useState(false)
-    const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
-    const [paymentComplete, setPaymentComplete] = useState(false)
-    const [hasStarted, setHasStarted] = useState(false)
-    const [hasError, setHasError] = useState(false)
-    const [errorMessage, setErrorMessage] = useState<string | null>(null)
-    const [showServicePicker, setShowServicePicker] = useState(false)
-    const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([])
-    const [currentStep, setCurrentStep] = useState<
-      "business" | "service" | "details" | "quote" | "date" | "contact" | "payment" | "complete"
-    >("business")
-    const [showInitialPrompts, setShowInitialPrompts] = useState(true)
-    const [lastUserMessageTime, setLastUserMessageTime] = useState<number | null>(null)
-    const [conversationId] = useState(() => `conv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`)
-    const [isInitialMessage, setIsInitialMessage] = useState(true)
-    const [retryCount, setRetryCount] = useState(0)
-    const [fallbackResponse, setFallbackResponse] = useState<ReturnType<typeof FallbackProvider.getFallback> | null>(
-      null,
-    )
-    const [isLookingUpBusiness, setIsLookingUpBusiness] = useState(false)
-    const [isCheckingAvailability, setIsCheckingAvailability] = useState(false)
-    const [isCalculatingQuote, setIsCalculatingQuote] = useState(false)
-    const [recoverableSession, setRecoverableSession] = useState<SavedSession | null>(null)
-    const [showReEngagement, setShowReEngagement] = useState(false)
-    const [idleMinutes, setIdleMinutes] = useState(0)
-    const [escalationResult, setEscalationResult] = useState<{
-      ticketId: string
-      estimatedWait: string
-    } | null>(null)
-    const [conversationContext, setConversationContext] = useState<ConversationContext>({
-      stage: "greeting" as ConversationStage,
-      businessConfirmed: false,
-      serviceType: null,
-      qualifyingAnswers: {},
-      inventoryItems: [],
-      locationOrigin: null,
-      locationDestination: null,
-      quoteAmount: null,
-      selectedDate: null,
-      contactInfo: null,
-      errorCount: 0,
-      lastMessageTime: Date.now(),
-      stageStartTime: Date.now(),
-    })
-    const [pendingRetry, setPendingRetry] = useState<{ text: string; retries: number } | null>(null)
-    const [userHasScrolledUp, setUserHasScrolledUp] = useState(false)
-    const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
+QuoteAssistant.displayName = "QuoteAssistant"
 
-    // ============================================
-    // REFS
-    // ============================================
-    const messagesEndRef = useRef<HTMLDivElement>(null)
-    const inputRef = useRef<HTMLInputElement>(null)
-    const recognitionRef = useRef<any>(null)
-    const synthRef = useRef<SpeechSynthesis | null>(null)
-    const containerRef = useRef<HTMLDivElement>(null)
-    const responseMonitorRef = useRef<ResponseMonitor>(getResponseMonitor())
-    const retryHandlerRef = useRef<RetryHandler>(new RetryHandler())
-    const analyticsRef = useRef<ConversationAnalytics | null>(null)
-    const lastActivityRef = useRef<number>(Date.now())
-    const idleTimerRef = useRef<NodeJS.Timeout | null>(null)
-
-    // ============================================
-    // useChat HOOK - MUST BE DECLARED EARLY
-    // ============================================
-    const { messages, sendMessage, status, error } = useChat({
-      transport: new DefaultChatTransport({ api: "/api/quote-assistant" }),
-      id: conversationId,
-      onError: (err) => {
-        console.log("[v0] Chat error:", err.message)
-        const classified = ErrorClassifier.classify(err)
-
-        if (lastUserMessageTime) {
-          responseMonitorRef.current.cancelTimer(`msg-${lastUserMessageTime}`)
-        }
-
-        setHasError(true)
-        setErrorMessage(classified.message)
-        setConversationContext((prev) => ({
-          ...prev,
-          errorCount: prev.errorCount + 1,
-        }))
-      },
-      onFinish: () => {
-        setHasError(false)
-        setErrorMessage(null)
-        setPendingRetry(null)
-        setRetryCount(0)
-        setFallbackResponse(null)
-        setLastUserMessageTime(null)
-        setIsInitialMessage(false)
-
-        if (lastUserMessageTime) {
-          responseMonitorRef.current.cancelTimer(`msg-${lastUserMessageTime}`)
-        }
-      },
-    })
-
-    // ============================================
-    // DERIVED STATE
-    // ============================================
-    const isLoading = status === "in_progress" || status === "streaming" || status === "submitted"
-
-    // ============================================
-    // CALLBACKS (can now use messages, isLoading, etc.)
-    // ============================================
-    const saveConversationState = useCallback(() => {
-      const state: ConversationState = {
-        id: conversationId,
-        messages: messages.map((msg) => ({
-          id: msg.id || `msg-${Date.now()}`,
-          role: msg.role,
-          content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
-          timestamp: new Date(),
-        })),
-        step: currentStep,
-        selectedOptions: {
-          business: confirmedBusiness || undefined,
-          service: serviceOptions.find((s) => true) || undefined,
-          date: selectedDate || undefined,
-        },
-        formData: {
-          contactInfo: contactInfo || undefined,
-          quote: currentQuote || undefined,
-        },
-        errorState: hasError
-          ? {
-              lastError: errorMessage || "Unknown error",
-              retryCount,
-              lastRetryTime: new Date(),
-            }
-          : undefined,
-        createdAt: new Date(),
-        lastUpdated: new Date(),
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      }
-      ConversationStateManager.save(state)
-    }, [
-      conversationId,
-      messages,
-      currentStep,
-      confirmedBusiness,
-      serviceOptions,
-      selectedDate,
-      contactInfo,
-      currentQuote,
-      hasError,
-      errorMessage,
-      retryCount,
-    ])
-
-    const handleErrorWithRetry = useCallback(
-      async (error: any, messageText: string) => {
-        setHasError(true)
-        const classified = ErrorClassifier.classify(error)
-        setErrorMessage(classified.message)
-        setRetryCount((prev) => prev + 1)
-
-        setConversationContext((prev) => ({
-          ...prev,
-          errorCount: prev.errorCount + 1,
-        }))
-
-        if (retryCount < 3) {
-          setPendingRetry({ text: messageText, retries: retryCount + 1 })
-          responseMonitorRef.current.startTimer(`retry-${Date.now()}`, "retry")
-        } else {
-          console.error("[RetryHandler] Max retries reached, showing fallback.", error)
-          setFallbackResponse(FallbackProvider.getFallback(error))
-        }
-      },
-      [retryCount],
-    )
-
-    const updateActivity = useCallback(() => {
-      lastActivityRef.current = Date.now()
-      setShowReEngagement(false)
-      setConversationContext((prev) => ({
-        ...prev,
-        lastMessageTime: Date.now(),
-      }))
-    }, [])
-
-    const handleRestoreSession = useCallback(() => {
-      if (recoverableSession) {
-        setConversationContext(recoverableSession.context)
-        setRecoverableSession(null)
-        sendMessage({ text: "Continue from where I left off" })
-      }
-    }, [recoverableSession, sendMessage])
-
-    const handleStartFresh = useCallback(() => {
-      SessionRecoveryManager.deleteSession(recoverableSession?.conversationId || "")
-      setRecoverableSession(null)
-    }, [recoverableSession])
-
-    const handleReEngagementContinue = useCallback(() => {
-      setShowReEngagement(false)
-      lastActivityRef.current = Date.now()
-      sendMessage({ text: "I'm still here" })
-    }, [sendMessage])
-
-    const handleRequestCallback = useCallback(async () => {
-      setShowReEngagement(false)
-
-      const result = await HumanEscalationService.requestEscalation({
-        conversationId,
-        reason: "customer_request",
-        customerData: conversationContext.contactInfo || undefined,
-        errorCount: conversationContext.errorCount,
-        stage: conversationContext.stage,
-        urgency: "medium",
-      })
-
-      if (result.success && result.ticketId) {
-        setEscalationResult({
-          ticketId: result.ticketId,
-          estimatedWait: result.estimatedWaitTime || "within 30 minutes",
-        })
-      } else {
-        sendMessage({ role: "user", content: "I'd like someone to call me please" })
-      }
-    }, [conversationId, conversationContext, sendMessage])
-
-    const handleSendMessageInternal = useCallback(
-      async (e?: React.FormEvent) => {
-        e?.preventDefault()
-        if (!inputValue.trim() || isLoading) return
-
-        updateActivity()
-        analyticsRef.current?.trackUserMessage()
-
-        if (detectHumanRequest(inputValue)) {
-          analyticsRef.current?.trackStageTransition("human_escalation")
-        }
-
-        sendMessage({ role: "user", content: inputValue })
-        setInputValue("")
-      },
-      [inputValue, isLoading, updateActivity, sendMessage],
-    )
-
-    const handleRetry = useCallback(() => {
-      setHasError(false)
-      setErrorMessage(null)
-      setHasStarted(false)
-      setConversationContext({
-        stage: "greeting" as ConversationStage,
-        businessConfirmed: false,
-        serviceType: null,
-        qualifyingAnswers: {},
-        inventoryItems: [],
-        locationOrigin: null,
-        locationDestination: null,
-        quoteAmount: null,
-        selectedDate: null,
-        contactInfo: null,
-        errorCount: 0,
-        lastMessageTime: Date.now(),
-        stageStartTime: Date.now(),
-      })
-      SessionRecoveryManager.deleteSession(conversationId)
-      window.location.reload()
-    }, [conversationId])
-
-    const handleCall = useCallback(() => {
-      window.location.href = "tel:+61388201801"
-    }, [])
-
-    const toggleListening = useCallback(() => {
-      if (!recognitionRef.current) return
-      if (isListening) {
-        recognitionRef.current.stop()
-        setIsListening(false)
-      } else {
-        if (synthRef.current) synthRef.current.cancel()
-        recognitionRef.current.start()
-        setIsListening(true)
-      }
-    }, [isListening])
-
-    const handleSelectBusiness = useCallback(
-      (business: BusinessResult) => {
-        if (isLoading) return
-        setConfirmedBusiness(business)
-        setBusinessLookupResults(null)
-        setHasError(false)
-        setErrorMessage(null)
-        setLastUserMessageTime(Date.now())
-        const messageText = `Yes, that's correct - ${business.name} (ABN: ${business.abn})`
-        setPendingRetry({ text: messageText, retries: 0 })
-        sendMessage({ role: "user", content: messageText })
-      },
-      [isLoading, sendMessage],
-    )
-
-    const handleSelectService = useCallback(
-      (service: ServiceOption) => {
-        if (isLoading) return
-        setShowServicePicker(false)
-        setCurrentStep("details")
-        setHasError(false)
-        setErrorMessage(null)
-        setLastUserMessageTime(Date.now())
-        const messageText = `I need ${service.name}. ${service.description ? `(${service.description})` : ""}`
-        setPendingRetry({ text: messageText, retries: 0 })
-        sendMessage({ role: "user", content: messageText })
-      },
-      [isLoading, sendMessage],
-    )
-
-    const handleSelectDate = useCallback(
-      (date: string) => {
-        if (isLoading) return
-        setSelectedDate(date)
-        setShowCalendar(false)
-        setHasError(false)
-        setErrorMessage(null)
-        setLastUserMessageTime(Date.now())
-        const formattedDate = new Date(date).toLocaleDateString("en-AU", {
-          weekday: "long",
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-        })
-        const messageText = `I'd like to book for ${formattedDate}`
-        setPendingRetry({ text: messageText, retries: 0 })
-        sendMessage({ role: "user", content: messageText })
-      },
-      [isLoading, sendMessage],
-    )
-
-    const handlePromptClick = useCallback(
-      (prompt: string) => {
-        if (isLoading) return
-        setShowInitialPrompts(false)
-        setHasError(false)
-        setErrorMessage(null)
-        setLastUserMessageTime(Date.now())
-        sendMessage({ role: "user", content: prompt })
-      },
-      [isLoading, sendMessage],
-    )
-
-    const handlePaymentComplete = useCallback(async () => {
-      setPaymentComplete(true)
-      setCurrentStep("complete")
-      if (currentQuote && contactInfo && selectedDate) {
-        setIsSubmittingLead(true)
-        try {
-          const res = await submitLead({
-            company_name: confirmedBusiness?.name || contactInfo.companyName || "",
-            contact_name: contactInfo.contactName,
-            email: contactInfo.email,
-            phone: contactInfo.phone,
-            move_type: currentQuote.moveTypeKey || "office",
-            origin_suburb: currentQuote.origin,
-            destination_suburb: currentQuote.destination,
-            estimated_total: currentQuote.estimatedTotal,
-            status: "won",
-            notes: `Deposit paid. Move scheduled for ${selectedDate}. ABN: ${confirmedBusiness?.abn || "N/A"}`,
-            scheduled_date: selectedDate,
-            deposit_amount: currentQuote.depositRequired,
-            deposit_paid: true,
-          })
-          if (res.success && res.lead) {
-            setSubmittedLeadData(res.lead)
-          }
-          setLeadSubmitted(true)
-        } catch (error) {
-          console.error("Failed to submit lead:", error)
-        } finally {
-          setIsSubmittingLead(false)
-        }
-      }
-      sendMessage({ role: "user", content: "I've completed the payment." })
-    }, [currentQuote, contactInfo, selectedDate, confirmedBusiness, sendMessage])
-
-    const renderMessageContent = useCallback((message: any) => {
-      if (message.parts) {
-        return message.parts
-          .map((part: any, index: number) => {
-            if (part.type === "text") {
-              return <span key={index}>{part.text}</span>
-            }
-            return null
-          })
-          .filter(Boolean)
-      }
-      if (typeof message.content === "string") {
-        return message.content
-      }
-      return null
-    }, [])
-
-    const handleSendMessage = useCallback(
-      async (text: string) => {
-        if (!text.trim() || isLoading) return
-
-        updateActivity()
-        setLastUserMessageTime(Date.now())
-
-        // Track analytics
-        analyticsRef.current?.trackEvent("message_sent", {
-          messageLength: text.length,
-          stage: conversationContext.stage,
-        })
-
-        // Start response monitoring
-        responseMonitorRef.current.startTimer(`msg-${Date.now()}`, "user_message")
-
-        try {
-          sendMessage({ text })
-        } catch (error) {
-          handleErrorWithRetry(error, text)
-        }
-      },
-      [isLoading, updateActivity, conversationContext.stage, sendMessage, handleErrorWithRetry],
-    )
-
-    const handleOptionSelect = useCallback(
-      (option: string) => {
-        updateActivity()
-        setLastUserMessageTime(Date.now())
-
-        analyticsRef.current?.trackEvent("option_selected", {
-          option,
-          stage: conversationContext.stage,
-        })
-
-        responseMonitorRef.current.startTimer(`msg-${Date.now()}`, "option_select")
-
-        try {
-          sendMessage({ text: option })
-        } catch (error) {
-          handleErrorWithRetry(error, option)
-        }
-      },
-      [updateActivity, conversationContext.stage, sendMessage, handleErrorWithRetry],
-    )
-
-    const retryLastMessage = useCallback(() => {
-      if (pendingRetry) {
-        setHasError(false)
-        setErrorMessage(null)
-        responseMonitorRef.current.startTimer(`retry-${Date.now()}`, "retry")
-
-        try {
-          sendMessage({ text: pendingRetry.text })
-        } catch (error) {
-          handleErrorWithRetry(error, pendingRetry.text)
-        }
-      }
-    }, [pendingRetry, sendMessage, handleErrorWithRetry])
-
-    // ============================================
-    // EFFECTS
-    // ============================================
-
-    // Idle check effect
-    useEffect(() => {
-      const checkIdle = () => {
-        const now = Date.now()
-        const idleMs = now - lastActivityRef.current
-        const idle = Math.floor(idleMs / 60000)
-
-        if (idle >= 3 && !showReEngagement && !isLoading && messages.length > 0) {
-          setIdleMinutes(idle)
-          setShowReEngagement(true)
-        }
-      }
-
-      idleTimerRef.current = setInterval(checkIdle, 30000)
-
-      return () => {
-        if (idleTimerRef.current) {
-          clearInterval(idleTimerRef.current)
-        }
-      }
-    }, [isLoading, messages.length, showReEngagement])
-
-    // Initialize analytics and check for recoverable session
-    useEffect(() => {
-      const session = SessionRecoveryManager.getMostRecentSession()
-      if (session) {
-        setRecoverableSession(session)
-      }
-
-      analyticsRef.current = new ConversationAnalytics(conversationId)
-
-      return () => {
-        analyticsRef.current?.sendMetrics()
-      }
-    }, [conversationId])
-
-    // Save session on context/messages change
-    useEffect(() => {
-      if (messages.length > 0 && conversationContext.stage !== "greeting") {
-        SessionRecoveryManager.saveSession(
-          conversationId,
-          conversationContext,
-          messages.map((m) => ({
-            id: m.id,
-            role: m.role as "user" | "assistant" | "system",
-            content: typeof m.content === "string" ? m.content : "",
-            timestamp: Date.now(),
-          })),
-        )
-      }
-    }, [messages, conversationContext, conversationId])
-
-    useEffect(() => {
-      const lastMessage = messages[messages.length - 1]
-      if (lastMessage?.role === "assistant") {
-        analyticsRef.current?.trackAssistantResponse()
-      }
-    }, [messages])
-
-    // Handle imperative methods
-    useImperativeHandle(ref, () => ({
-      open: () => {
-        setIsOpen(true)
-        setIsMinimized(false)
-      },
-    }))
-
-    // Response monitor timeout handler
-    useEffect(() => {
-      const monitor = responseMonitorRef.current
-
-      const unsubscribe = monitor.onTimeout((messageId) => {
-        console.warn(`[ResponseMonitor] Timeout detected for message: ${messageId}`)
-
-        const lastMessage = messages[messages.length - 1]
-        if (lastMessage?.role === "user" && pendingRetry && !isLoading) {
-          console.log("[ResponseMonitor] Triggering retry due to timeout")
-          handleErrorWithRetry(new Error("Response timeout"), pendingRetry.text)
-        }
-      })
-
-      return () => {
-        unsubscribe()
-      }
-    }, [messages, pendingRetry, isLoading, handleErrorWithRetry])
-
-    // Monitor response times
-    useEffect(() => {
-      if (lastUserMessageTime && !isLoading) {
-        const messageId = `msg-${lastUserMessageTime}`
-        const timeoutType = isInitialMessage ? "initial" : "normal"
-        responseMonitorRef.current.startTimer(messageId, timeoutType)
-
-        return () => {
-          responseMonitorRef.current.cancelTimer(messageId)
-        }
-      }
-    }, [lastUserMessageTime, isLoading, isInitialMessage])
-
-    // Initial message with health check
-    useEffect(() => {
-      if ((isOpen || embedded) && !hasStarted && messages.length === 0) {
-        setHasStarted(true)
-        setIsInitialMessage(true)
-
-        const checkHealth = async () => {
-          try {
-            const response = await fetch("/api/quote-assistant/health")
-            if (response.ok) {
-              const timer = setTimeout(() => {
-                setLastUserMessageTime(Date.now())
-                sendMessage({ text: "Hi, I'd like to get a quote for a commercial move." })
-              }, 800)
-              return () => clearTimeout(timer)
-            }
-          } catch (error) {
-            console.warn("[InitialMessage] Health check failed, proceeding anyway:", error)
-          }
-
-          const timer = setTimeout(() => {
-            setLastUserMessageTime(Date.now())
-            sendMessage({ text: "Hi, I'd like to get a quote for a commercial move." })
-          }, 800)
-          return () => clearTimeout(timer)
-        }
-
-        checkHealth()
-      }
-    }, [isOpen, embedded, hasStarted, messages.length, sendMessage])
-
-    // Check for reduced motion preference
-    useEffect(() => {
-      if (typeof window !== "undefined") {
-        const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)")
-        setPrefersReducedMotion(mediaQuery.matches)
-
-        const handleChange = (e: MediaQueryListEvent) => {
-          setPrefersReducedMotion(e.matches)
-        }
-
-        mediaQuery.addEventListener("change", handleChange)
-        return () => mediaQuery.removeEventListener("change", handleChange)
-      }
-    }, [])
-
-    // Track scroll position
-    useEffect(() => {
-      if (messagesEndRef.current) {
-        const container = messagesEndRef.current.parentElement
-        if (container) {
-          const handleScroll = () => {
-            const { scrollTop, scrollHeight, clientHeight } = container
-            const isNearBottom = scrollHeight - scrollTop - clientHeight < 100
-            setUserHasScrolledUp(!isNearBottom)
-          }
-
-          container.addEventListener("scroll", handleScroll)
-          return () => container.removeEventListener("scroll", handleScroll)
-        }
-      }
-    }, [])
-
-    // Auto-scroll to bottom
-    useEffect(() => {
-      if (messagesEndRef.current && !prefersReducedMotion && !userHasScrolledUp) {
-        const container = messagesEndRef.current.parentElement
-        if (container) {
-          container.scrollTo({
-            top: container.scrollHeight,
-            behavior: prefersReducedMotion ? "auto" : "smooth",
-          })
-        }
-      }
-    }, [
-      messages,
-      businessLookupResults,
-      currentQuote,
-      showCalendar,
-      showPayment,
-      showServicePicker,
-      prefersReducedMotion,
-      userHasScrolledUp,
-    ])
-
-    // Initialize speech synthesis
-    useEffect(() => {
-      if (typeof window !== "undefined") {
-        synthRef.current = window.speechSynthesis
-      }
-    }, [])
-
-    // Voice output for assistant messages
-    useEffect(() => {
-      if (!voiceEnabled || !synthRef.current) return
-      const lastMessage = messages[messages.length - 1]
-      if (lastMessage?.role === "assistant" && !isLoading) {
-        let textContent = ""
-        if (lastMessage.parts) {
-          lastMessage.parts.forEach((part: any) => {
-            if (part.type === "text") {
-              textContent += part.text
-            }
-          })
-        } else if (typeof (lastMessage as any).content === "string") {
-          textContent = (lastMessage as any).content
-        }
-
-        if (textContent && textContent.length < 500) {
-          const utterance = new SpeechSynthesisUtterance(textContent)
-          utterance.lang = "en-AU"
-          utterance.rate = 1.0
-          utterance.onstart = () => setIsSpeaking(true)
-          utterance.onend = () => setIsSpeaking(false)
-          synthRef.current.speak(utterance)
-        }
-      }
-    }, [messages, isLoading, voiceEnabled])
-
-    // Initialize speech recognition
-    useEffect(() => {
-      if (typeof window !== "undefined") {
-        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-        if (SpeechRecognition) {
-          const recognition = new SpeechRecognition()
-          recognition.continuous = false
-          recognition.interimResults = false
-          recognition.lang = "en-AU"
-          recognition.onresult = (event: any) => {
-            const transcript = event.results[0][0].transcript
-            setInputValue(transcript)
-            setIsListening(false)
-            setTimeout(() => {
-              setLastUserMessageTime(Date.now())
-              sendMessage({ role: "user", content: transcript })
-            }, 100)
-          }
-          recognition.onerror = (event: any) => {
-            console.error("Speech recognition error:", event.error)
-            setIsListening(false)
-          }
-          recognitionRef.current = recognition
-        }
-      }
-    }, [sendMessage])
-
-    useEffect(() => {
-      if (isOpen && isInitialMessage && messages.length === 0 && !isLoading) {
-        const timer = setTimeout(() => {
-          sendMessage({ text: "Hello" })
-        }, 500)
-        return () => clearTimeout(timer)
-      }
-    }, [isOpen, isInitialMessage, messages.length, isLoading, sendMessage])
-
-    return (
-      <div className="bg-background rounded-lg shadow-lg overflow-hidden w-full max-w-2xl">
-        {/* <!-- Quote Assistant Component Structure Here --> */}
-      </div>
-    )
-  },
-)
+export { QuoteAssistant }
+export type { QuoteAssistantRef }
+export default QuoteAssistant

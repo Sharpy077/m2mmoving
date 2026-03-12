@@ -4,17 +4,8 @@
  */
 
 import { z } from "zod"
-import { BaseAgent, type AgentInput, type AgentOutput, type AgentAction } from "../base-agent"
-import type {
-  AgentIdentity,
-  AgentConfig,
-  ToolDefinition,
-  InterAgentMessage,
-  DashboardMetrics,
-  Insight,
-  AgentMessage,
-  Lead,
-} from "../types"
+import { BaseAgent, type AgentInput, type AgentOutput } from "../base-agent"
+import type { AgentIdentity, AgentConfig, InterAgentMessage, DashboardMetrics, Insight } from "../types"
 
 // =============================================================================
 // ORACLE AGENT
@@ -25,12 +16,12 @@ export class OracleAgent extends BaseAgent {
   private analyticsConfig: AnalyticsConfig
   private insightsCache: Insight[] = []
   private metricsCache: DashboardMetrics | null = null
-  
+
   constructor(config?: Partial<AgentConfig>) {
     super({
       codename: "ORACLE_ANL",
       enabled: true,
-      model: "gpt-4o",
+      model: "anthropic/claude-sonnet-4-20250514",
       temperature: 0.3, // Lower temperature for analytical accuracy
       maxTokens: 2000,
       systemPrompt: ORACLE_SYSTEM_PROMPT,
@@ -59,14 +50,14 @@ export class OracleAgent extends BaseAgent {
       },
       ...config,
     })
-    
+
     this.analyticsConfig = DEFAULT_ANALYTICS_CONFIG
   }
-  
+
   // =============================================================================
   // IDENTITY
   // =============================================================================
-  
+
   protected getIdentity(): AgentIdentity {
     return {
       codename: "ORACLE_ANL",
@@ -86,11 +77,11 @@ export class OracleAgent extends BaseAgent {
       status: "idle",
     }
   }
-  
+
   // =============================================================================
   // TOOLS REGISTRATION
   // =============================================================================
-  
+
   protected registerTools(): void {
     // Get Dashboard Metrics
     this.registerTool({
@@ -106,7 +97,7 @@ export class OracleAgent extends BaseAgent {
       },
       handler: async (params) => this.getDashboardMetrics(params as MetricsParams),
     })
-    
+
     // Forecast Revenue
     this.registerTool({
       name: "forecastRevenue",
@@ -122,7 +113,7 @@ export class OracleAgent extends BaseAgent {
       },
       handler: async (params) => this.forecastRevenue(params as ForecastParams),
     })
-    
+
     // Analyze Pipeline
     this.registerTool({
       name: "analyzePipeline",
@@ -137,7 +128,7 @@ export class OracleAgent extends BaseAgent {
       },
       handler: async (params) => this.analyzePipeline(params as PipelineParams),
     })
-    
+
     // Get Channel Attribution
     this.registerTool({
       name: "getChannelAttribution",
@@ -146,13 +137,17 @@ export class OracleAgent extends BaseAgent {
         type: "object",
         properties: {
           period: { type: "string", description: "Analysis period" },
-          model: { type: "string", enum: ["first_touch", "last_touch", "linear", "time_decay"], description: "Attribution model" },
+          model: {
+            type: "string",
+            enum: ["first_touch", "last_touch", "linear", "time_decay"],
+            description: "Attribution model",
+          },
         },
         required: [],
       },
       handler: async (params) => this.getChannelAttribution(params as AttributionParams),
     })
-    
+
     // Detect Anomalies
     this.registerTool({
       name: "detectAnomalies",
@@ -167,7 +162,7 @@ export class OracleAgent extends BaseAgent {
       },
       handler: async (params) => this.detectAnomalies(params as AnomalyParams),
     })
-    
+
     // Generate Insights
     this.registerTool({
       name: "generateInsights",
@@ -175,14 +170,18 @@ export class OracleAgent extends BaseAgent {
       parameters: {
         type: "object",
         properties: {
-          focus: { type: "string", enum: ["revenue", "leads", "conversion", "efficiency", "all"], description: "Insight focus area" },
+          focus: {
+            type: "string",
+            enum: ["revenue", "leads", "conversion", "efficiency", "all"],
+            description: "Insight focus area",
+          },
           limit: { type: "number", description: "Maximum insights to generate" },
         },
         required: [],
       },
       handler: async (params) => this.generateInsights(params as InsightParams),
     })
-    
+
     // Get Agent Performance
     this.registerTool({
       name: "getAgentPerformance",
@@ -197,7 +196,7 @@ export class OracleAgent extends BaseAgent {
       },
       handler: async (params) => this.getAgentPerformance(params as AgentPerfParams),
     })
-    
+
     // Create Report
     this.registerTool({
       name: "createReport",
@@ -214,14 +213,14 @@ export class OracleAgent extends BaseAgent {
       handler: async (params) => this.createReport(params as ReportParams),
     })
   }
-  
+
   // =============================================================================
   // MAIN PROCESSING
   // =============================================================================
-  
+
   public async process(input: AgentInput): Promise<AgentOutput> {
     this.log("info", "process", `Processing input type: ${input.type}`)
-    
+
     try {
       switch (input.type) {
         case "message":
@@ -243,39 +242,39 @@ export class OracleAgent extends BaseAgent {
       }
     }
   }
-  
+
   /**
    * Handle incoming message
    */
   private async handleMessage(input: AgentInput): Promise<AgentOutput> {
     const content = input.content || ""
-    
+
     // Parse analytics requests
     if (content.includes("dashboard") || content.includes("metrics")) {
       return await this.handleMetricsRequest(input.metadata)
     }
-    
+
     if (content.includes("forecast") || content.includes("predict")) {
       return await this.handleForecastRequest(input.metadata)
     }
-    
+
     if (content.includes("pipeline") || content.includes("deals")) {
       return await this.handlePipelineRequest(input.metadata)
     }
-    
+
     if (content.includes("report")) {
       return await this.handleReportRequest(content, input.metadata)
     }
-    
+
     if (content.includes("insight") || content.includes("recommend")) {
       return await this.handleInsightRequest(input.metadata)
     }
-    
+
     // Default: generate analytical response
     const response = await this.generateResponse(input.messages || [])
     return { success: true, response }
   }
-  
+
   /**
    * Handle events
    */
@@ -284,7 +283,7 @@ export class OracleAgent extends BaseAgent {
     if (!event) {
       return { success: false, error: "No event provided" }
     }
-    
+
     switch (event.name) {
       case "lead_created":
         return await this.trackLeadCreation(event.data)
@@ -298,13 +297,13 @@ export class OracleAgent extends BaseAgent {
         return { success: false, error: `Unknown event: ${event.name}` }
     }
   }
-  
+
   /**
    * Handle scheduled tasks
    */
   private async handleScheduledTask(input: AgentInput): Promise<AgentOutput> {
     const taskType = input.metadata?.taskType as string
-    
+
     switch (taskType) {
       case "daily_analysis":
         return await this.runDailyAnalysis()
@@ -316,7 +315,7 @@ export class OracleAgent extends BaseAgent {
         return { success: false, error: `Unknown task: ${taskType}` }
     }
   }
-  
+
   /**
    * Handle handoff from another agent
    */
@@ -325,9 +324,9 @@ export class OracleAgent extends BaseAgent {
     if (!handoff) {
       return { success: false, error: "No handoff data provided" }
     }
-    
+
     this.log("info", "handleHandoff", `Received handoff from ${handoff.fromAgent}`)
-    
+
     // Analyze data from other agents
     return {
       success: true,
@@ -335,13 +334,13 @@ export class OracleAgent extends BaseAgent {
       data: { handoffId: handoff.id },
     }
   }
-  
+
   /**
    * Handle inter-agent messages
    */
   public async handleInterAgentMessage(message: InterAgentMessage): Promise<void> {
     this.log("info", "handleInterAgentMessage", `Message from ${message.from}: ${message.type}`)
-    
+
     switch (message.type) {
       case "notification":
         // Store insight from other agents
@@ -354,23 +353,23 @@ export class OracleAgent extends BaseAgent {
         break
     }
   }
-  
+
   // =============================================================================
   // ANALYSIS WORKFLOWS
   // =============================================================================
-  
+
   /**
    * Run daily analysis routine
    */
   private async runDailyAnalysis(): Promise<AgentOutput> {
     this.log("info", "runDailyAnalysis", "Starting daily analysis")
-    
+
     // Gather all metrics
     const metricsResult = await this.getDashboardMetrics({ period: "day", compareToLast: true })
     const pipelineResult = await this.analyzePipeline({ includeAtRisk: true })
     const anomaliesResult = await this.detectAnomalies({ sensitivity: "medium" })
     const insightsResult = await this.generateInsights({ focus: "all", limit: 5 })
-    
+
     // Build daily briefing
     const briefing = await this.buildDailyBriefing({
       metrics: metricsResult.data,
@@ -378,15 +377,16 @@ export class OracleAgent extends BaseAgent {
       anomalies: anomaliesResult.data,
       insights: insightsResult.data,
     })
-    
+
     // Notify CORTEX of important insights
-    const criticalInsights = ((insightsResult.data as any)?.insights || [])
-      .filter((i: Insight) => i.priority === "high")
-    
+    const criticalInsights = ((insightsResult.data as any)?.insights || []).filter(
+      (i: Insight) => i.priority === "high",
+    )
+
     for (const insight of criticalInsights) {
       await this.sendToAgent("CORTEX_MAIN", "notification", { insight })
     }
-    
+
     return {
       success: true,
       response: briefing,
@@ -398,22 +398,22 @@ export class OracleAgent extends BaseAgent {
       },
     }
   }
-  
+
   /**
    * Generate weekly report
    */
   private async generateWeeklyReport(): Promise<AgentOutput> {
     return await this.createReport({ type: "executive", period: "week", format: "detailed" })
   }
-  
+
   /**
    * Run anomaly scan
    */
   private async runAnomalyScan(): Promise<AgentOutput> {
     const result = await this.detectAnomalies({ sensitivity: "high" })
-    
+
     const anomalies = (result.data as any)?.anomalies || []
-    
+
     if (anomalies.length > 0) {
       // Alert on critical anomalies
       const critical = anomalies.filter((a: any) => a.severity === "critical")
@@ -422,21 +422,21 @@ export class OracleAgent extends BaseAgent {
           "compliance_issue",
           `Critical anomalies detected: ${critical.map((a: any) => a.description).join("; ")}`,
           { anomalies: critical },
-          "urgent"
+          "urgent",
         )
       }
     }
-    
+
     return result
   }
-  
+
   // =============================================================================
   // TOOL IMPLEMENTATIONS
   // =============================================================================
-  
+
   private async getDashboardMetrics(params: MetricsParams) {
     const period = params.period || "week"
-    
+
     // In production, query actual database/analytics
     const metrics: DashboardMetrics = {
       leads: {
@@ -470,9 +470,9 @@ export class OracleAgent extends BaseAgent {
         end: new Date(),
       },
     }
-    
+
     this.metricsCache = metrics
-    
+
     // Calculate comparisons if requested
     let comparison = null
     if (params.compareToLast) {
@@ -482,29 +482,29 @@ export class OracleAgent extends BaseAgent {
         conversion: "+3%",
       }
     }
-    
+
     return {
       success: true,
       data: { metrics, comparison },
     }
   }
-  
+
   private async forecastRevenue(params: ForecastParams) {
     const horizon = params.horizon || "quarter"
     const scenario = params.scenario || "base"
-    
+
     // Simple forecasting model
     const baseMonthly = 35000
-    const growthRate = scenario === "optimistic" ? 0.15 : scenario === "conservative" ? 0.05 : 0.10
-    
+    const growthRate = scenario === "optimistic" ? 0.15 : scenario === "conservative" ? 0.05 : 0.1
+
     const months = horizon === "month" ? 1 : horizon === "quarter" ? 3 : 12
     const forecast: ForecastData[] = []
-    
+
     for (let i = 1; i <= months; i++) {
       const projected = baseMonthly * Math.pow(1 + growthRate / 12, i)
       const date = new Date()
       date.setMonth(date.getMonth() + i)
-      
+
       forecast.push({
         period: date.toISOString().slice(0, 7),
         projected: Math.round(projected),
@@ -512,9 +512,9 @@ export class OracleAgent extends BaseAgent {
         high: Math.round(projected * 1.15),
       })
     }
-    
+
     const total = forecast.reduce((sum, f) => sum + f.projected, 0)
-    
+
     return {
       success: true,
       data: {
@@ -531,7 +531,7 @@ export class OracleAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async analyzePipeline(params: PipelineParams) {
     // Mock pipeline data
     const pipeline: PipelineStage[] = [
@@ -541,19 +541,27 @@ export class OracleAgent extends BaseAgent {
       { stage: "quoted", count: 12, value: 42000, avgDays: 8 },
       { stage: "negotiating", count: 6, value: 24000, avgDays: 12 },
     ]
-    
+
     const totalValue = pipeline.reduce((sum, s) => sum + s.value, 0)
     const totalDeals = pipeline.reduce((sum, s) => sum + s.count, 0)
-    
+
     // Calculate velocity
     const avgCycleTime = pipeline.reduce((sum, s) => sum + s.avgDays * s.count, 0) / totalDeals
-    
+
     // Identify at-risk deals
-    const atRisk = params.includeAtRisk ? [
-      { company: "TechCorp", value: 8500, daysStalled: 14, stage: "quoted", reason: "No response to follow-ups" },
-      { company: "FinanceHub", value: 12000, daysStalled: 10, stage: "negotiating", reason: "Competitor evaluation" },
-    ] : []
-    
+    const atRisk = params.includeAtRisk
+      ? [
+          { company: "TechCorp", value: 8500, daysStalled: 14, stage: "quoted", reason: "No response to follow-ups" },
+          {
+            company: "FinanceHub",
+            value: 12000,
+            daysStalled: 10,
+            stage: "negotiating",
+            reason: "Competitor evaluation",
+          },
+        ]
+      : []
+
     return {
       success: true,
       data: {
@@ -576,10 +584,10 @@ export class OracleAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async getChannelAttribution(params: AttributionParams) {
     const model = params.model || "linear"
-    
+
     // Mock attribution data
     const attribution: ChannelAttribution[] = [
       { channel: "Organic Search", firstTouch: 32, lastTouch: 18, linear: 25, revenue: 28500 },
@@ -588,7 +596,7 @@ export class OracleAgent extends BaseAgent {
       { channel: "Referral", firstTouch: 12, lastTouch: 15, linear: 15, revenue: 21500 },
       { channel: "Direct", firstTouch: 10, lastTouch: 10, linear: 10, revenue: 6500 },
     ]
-    
+
     return {
       success: true,
       data: {
@@ -606,10 +614,10 @@ export class OracleAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async detectAnomalies(params: AnomalyParams) {
     const sensitivity = params.sensitivity || "medium"
-    
+
     // Mock anomaly detection
     const anomalies: Anomaly[] = [
       {
@@ -622,7 +630,7 @@ export class OracleAgent extends BaseAgent {
         possibleCauses: ["High volume", "Agent availability"],
       },
     ]
-    
+
     return {
       success: true,
       data: {
@@ -633,18 +641,19 @@ export class OracleAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async generateInsights(params: InsightParams) {
     const focus = params.focus || "all"
     const limit = params.limit || 10
-    
+
     const allInsights: Insight[] = [
       {
         id: this.generateId(),
         type: "opportunity",
         priority: "high",
         title: "Data Center moves converting at 45%",
-        description: "Data center migration leads are converting at nearly double the average rate. Consider increasing targeting and budget for this segment.",
+        description:
+          "Data center migration leads are converting at nearly double the average rate. Consider increasing targeting and budget for this segment.",
         actionable: true,
         suggestedAction: "Shift 20% of Google Ads budget to data center keywords",
         createdAt: new Date(),
@@ -654,7 +663,8 @@ export class OracleAgent extends BaseAgent {
         type: "alert",
         priority: "medium",
         title: "Pipeline velocity slowed by 2.3 days",
-        description: "Deals are taking longer to progress through stages compared to last month. Main bottleneck is quoted → negotiating.",
+        description:
+          "Deals are taking longer to progress through stages compared to last month. Main bottleneck is quoted → negotiating.",
         actionable: true,
         suggestedAction: "Implement 48hr follow-up SLA for quotes > $10K",
         createdAt: new Date(),
@@ -664,7 +674,8 @@ export class OracleAgent extends BaseAgent {
         type: "recommendation",
         priority: "medium",
         title: "Thursday-Friday quotes have highest close rate",
-        description: "Quotes sent Thursday-Friday close at 38% vs 22% for Monday-Wednesday. Timing optimization could improve conversions.",
+        description:
+          "Quotes sent Thursday-Friday close at 38% vs 22% for Monday-Wednesday. Timing optimization could improve conversions.",
         actionable: true,
         suggestedAction: "Prioritize quote delivery for end of week",
         createdAt: new Date(),
@@ -674,31 +685,34 @@ export class OracleAgent extends BaseAgent {
         type: "opportunity",
         priority: "low",
         title: "LinkedIn engagement up 23% WoW",
-        description: "LinkedIn content is resonating. Educational posts about IT equipment handling performing particularly well.",
+        description:
+          "LinkedIn content is resonating. Educational posts about IT equipment handling performing particularly well.",
         actionable: true,
         suggestedAction: "Create more IT-focused content series",
         createdAt: new Date(),
       },
     ]
-    
+
     // Filter by focus area if specified
     let filtered = allInsights
     if (focus !== "all") {
-      filtered = allInsights.filter(i => {
-        if (focus === "revenue") return i.title.toLowerCase().includes("revenue") || i.title.toLowerCase().includes("converting")
+      filtered = allInsights.filter((i) => {
+        if (focus === "revenue")
+          return i.title.toLowerCase().includes("revenue") || i.title.toLowerCase().includes("converting")
         if (focus === "leads") return i.title.toLowerCase().includes("lead")
-        if (focus === "conversion") return i.title.toLowerCase().includes("convert") || i.title.toLowerCase().includes("close")
+        if (focus === "conversion")
+          return i.title.toLowerCase().includes("convert") || i.title.toLowerCase().includes("close")
         return true
       })
     }
-    
+
     // Sort by priority and limit
     const priorityOrder = { high: 0, medium: 1, low: 2 }
     filtered.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority])
     filtered = filtered.slice(0, limit)
-    
+
     this.insightsCache = filtered
-    
+
     return {
       success: true,
       data: {
@@ -708,10 +722,10 @@ export class OracleAgent extends BaseAgent {
       },
     }
   }
-  
+
   private async getAgentPerformance(params: AgentPerfParams) {
     const period = params.period || "week"
-    
+
     // Get performance data for all agents or specific one
     const performance: Record<string, AgentPerf> = {
       MAYA_SALES: {
@@ -751,7 +765,7 @@ export class OracleAgent extends BaseAgent {
         topActions: ["generateSocialPost", "generateBlogPost", "schedulePost"],
       },
     }
-    
+
     if (params.agentCodename) {
       return {
         success: true,
@@ -762,22 +776,22 @@ export class OracleAgent extends BaseAgent {
         },
       }
     }
-    
+
     return {
       success: true,
       data: { performance, period },
     }
   }
-  
+
   private async createReport(params: ReportParams) {
     const reportType = params.type
     const period = params.period || "week"
-    
+
     // Gather data for report
     const metrics = await this.getDashboardMetrics({ period })
     const pipeline = await this.analyzePipeline({})
     const insights = await this.generateInsights({ focus: "all", limit: 5 })
-    
+
     // Generate report using LLM
     const reportContent = await this.generateStructuredResponse(
       `Generate a ${params.format || "summary"} ${reportType} report for M&M Commercial Moving.
@@ -803,18 +817,20 @@ Format as a professional business report with:
       z.object({
         title: z.string(),
         executiveSummary: z.string(),
-        keyMetrics: z.array(z.object({
-          name: z.string(),
-          value: z.string(),
-          trend: z.string(),
-        })),
+        keyMetrics: z.array(
+          z.object({
+            name: z.string(),
+            value: z.string(),
+            trend: z.string(),
+          }),
+        ),
         highlights: z.array(z.string()),
         concerns: z.array(z.string()),
         recommendations: z.array(z.string()),
         nextSteps: z.array(z.string()),
-      })
+      }),
     )
-    
+
     return {
       success: true,
       data: {
@@ -825,11 +841,11 @@ Format as a professional business report with:
       },
     }
   }
-  
+
   // =============================================================================
   // HELPER METHODS
   // =============================================================================
-  
+
   private async handleMetricsRequest(metadata?: Record<string, unknown>): Promise<AgentOutput> {
     const result = await this.getDashboardMetrics({ period: "week", compareToLast: true })
     return {
@@ -838,7 +854,7 @@ Format as a professional business report with:
       data: result.data,
     }
   }
-  
+
   private async handleForecastRequest(metadata?: Record<string, unknown>): Promise<AgentOutput> {
     const result = await this.forecastRevenue({ horizon: "quarter", scenario: "base", includeBreakdown: true })
     return {
@@ -847,7 +863,7 @@ Format as a professional business report with:
       data: result.data,
     }
   }
-  
+
   private async handlePipelineRequest(metadata?: Record<string, unknown>): Promise<AgentOutput> {
     const result = await this.analyzePipeline({ includeAtRisk: true })
     return {
@@ -856,16 +872,16 @@ Format as a professional business report with:
       data: result.data,
     }
   }
-  
+
   private async handleReportRequest(content: string, metadata?: Record<string, unknown>): Promise<AgentOutput> {
-    let reportType: string = "executive"
+    let reportType = "executive"
     if (content.includes("marketing")) reportType = "marketing"
     if (content.includes("sales")) reportType = "sales"
     if (content.includes("operations")) reportType = "operations"
-    
+
     return await this.createReport({ type: reportType, format: "summary" })
   }
-  
+
   private async handleInsightRequest(metadata?: Record<string, unknown>): Promise<AgentOutput> {
     const result = await this.generateInsights({ focus: "all", limit: 5 })
     return {
@@ -874,28 +890,28 @@ Format as a professional business report with:
       data: result.data,
     }
   }
-  
+
   private async trackLeadCreation(data: Record<string, unknown>): Promise<AgentOutput> {
     return { success: true, response: "Lead tracked." }
   }
-  
+
   private async trackDealWon(data: Record<string, unknown>): Promise<AgentOutput> {
     return { success: true, response: "Deal win tracked." }
   }
-  
+
   private async trackDealLost(data: Record<string, unknown>): Promise<AgentOutput> {
     return { success: true, response: "Deal loss tracked." }
   }
-  
+
   private async processMetricUpdate(data: Record<string, unknown>): Promise<AgentOutput> {
     return { success: true, response: "Metric updated." }
   }
-  
+
   private async buildDailyBriefing(data: any): Promise<string> {
     const { metrics, insights } = data
     const m = metrics?.metrics as DashboardMetrics
     const ins = insights?.insights as Insight[]
-    
+
     return `📊 **Daily Briefing - ${new Date().toLocaleDateString("en-AU")}**
 
 **Key Metrics**
@@ -904,16 +920,27 @@ Format as a professional business report with:
 • Closed Revenue: $${((m?.revenue.closed || 0) / 1000).toFixed(0)}K
 
 **Top Insights**
-${ins?.slice(0, 3).map(i => `• ${i.title}`).join("\n") || "No insights generated"}
+${
+  ins
+    ?.slice(0, 3)
+    .map((i) => `• ${i.title}`)
+    .join("\n") || "No insights generated"
+}
 
 **Recommended Actions**
-${ins?.filter(i => i.actionable).slice(0, 2).map(i => `• ${i.suggestedAction}`).join("\n") || "No actions recommended"}`
+${
+  ins
+    ?.filter((i) => i.actionable)
+    .slice(0, 2)
+    .map((i) => `• ${i.suggestedAction}`)
+    .join("\n") || "No actions recommended"
+}`
   }
-  
+
   private formatMetricsResponse(data: any): string {
     const m = data?.metrics as DashboardMetrics
     if (!m) return "Unable to retrieve metrics."
-    
+
     return `Here's your metrics summary:
 
 📈 **Leads**: ${m.leads.total} total, ${m.leads.new} new this period
@@ -921,10 +948,10 @@ ${ins?.filter(i => i.actionable).slice(0, 2).map(i => `• ${i.suggestedAction}`
 📊 **Conversion Rate**: ${m.leads.conversionRate.toFixed(1)}%
 🚀 **Growth**: ${m.revenue.growth > 0 ? "+" : ""}${m.revenue.growth.toFixed(1)}%`
   }
-  
+
   private formatForecastResponse(data: any): string {
     if (!data) return "Unable to generate forecast."
-    
+
     return `**Revenue Forecast (${data.scenario} scenario)**
 
 Total ${data.horizon} forecast: $${(data.totalForecast / 1000).toFixed(0)}K
@@ -932,10 +959,10 @@ Confidence: ${data.confidence}%
 
 ${data.breakdown ? data.breakdown.map((b: any) => `• ${b.period}: $${(b.projected / 1000).toFixed(0)}K`).join("\n") : ""}`
   }
-  
+
   private formatPipelineResponse(data: any): string {
     if (!data) return "Unable to analyze pipeline."
-    
+
     const s = data.summary
     return `**Pipeline Analysis**
 
@@ -947,16 +974,20 @@ Health Score: ${data.health.score}/100 (${data.health.status})
 
 ${data.atRisk.length > 0 ? `⚠️ At-Risk Deals:\n${data.atRisk.map((d: any) => `• ${d.company}: $${(d.value / 1000).toFixed(1)}K - ${d.reason}`).join("\n")}` : "No at-risk deals identified."}`
   }
-  
+
   private formatInsightsResponse(data: any): string {
     const insights = data?.insights as Insight[]
     if (!insights || insights.length === 0) return "No insights available."
-    
+
     return `**Top Insights**
 
-${insights.map((i, idx) => `${idx + 1}. ${i.priority === "high" ? "🔴" : i.priority === "medium" ? "🟡" : "🟢"} **${i.title}**
+${insights
+  .map(
+    (i, idx) => `${idx + 1}. ${i.priority === "high" ? "🔴" : i.priority === "medium" ? "🟡" : "🟢"} **${i.title}**
    ${i.description}
-   ${i.suggestedAction ? `→ *Action: ${i.suggestedAction}*` : ""}`).join("\n\n")}`
+   ${i.suggestedAction ? `→ *Action: ${i.suggestedAction}*` : ""}`,
+  )
+  .join("\n\n")}`
   }
 }
 

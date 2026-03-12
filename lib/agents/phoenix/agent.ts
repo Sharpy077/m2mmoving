@@ -1,17 +1,5 @@
-/**
- * PHOENIX - Retention & Loyalty Agent
- * Customer re-engagement, referral programs, and lifetime value maximization
- */
-
-import { z } from "zod"
-import { BaseAgent, type AgentInput, type AgentOutput, type AgentAction } from "../base-agent"
-import type {
-  AgentIdentity,
-  AgentConfig,
-  InterAgentMessage,
-  CustomerProfile,
-  AgentMessage,
-} from "../types"
+import { BaseAgent, type AgentInput, type AgentOutput } from "../base-agent"
+import type { AgentIdentity, AgentConfig, InterAgentMessage } from "../types"
 
 // =============================================================================
 // PHOENIX AGENT
@@ -20,12 +8,12 @@ import type {
 export class PhoenixAgent extends BaseAgent {
   private retentionConfig: RetentionConfig
   private customerJourneys: Map<string, CustomerJourney> = new Map()
-  
+
   constructor(config?: Partial<AgentConfig>) {
     super({
       codename: "PHOENIX_RET",
       enabled: true,
-      model: "gpt-4o",
+      model: "anthropic/claude-sonnet-4-20250514",
       temperature: 0.7,
       maxTokens: 1500,
       systemPrompt: PHOENIX_SYSTEM_PROMPT,
@@ -54,10 +42,10 @@ export class PhoenixAgent extends BaseAgent {
       },
       ...config,
     })
-    
+
     this.retentionConfig = DEFAULT_RETENTION_CONFIG
   }
-  
+
   protected getIdentity(): AgentIdentity {
     return {
       codename: "PHOENIX_RET",
@@ -77,7 +65,7 @@ export class PhoenixAgent extends BaseAgent {
       status: "idle",
     }
   }
-  
+
   protected registerTools(): void {
     this.registerTool({
       name: "sendSatisfactionSurvey",
@@ -94,7 +82,7 @@ export class PhoenixAgent extends BaseAgent {
       },
       handler: async (params) => this.sendSatisfactionSurvey(params as SurveyParams),
     })
-    
+
     this.registerTool({
       name: "requestReview",
       description: "Request a review from a satisfied customer",
@@ -109,7 +97,7 @@ export class PhoenixAgent extends BaseAgent {
       },
       handler: async (params) => this.requestReview(params as ReviewParams),
     })
-    
+
     this.registerTool({
       name: "sendReferralInvite",
       description: "Send a referral program invitation",
@@ -124,7 +112,7 @@ export class PhoenixAgent extends BaseAgent {
       },
       handler: async (params) => this.sendReferralInvite(params as ReferralParams),
     })
-    
+
     this.registerTool({
       name: "offerLoyaltyReward",
       description: "Offer a loyalty reward to a customer",
@@ -140,7 +128,7 @@ export class PhoenixAgent extends BaseAgent {
       },
       handler: async (params) => this.offerLoyaltyReward(params as RewardParams),
     })
-    
+
     this.registerTool({
       name: "createWinBackCampaign",
       description: "Create a win-back campaign for churned/inactive customers",
@@ -148,14 +136,18 @@ export class PhoenixAgent extends BaseAgent {
         type: "object",
         properties: {
           customerIds: { type: "array", description: "List of customer IDs" },
-          campaignType: { type: "string", enum: ["discount", "personal_outreach", "new_service"], description: "Campaign type" },
+          campaignType: {
+            type: "string",
+            enum: ["discount", "personal_outreach", "new_service"],
+            description: "Campaign type",
+          },
           offerValue: { type: "number", description: "Discount/offer value" },
         },
         required: ["customerIds", "campaignType"],
       },
       handler: async (params) => this.createWinBackCampaign(params as WinBackParams),
     })
-    
+
     this.registerTool({
       name: "trackNPS",
       description: "Record and process an NPS score",
@@ -171,7 +163,7 @@ export class PhoenixAgent extends BaseAgent {
       },
       handler: async (params) => this.trackNPS(params as NPSParams),
     })
-    
+
     this.registerTool({
       name: "scheduleAnniversaryOutreach",
       description: "Schedule anniversary milestone outreach",
@@ -179,14 +171,18 @@ export class PhoenixAgent extends BaseAgent {
         type: "object",
         properties: {
           customerId: { type: "string", description: "Customer ID" },
-          anniversaryType: { type: "string", enum: ["move", "first_contact", "referral"], description: "Anniversary type" },
+          anniversaryType: {
+            type: "string",
+            enum: ["move", "first_contact", "referral"],
+            description: "Anniversary type",
+          },
           message: { type: "string", description: "Custom message" },
         },
         required: ["customerId", "anniversaryType"],
       },
       handler: async (params) => this.scheduleAnniversaryOutreach(params as AnniversaryParams),
     })
-    
+
     this.registerTool({
       name: "generateTestimonialRequest",
       description: "Generate and send a testimonial request",
@@ -202,10 +198,10 @@ export class PhoenixAgent extends BaseAgent {
       handler: async (params) => this.generateTestimonialRequest(params as TestimonialParams),
     })
   }
-  
+
   public async process(input: AgentInput): Promise<AgentOutput> {
     this.log("info", "process", `Processing input type: ${input.type}`)
-    
+
     try {
       switch (input.type) {
         case "message":
@@ -224,16 +220,16 @@ export class PhoenixAgent extends BaseAgent {
       return { success: false, error: error instanceof Error ? error.message : "Processing failed" }
     }
   }
-  
+
   private async handleMessage(input: AgentInput): Promise<AgentOutput> {
     const response = await this.generateResponse(input.messages || [])
     return { success: true, response }
   }
-  
+
   private async handleEvent(input: AgentInput): Promise<AgentOutput> {
     const event = input.event
     if (!event) return { success: false, error: "No event provided" }
-    
+
     switch (event.name) {
       case "move_completed":
         return await this.initiatePostMoveSequence(event.data)
@@ -247,10 +243,10 @@ export class PhoenixAgent extends BaseAgent {
         return { success: false, error: `Unknown event: ${event.name}` }
     }
   }
-  
+
   private async handleScheduledTask(input: AgentInput): Promise<AgentOutput> {
     const taskType = input.metadata?.taskType as string
-    
+
     switch (taskType) {
       case "daily_retention_check":
         return await this.runDailyRetentionCheck()
@@ -260,31 +256,31 @@ export class PhoenixAgent extends BaseAgent {
         return { success: false, error: `Unknown task: ${taskType}` }
     }
   }
-  
+
   private async handleHandoffInput(input: AgentInput): Promise<AgentOutput> {
     const handoff = input.handoff
     if (!handoff) return { success: false, error: "No handoff data" }
-    
+
     // Handle handoffs from SENTINEL (positive feedback) or MAYA (deal won)
     if (handoff.fromAgent === "SENTINEL_CS" || handoff.fromAgent === "MAYA_SALES") {
       return await this.initiatePostMoveSequence(handoff.context)
     }
-    
+
     return { success: true, response: "Handoff received" }
   }
-  
+
   public async handleInterAgentMessage(message: InterAgentMessage): Promise<void> {
     this.log("info", "handleInterAgentMessage", `Message from ${message.from}`)
   }
-  
+
   // =============================================================================
   // RETENTION WORKFLOWS
   // =============================================================================
-  
+
   private async initiatePostMoveSequence(data: Record<string, unknown>): Promise<AgentOutput> {
     const customerId = data.customerId as string
     const bookingId = data.bookingId as string
-    
+
     const journey: CustomerJourney = {
       customerId,
       bookingId,
@@ -292,44 +288,44 @@ export class PhoenixAgent extends BaseAgent {
       startedAt: new Date(),
       actions: [],
     }
-    
+
     // Schedule sequence
     const sequence = this.retentionConfig.postMoveSequence
-    
+
     // Day 1: Thank you
     journey.actions.push({ type: "thank_you_email", scheduledFor: new Date(), status: "pending" })
-    
+
     // Day 7: Satisfaction survey
     const day7 = new Date()
     day7.setDate(day7.getDate() + 7)
     journey.actions.push({ type: "satisfaction_survey", scheduledFor: day7, status: "pending" })
-    
+
     // Day 30: Review request
     const day30 = new Date()
     day30.setDate(day30.getDate() + 30)
     journey.actions.push({ type: "review_request", scheduledFor: day30, status: "pending" })
-    
+
     // Day 90: Referral invite
     const day90 = new Date()
     day90.setDate(day90.getDate() + 90)
     journey.actions.push({ type: "referral_invite", scheduledFor: day90, status: "pending" })
-    
+
     this.customerJourneys.set(customerId, journey)
-    
+
     // Hand off to AURORA for content
     await this.requestHandoff("AURORA_MKT", "Create thank you email content", { customerId, bookingId }, "low")
-    
+
     return {
       success: true,
       response: "Post-move retention sequence initiated",
       data: { journey },
     }
   }
-  
+
   private async processNPSResponse(data: Record<string, unknown>): Promise<AgentOutput> {
     const score = data.score as number
     const customerId = data.customerId as string
-    
+
     if (score >= 9) {
       // Promoter - request review and referral
       await this.requestReview({ customerId, platform: "google" })
@@ -345,32 +341,32 @@ export class PhoenixAgent extends BaseAgent {
       return { success: true, response: "Detractor escalated for recovery" }
     }
   }
-  
+
   private async handleAnniversary(data: Record<string, unknown>): Promise<AgentOutput> {
     const customerId = data.customerId as string
     await this.scheduleAnniversaryOutreach({ customerId, anniversaryType: "move" })
     return { success: true, response: "Anniversary outreach scheduled" }
   }
-  
+
   private async handleReferralCompleted(data: Record<string, unknown>): Promise<AgentOutput> {
     const referrerId = data.referrerId as string
     await this.offerLoyaltyReward({ customerId: referrerId, rewardType: "credit", value: 100, reason: "referral" })
     return { success: true, response: "Referral reward issued" }
   }
-  
+
   private async runDailyRetentionCheck(): Promise<AgentOutput> {
     // Check for customers due for outreach
     return { success: true, response: "Daily retention check completed" }
   }
-  
+
   private async processWinBackSequence(): Promise<AgentOutput> {
     return { success: true, response: "Win-back sequence processed" }
   }
-  
+
   // =============================================================================
   // TOOL IMPLEMENTATIONS
   // =============================================================================
-  
+
   private async sendSatisfactionSurvey(params: SurveyParams) {
     this.log("info", "sendSatisfactionSurvey", `Sending ${params.surveyType || "nps"} survey`, params)
     return {
@@ -378,7 +374,7 @@ export class PhoenixAgent extends BaseAgent {
       data: { surveyId: this.generateId(), status: "sent", channel: params.channel || "email" },
     }
   }
-  
+
   private async requestReview(params: ReviewParams) {
     this.log("info", "requestReview", `Requesting ${params.platform} review`, params)
     return {
@@ -386,7 +382,7 @@ export class PhoenixAgent extends BaseAgent {
       data: { requestId: this.generateId(), platform: params.platform, status: "sent" },
     }
   }
-  
+
   private async sendReferralInvite(params: ReferralParams) {
     const referralCode = params.referralCode || `REF-${params.customerId.slice(0, 8).toUpperCase()}`
     this.log("info", "sendReferralInvite", `Sending referral invite`, params)
@@ -395,7 +391,7 @@ export class PhoenixAgent extends BaseAgent {
       data: { referralCode, programType: params.programType || "standard", status: "sent" },
     }
   }
-  
+
   private async offerLoyaltyReward(params: RewardParams) {
     this.log("info", "offerLoyaltyReward", `Offering ${params.rewardType} reward`, params)
     return {
@@ -403,7 +399,7 @@ export class PhoenixAgent extends BaseAgent {
       data: { rewardId: this.generateId(), type: params.rewardType, value: params.value, status: "issued" },
     }
   }
-  
+
   private async createWinBackCampaign(params: WinBackParams) {
     this.log("info", "createWinBackCampaign", `Creating win-back campaign for ${params.customerIds.length} customers`)
     return {
@@ -411,7 +407,7 @@ export class PhoenixAgent extends BaseAgent {
       data: { campaignId: this.generateId(), customersTargeted: params.customerIds.length, status: "created" },
     }
   }
-  
+
   private async trackNPS(params: NPSParams) {
     const category = params.score >= 9 ? "promoter" : params.score >= 7 ? "passive" : "detractor"
     this.log("info", "trackNPS", `NPS ${params.score} (${category})`, params)
@@ -420,7 +416,7 @@ export class PhoenixAgent extends BaseAgent {
       data: { score: params.score, category, feedback: params.feedback },
     }
   }
-  
+
   private async scheduleAnniversaryOutreach(params: AnniversaryParams) {
     this.log("info", "scheduleAnniversaryOutreach", `Scheduling ${params.anniversaryType} anniversary`, params)
     return {
@@ -428,7 +424,7 @@ export class PhoenixAgent extends BaseAgent {
       data: { outreachId: this.generateId(), type: params.anniversaryType, status: "scheduled" },
     }
   }
-  
+
   private async generateTestimonialRequest(params: TestimonialParams) {
     this.log("info", "generateTestimonialRequest", `Requesting ${params.format || "written"} testimonial`, params)
     return {
@@ -505,14 +501,49 @@ interface JourneyAction {
   status: "pending" | "completed" | "skipped"
 }
 
-interface SurveyParams { customerId: string; bookingId?: string; channel?: string; surveyType?: string }
-interface ReviewParams { customerId: string; platform: string; incentive?: string }
-interface ReferralParams { customerId: string; programType?: string; referralCode?: string }
-interface RewardParams { customerId: string; rewardType: string; value?: number; reason?: string }
-interface WinBackParams { customerIds: string[]; campaignType: string; offerValue?: number }
-interface NPSParams { customerId: string; score: number; feedback?: string; bookingId?: string }
-interface AnniversaryParams { customerId: string; anniversaryType: string; message?: string }
-interface TestimonialParams { customerId: string; format?: string; incentive?: string }
+interface SurveyParams {
+  customerId: string
+  bookingId?: string
+  channel?: string
+  surveyType?: string
+}
+interface ReviewParams {
+  customerId: string
+  platform: string
+  incentive?: string
+}
+interface ReferralParams {
+  customerId: string
+  programType?: string
+  referralCode?: string
+}
+interface RewardParams {
+  customerId: string
+  rewardType: string
+  value?: number
+  reason?: string
+}
+interface WinBackParams {
+  customerIds: string[]
+  campaignType: string
+  offerValue?: number
+}
+interface NPSParams {
+  customerId: string
+  score: number
+  feedback?: string
+  bookingId?: string
+}
+interface AnniversaryParams {
+  customerId: string
+  anniversaryType: string
+  message?: string
+}
+interface TestimonialParams {
+  customerId: string
+  format?: string
+  incentive?: string
+}
 
 // =============================================================================
 // FACTORY
