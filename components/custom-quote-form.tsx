@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -15,6 +15,7 @@ import { submitLead } from "@/app/actions/leads"
 import { validateEmail, validatePhone } from "@/lib/validation"
 import { cn } from "@/lib/utils"
 import { useBeforeUnload } from "@/hooks/use-beforeunload"
+import { useFormPersistence } from "@/hooks/use-form-persistence"
 
 const businessTypes = [
   "Corporate Office",
@@ -46,6 +47,7 @@ export function CustomQuoteForm() {
   const [selectedRequirements, setSelectedRequirements] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [showDraftBanner, setShowDraftBanner] = useState(false)
   
   // Validation state
   const [touched, setTouched] = useState<Record<string, boolean>>({})
@@ -79,6 +81,40 @@ export function CustomQuoteForm() {
 
   // Warn before leaving with unsaved changes
   useBeforeUnload(hasUnsavedChanges)
+
+  const persistedState = { formData, selectedRequirements }
+  const { loadSavedData, clearSavedData } = useFormPersistence(
+    persistedState,
+    'custom-quote-draft',
+    !submitted
+  )
+
+  // Show draft banner on mount if there's saved data
+  useEffect(() => {
+    if (!submitted) {
+      const saved = loadSavedData()
+      if (saved && (saved.formData?.email || saved.formData?.fullName || saved.formData?.companyName)) {
+        setShowDraftBanner(true)
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const restoreDraft = () => {
+    const saved = loadSavedData()
+    if (saved) {
+      if (saved.formData) setFormData(saved.formData)
+      if (saved.selectedRequirements) setSelectedRequirements(saved.selectedRequirements)
+    }
+    setShowDraftBanner(false)
+  }
+
+  // Clear draft on successful submission
+  useEffect(() => {
+    if (submitted) {
+      clearSavedData()
+    }
+  }, [submitted, clearSavedData])
 
   const updateFormData = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -200,6 +236,25 @@ export function CustomQuoteForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {showDraftBanner && (
+        <div className="bg-primary/10 border border-primary/30 rounded p-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-primary" />
+            <span className="text-sm">You have a saved draft. Would you like to continue?</span>
+          </div>
+          <div className="flex gap-2">
+            <Button type="button" size="sm" onClick={restoreDraft}>Restore</Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => { clearSavedData(); setShowDraftBanner(false) }}
+            >
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      )}
       {/* Contact Information */}
       <Card className="border-border bg-card">
         <CardHeader className="border-b border-border">

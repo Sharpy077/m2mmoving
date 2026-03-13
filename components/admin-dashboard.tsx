@@ -47,6 +47,8 @@ interface AdminDashboardProps {
   initialLeads: Lead[]
 }
 
+const PAGE_SIZE = 25
+
 export function AdminDashboard({ initialLeads }: AdminDashboardProps) {
   const [leads, setLeads] = useState<Lead[]>(initialLeads)
   const [searchTerm, setSearchTerm] = useState("")
@@ -55,20 +57,27 @@ export function AdminDashboard({ initialLeads }: AdminDashboardProps) {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [editNotes, setEditNotes] = useState("")
   const [isSaving, setIsSaving] = useState(false)
+  const [savingLeadId, setSavingLeadId] = useState<string | null>(null)
+  const [page, setPage] = useState(0)
 
-  const filteredLeads = useMemo(
-    () =>
-      filterLeads(leads, {
-        searchTerm,
-        status: statusFilter,
-        type: typeFilter,
-      }),
-    [leads, searchTerm, statusFilter, typeFilter],
-  )
+  const filteredLeads = useMemo(() => {
+    setPage(0)
+    return filterLeads(leads, {
+      searchTerm,
+      status: statusFilter,
+      type: typeFilter,
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leads, searchTerm, statusFilter, typeFilter])
+
+  const totalPages = Math.max(1, Math.ceil(filteredLeads.length / PAGE_SIZE))
+  const pagedLeads = filteredLeads.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
   const stats = useMemo(() => computeLeadStats(leads), [leads])
 
   const handleStatusChange = async (leadId: string, newStatus: string) => {
+    if (savingLeadId === leadId) return
+    setSavingLeadId(leadId)
     setIsSaving(true)
     const result = await updateLeadStatus(leadId, newStatus)
     if (result.success) {
@@ -79,6 +88,7 @@ export function AdminDashboard({ initialLeads }: AdminDashboardProps) {
         setSelectedLead((prev) => (prev ? { ...prev, status: newStatus as Lead["status"] } : null))
       }
     }
+    setSavingLeadId(null)
     setIsSaving(false)
   }
 
@@ -206,10 +216,33 @@ export function AdminDashboard({ initialLeads }: AdminDashboardProps) {
 
       {/* Leads Table */}
       <Card className="border-border bg-card">
-        <CardHeader className="border-b border-border">
+        <CardHeader className="border-b border-border flex flex-row items-center justify-between">
           <CardTitle className="font-mono text-lg">
             LEADS_DATABASE <span className="text-muted-foreground">({filteredLeads.length})</span>
           </CardTitle>
+          {totalPages > 1 && (
+            <div className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={page === 0}
+                className="h-7 px-2"
+              >
+                Prev
+              </Button>
+              <span>{page + 1} / {totalPages}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                disabled={page >= totalPages - 1}
+                className="h-7 px-2"
+              >
+                Next
+              </Button>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -226,16 +259,16 @@ export function AdminDashboard({ initialLeads }: AdminDashboardProps) {
                 </tr>
               </thead>
               <tbody>
-                {filteredLeads.map((lead) => (
+                {pagedLeads.map((lead) => (
                   <tr
                     key={lead.id}
                     className="border-b border-border hover:bg-muted/30 cursor-pointer transition-colors"
                     onClick={() => openLeadDetail(lead)}
                   >
                     <td className="p-4">
-                      <div className="text-sm text-foreground">{new Date(lead.created_at).toLocaleDateString()}</div>
+                      <div className="text-sm text-foreground">{new Date(lead.created_at).toLocaleDateString('en-AU')}</div>
                       <div className="text-xs text-muted-foreground">
-                        {new Date(lead.created_at).toLocaleTimeString()}
+                        {new Date(lead.created_at).toLocaleTimeString('en-AU')}
                       </div>
                     </td>
                     <td className="p-4">
@@ -271,6 +304,7 @@ export function AdminDashboard({ initialLeads }: AdminDashboardProps) {
                         onValueChange={(value) => {
                           handleStatusChange(lead.id, value)
                         }}
+                        disabled={savingLeadId === lead.id}
                       >
                         <SelectTrigger
                           className="w-[120px] h-8 text-xs bg-background border-border"

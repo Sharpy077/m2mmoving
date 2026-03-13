@@ -60,23 +60,18 @@ export function Footer() {
             <h4 className="font-bold text-foreground mb-4 uppercase text-sm tracking-wider">Company</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
-                <a href="mailto:sales@m2mmoving.au?subject=About Us Inquiry" className="hover:text-primary transition-colors">
-                  About Us
+                <a href="/quote" className="hover:text-primary transition-colors">
+                  Get a Quote
                 </a>
               </li>
               <li>
-                <a href="mailto:sales@m2mmoving.au?subject=Careers Inquiry" className="hover:text-primary transition-colors">
-                  Careers
+                <a href="/#services" className="hover:text-primary transition-colors">
+                  Our Services
                 </a>
               </li>
               <li>
                 <a href="/#contact" className="hover:text-primary transition-colors">
                   Contact
-                </a>
-              </li>
-              <li>
-                <a href="mailto:sales@m2mmoving.au?subject=Blog Inquiry" className="hover:text-primary transition-colors">
-                  Blog
                 </a>
               </li>
               <li>

@@ -1,8 +1,10 @@
 "use client"
 
-import { CheckCircle2, Mail, Clock, FileText, Phone } from "lucide-react"
+import { useState } from "react"
+import { CheckCircle2, Mail, Clock, FileText, Phone, Copy, Check } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { CONTACT_PHONE, CONTACT_PHONE_LINK, CONTACT_EMAIL, CONTACT_EMAIL_LINK } from "@/lib/config"
 
 interface PaymentConfirmationProps {
   referenceId: string
@@ -19,6 +21,15 @@ export function PaymentConfirmation({
   scheduledDate,
   moveType
 }: PaymentConfirmationProps) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopyReference = () => {
+    navigator.clipboard.writeText(referenceId).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
   return (
     <div className="space-y-6">
       <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-6 text-center">
@@ -39,9 +50,19 @@ export function PaymentConfirmation({
               Booking Details
             </h4>
             <div className="space-y-2 font-mono text-sm">
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">Reference:</span>
-                <span className="font-bold">{referenceId}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold">{referenceId}</span>
+                  <button
+                    type="button"
+                    onClick={handleCopyReference}
+                    className="text-muted-foreground hover:text-primary transition-colors"
+                    aria-label="Copy reference number"
+                  >
+                    {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
               {moveType && (
                 <div className="flex justify-between">
@@ -117,12 +138,12 @@ export function PaymentConfirmation({
           <div className="bg-muted/50 p-4 rounded-lg">
             <p className="text-sm text-muted-foreground">
               <strong>Questions?</strong> Contact us at{" "}
-              <a href="tel:+61388201801" className="text-primary hover:underline">
-                03 8820 1801
+              <a href={CONTACT_PHONE_LINK} className="text-primary hover:underline">
+                {CONTACT_PHONE}
               </a>{" "}
               or{" "}
-              <a href="mailto:sales@m2mmoving.au" className="text-primary hover:underline">
-                sales@m2mmoving.au
+              <a href={CONTACT_EMAIL_LINK} className="text-primary hover:underline">
+                {CONTACT_EMAIL}
               </a>
             </p>
           </div>

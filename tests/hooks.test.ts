@@ -30,15 +30,23 @@ describe("useFormPersistence()", () => {
 
     const stored = localStorage.getItem(STORAGE_KEY)
     expect(stored).not.toBeNull()
-    expect(JSON.parse(stored!)).toEqual(formData)
+    const parsed = JSON.parse(stored!)
+    // New format wraps data in { data, savedAt }
+    expect(parsed).toHaveProperty("data")
+    expect(parsed.data).toEqual(formData)
+    expect(typeof parsed.savedAt).toBe("number")
   })
 
   it("loadSavedData reads back the data that the hook most recently saved", () => {
     // The hook's effect writes formData to localStorage on mount.
-    // loadSavedData should return whatever is currently stored.
+    // loadSavedData should return data fields plus a _savedAt timestamp.
     const formData = { name: "Test Corp", email: "corp@example.com" }
     const { result } = renderHook(() => useFormPersistence(formData, STORAGE_KEY, true))
-    expect(result.current.loadSavedData()).toEqual(formData)
+    const loaded = result.current.loadSavedData()
+    expect(loaded).not.toBeNull()
+    expect(loaded!.name).toBe(formData.name)
+    expect(loaded!.email).toBe(formData.email)
+    expect(typeof (loaded as any)._savedAt).toBe("number")
   })
 
   it("loadSavedData returns null when nothing is in localStorage", () => {
