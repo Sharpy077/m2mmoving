@@ -7,15 +7,21 @@ import "./globals.css"
 
 import { Oxanium, Source_Code_Pro, Source_Serif_4 } from "next/font/google"
 
-// Initialize fonts
-const _oxanium = Oxanium({ subsets: ["latin"], weight: ["200", "300", "400", "500", "600", "700", "800"] })
-const _sourceCodePro = Source_Code_Pro({
+// Initialize fonts (single declaration)
+const oxaniumFont = Oxanium({
   subsets: ["latin"],
-  weight: ["200", "300", "400", "500", "600", "700", "800", "900"],
+  weight: ["200", "300", "400", "500", "600", "700", "800"],
+  variable: "--font-oxanium",
 })
-const _sourceSerif4 = Source_Serif_4({
+const sourceCodeProFont = Source_Code_Pro({
   subsets: ["latin"],
   weight: ["200", "300", "400", "500", "600", "700", "800", "900"],
+  variable: "--font-source-code-pro",
+})
+const sourceSerifFont = Source_Serif_4({
+  subsets: ["latin"],
+  weight: ["200", "300", "400", "500", "600", "700", "800", "900"],
+  variable: "--font-source-serif",
 })
 
 export const metadata: Metadata = {
@@ -48,8 +54,11 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="dark">
-      <body className="font-sans antialiased">
+    <html
+      lang="en"
+      className={`dark ${oxaniumFont.variable} ${sourceCodeProFont.variable} ${sourceSerifFont.variable}`}
+    >
+      <body className="font-sans antialiased w-full min-h-screen">
         <SkipLink />
         {children}
         <Analytics />

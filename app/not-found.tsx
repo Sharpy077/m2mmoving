@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Home, AlertTriangle } from "lucide-react"
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
-import { BackButton } from "@/components/back-button"
+import { GoBackButton } from "@/components/go-back-button"
 
 export default function NotFound() {
   return (
@@ -26,7 +26,7 @@ export default function NotFound() {
             <Button variant="outline" asChild>
               <Link href="/quote">Get Quote</Link>
             </Button>
-            <BackButton />
+            <GoBackButton />
           </div>
         </div>
       </div>
