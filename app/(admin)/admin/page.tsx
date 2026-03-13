@@ -13,6 +13,7 @@ import {
   Phone,
   ArrowRight,
   Activity,
+  Building2,
 } from "lucide-react"
 
 export const metadata: Metadata = {
@@ -86,6 +87,7 @@ function QuickActions() {
     { label: "Analytics", description: "View reports", href: "/admin/analytics", icon: BarChart3, color: "amber" },
     { label: "Voicemails", description: "Listen to messages", href: "/admin/voicemails", icon: Phone, color: "rose" },
     { label: "Settings", description: "System config", href: "/admin/settings", icon: Settings, color: "slate" },
+    { label: "Providers", description: "Verify moving companies", href: "/admin/providers", icon: Building2, color: "indigo" },
   ]
 
   return (
