@@ -20,6 +20,7 @@ export type AgentCodename =
   | "BRIDGE_HH"
   | "GUARDIAN_QA"
   | "CORTEX_ORCH"
+  | "DISPATCH_MKT"
 
 export interface AgentIdentity {
   codename: AgentCodename | string
