@@ -1,3 +1,6 @@
+import twilio from "twilio"
+import type { NextRequest } from "next/server"
+
 // Business hours configuration (Melbourne time)
 export const BUSINESS_HOURS = {
   timezone: "Australia/Melbourne",
@@ -76,6 +79,19 @@ export async function sendSMS(to: string, body: string): Promise<boolean> {
     console.error("[v0] Failed to send SMS:", error)
     return false
   }
+}
+
+export function validateTwilioRequest(
+  request: NextRequest,
+  params: Record<string, string>
+): boolean {
+  const authToken = process.env.TWILIO_AUTH_TOKEN
+  // In dev/test with no auth token configured, skip validation
+  if (!authToken) return true
+
+  const twilioSignature = request.headers.get("x-twilio-signature") ?? ""
+  const url = request.url
+  return twilio.validateRequest(authToken, twilioSignature, url, params)
 }
 
 // Keep legacy export for backwards compatibility (deprecated)

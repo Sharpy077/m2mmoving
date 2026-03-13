@@ -5,7 +5,7 @@
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js"
 import { resend, EMAIL_FROM_ADDRESS } from "@/lib/email"
-import { twilioClient, formatAustralianNumber } from "@/lib/twilio"
+import { sendSMS } from "@/lib/twilio"
 
 let supabaseClient: SupabaseClient | null = null
 
@@ -98,26 +98,8 @@ interface SMSParams {
 }
 
 export async function sendCampaignSMS(params: SMSParams): Promise<{ success: boolean; error?: string }> {
-  if (!twilioClient) {
-    return { success: false, error: "SMS service not configured" }
-  }
-
-  try {
-    const phoneNumber = process.env.TWILIO_PHONE_NUMBER
-    if (!phoneNumber) {
-      return { success: false, error: "TWILIO_PHONE_NUMBER not set" }
-    }
-
-    await twilioClient.messages.create({
-      to: formatAustralianNumber(params.to),
-      from: phoneNumber,
-      body: params.body,
-    })
-
-    return { success: true }
-  } catch (err) {
-    return { success: false, error: String(err) }
-  }
+  const success = await sendSMS(params.to, params.body)
+  return success ? { success: true } : { success: false, error: "SMS send failed" }
 }
 
 // =============================================================================
