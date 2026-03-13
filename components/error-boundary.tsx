@@ -4,10 +4,12 @@ import { Component, type ErrorInfo, type ReactNode } from "react"
 import { AlertTriangle, RefreshCw, Phone } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { CONTACT_PHONE, CONTACT_PHONE_LINK } from "@/lib/config"
 
 interface Props {
   children: ReactNode
   fallback?: ReactNode
+  componentName?: string
 }
 
 interface State {
@@ -46,7 +48,11 @@ export class ErrorBoundary extends Component<Props, State> {
                 <AlertTriangle className="w-6 h-6 text-destructive" />
               </div>
               <div>
-                <h3 className="font-semibold text-lg mb-1">Something went wrong</h3>
+                <h3 className="font-semibold text-lg mb-1">
+                  {this.props.componentName
+                    ? `${this.props.componentName} encountered an error`
+                    : "Something went wrong"}
+                </h3>
                 <p className="text-sm text-muted-foreground mb-4">
                   We encountered an error loading this section. Please try again or contact us directly.
                 </p>
@@ -57,9 +63,9 @@ export class ErrorBoundary extends Component<Props, State> {
                   Try Again
                 </Button>
                 <Button asChild>
-                  <a href="tel:+61388201801">
+                  <a href={CONTACT_PHONE_LINK}>
                     <Phone className="w-4 h-4 mr-2" />
-                    Call Us
+                    {CONTACT_PHONE}
                   </a>
                 </Button>
               </div>

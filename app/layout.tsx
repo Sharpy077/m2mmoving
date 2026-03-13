@@ -1,9 +1,11 @@
 import type React from "react"
 import type { Metadata } from "next"
 
-import { Analytics } from "@vercel/analytics/next"
 import { SkipLink } from "@/components/skip-link"
 import "./globals.css"
+
+// Analytics: add your preferred analytics provider here
+// e.g. Azure Application Insights, PostHog, or re-add @vercel/analytics if on Vercel
 
 import { Oxanium, Source_Code_Pro, Source_Serif_4 } from "next/font/google"
 
@@ -61,7 +63,6 @@ export default function RootLayout({
       <body className="font-sans antialiased w-full min-h-screen">
         <SkipLink />
         {children}
-        <Analytics />
       </body>
     </html>
   )

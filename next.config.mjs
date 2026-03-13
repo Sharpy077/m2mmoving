@@ -9,6 +9,9 @@ const nextConfig = {
   },
   // Exclude problematic packages from bundling
   serverExternalPackages: ["stripe", "twilio"],
+  // standalone output enables Docker/Azure App Service deployment
+  // The .next/standalone directory contains a minimal Node.js server
+  output: "standalone",
 }
 
 export default nextConfig
