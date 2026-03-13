@@ -1,7 +1,8 @@
 import Link from 'next/link'
-import { CheckCircle, Truck, DollarSign, Star, Zap, BarChart3 } from 'lucide-react'
+import { CheckCircle, Truck, DollarSign, Star, Zap, BarChart3, Rocket } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { EarningsSimulator } from '@/components/earnings-simulator'
 
 export const metadata = {
   title: 'Become a Provider | M2M Marketplace',
@@ -38,6 +39,12 @@ const STEPS = [
   { step: '4', title: 'Start accepting jobs', description: 'Receive job matches via SMS and email. Accept with one tap.' },
 ]
 
+const COMMISSION_TIERS = [
+  { label: 'Standard', rate: '15%', range: '0–10 jobs/month', description: 'Perfect for getting started.', colour: 'border-blue-200 bg-blue-50' },
+  { label: 'Growth', rate: '12%', range: '11–25 jobs/month', description: 'Save more as you scale.', colour: 'border-purple-200 bg-purple-50' },
+  { label: 'Pro', rate: '10%', range: '26+ jobs/month', description: 'Maximum earnings for high-volume providers.', colour: 'border-emerald-200 bg-emerald-50', highlight: true },
+]
+
 export default function ProviderLandingPage() {
   return (
     <div className="min-h-screen bg-background">
@@ -60,10 +67,10 @@ export default function ProviderLandingPage() {
               <Link href="/provider/signup">Apply to Join</Link>
             </Button>
             <Button size="lg" variant="outline" className="bg-transparent text-primary-foreground border-primary-foreground hover:bg-primary-foreground/10" asChild>
-              <Link href="#how-it-works">How it works</Link>
+              <Link href="#simulator">Calculate your earnings</Link>
             </Button>
           </div>
-          <p className="mt-4 text-sm opacity-75">15% platform commission · No setup fees · Get paid within 24h</p>
+          <p className="mt-4 text-sm opacity-75">From 15% commission · No setup fees · Get paid within 24h</p>
         </div>
       </section>
 
@@ -85,6 +92,75 @@ export default function ProviderLandingPage() {
                 </CardContent>
               </Card>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Earnings Simulator */}
+      <section id="simulator" className="py-16 px-4 bg-muted/30">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-10">
+            <h2 className="text-3xl font-bold mb-3">How much can you earn?</h2>
+            <p className="text-muted-foreground">
+              Use our earnings simulator to estimate your monthly take-home based on your volume.
+            </p>
+          </div>
+          <div className="max-w-xl mx-auto">
+            <EarningsSimulator />
+          </div>
+        </div>
+      </section>
+
+      {/* Commission Tiers */}
+      <section className="py-16 px-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-10">
+            <h2 className="text-3xl font-bold mb-3">Volume rewards — lower fees as you grow</h2>
+            <p className="text-muted-foreground">
+              Your commission rate automatically drops as you complete more jobs per month.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {COMMISSION_TIERS.map((tier) => (
+              <div
+                key={tier.label}
+                className={`rounded-xl border-2 p-6 ${tier.colour} ${tier.highlight ? 'ring-2 ring-emerald-400' : ''}`}
+              >
+                <div className="text-sm font-medium text-muted-foreground mb-1">{tier.range}</div>
+                <div className="text-4xl font-bold mb-1">{tier.rate}</div>
+                <div className="text-lg font-semibold mb-2">{tier.label}</div>
+                <p className="text-sm text-muted-foreground">{tier.description}</p>
+                {tier.highlight && (
+                  <div className="mt-3 text-xs font-medium text-emerald-700 bg-emerald-100 rounded px-2 py-1 inline-block">
+                    Best value
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="text-center text-sm text-muted-foreground mt-6">
+            Enterprise pricing available for providers exceeding $1M GMV/year. Contact us.
+          </p>
+        </div>
+      </section>
+
+      {/* New Entrant Callout */}
+      <section className="py-12 px-4 bg-indigo-50 dark:bg-indigo-950/20">
+        <div className="max-w-3xl mx-auto flex flex-col md:flex-row items-center gap-6">
+          <div className="flex-shrink-0">
+            <Rocket className="h-12 w-12 text-indigo-600" />
+          </div>
+          <div className="text-center md:text-left">
+            <h3 className="text-xl font-bold mb-2 text-indigo-900 dark:text-indigo-100">
+              Just starting out? We have a path for you.
+            </h3>
+            <p className="text-muted-foreground mb-4">
+              New sole traders and first-time movers get a 10% trial commission for your first month —
+              plus mentorship from an M&M certified provider.
+            </p>
+            <Button asChild variant="default" className="bg-indigo-600 hover:bg-indigo-700">
+              <Link href="/provider/signup?type=new-entrant">Apply as a New Entrant</Link>
+            </Button>
           </div>
         </div>
       </section>

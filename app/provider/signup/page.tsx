@@ -1,11 +1,11 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Building2, CheckCircle, ChevronRight, Loader2 } from 'lucide-react'
+import { Building2, CheckCircle, ChevronRight, Loader2, Rocket } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -39,6 +39,9 @@ type ProviderSignupForm = z.infer<typeof providerSignupSchema>
 
 export default function ProviderSignupPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const isNewEntrant = searchParams.get('type') === 'new-entrant'
+
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
@@ -73,6 +76,9 @@ export default function ProviderSignupPage() {
           description: data.description || undefined,
           service_areas: serviceAreas,
           move_types: data.move_types,
+          // New entrant gets 10% trial commission for the first month
+          commission_rate: isNewEntrant ? 0.10 : undefined,
+          is_new_entrant: isNewEntrant || undefined,
         }),
       })
 
@@ -98,10 +104,17 @@ export default function ProviderSignupPage() {
           <CardContent className="pt-8 pb-8">
             <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
             <h2 className="text-2xl font-bold mb-2">Application submitted!</h2>
-            <p className="text-muted-foreground mb-6">
-              We&apos;ll review your application and contact you within 1 business day to complete verification
-              and connect your bank account.
-            </p>
+            {isNewEntrant ? (
+              <p className="text-muted-foreground mb-6">
+                Welcome to M2M as a New Entrant provider! You&apos;ll enjoy a <strong>10% trial commission</strong> for
+                your first month. We&apos;ll review your application and reach out within 1 business day.
+              </p>
+            ) : (
+              <p className="text-muted-foreground mb-6">
+                We&apos;ll review your application and contact you within 1 business day to complete verification
+                and connect your bank account.
+              </p>
+            )}
             <Button onClick={() => router.push('/')}>Return to home</Button>
           </CardContent>
         </Card>
@@ -112,13 +125,39 @@ export default function ProviderSignupPage() {
   return (
     <div className="min-h-screen py-12 px-4">
       <div className="max-w-2xl mx-auto">
-        <div className="flex items-center gap-3 mb-8">
-          <Building2 className="h-8 w-8 text-primary" />
+        <div className="flex items-center gap-3 mb-6">
+          {isNewEntrant ? (
+            <Rocket className="h-8 w-8 text-indigo-600" />
+          ) : (
+            <Building2 className="h-8 w-8 text-primary" />
+          )}
           <div>
-            <h1 className="text-2xl font-bold">Join M2M Marketplace</h1>
-            <p className="text-muted-foreground">Register your moving company</p>
+            <h1 className="text-2xl font-bold">
+              {isNewEntrant ? 'New Entrant Application' : 'Join M2M Marketplace'}
+            </h1>
+            <p className="text-muted-foreground">
+              {isNewEntrant ? 'Start your moving business with mentored support' : 'Register your moving company'}
+            </p>
           </div>
         </div>
+
+        {/* New Entrant Banner */}
+        {isNewEntrant && (
+          <div className="mb-6 p-4 rounded-xl bg-indigo-50 border-2 border-indigo-200 dark:bg-indigo-950/20">
+            <div className="flex items-start gap-3">
+              <Rocket className="h-5 w-5 text-indigo-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-semibold text-indigo-900 dark:text-indigo-100">New Entrant Benefits</p>
+                <ul className="text-sm text-indigo-800 dark:text-indigo-200 mt-1 space-y-1">
+                  <li>✓ <strong>10% trial commission</strong> for your first month (save 5% vs Standard)</li>
+                  <li>✓ Mentorship pairing with an M&M Certified Provider</li>
+                  <li>✓ Smaller jobs matched first to build your rating</li>
+                  <li>✓ Dedicated onboarding support</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           {/* Company Details */}
@@ -233,7 +272,9 @@ export default function ProviderSignupPage() {
                 <span className="text-sm text-muted-foreground">
                   I agree to the M2M Marketplace{' '}
                   <a href="/terms" className="text-primary underline">Provider Terms & Conditions</a>
-                  {' '}and acknowledge the 15% platform commission on each completed job.
+                  {isNewEntrant
+                    ? ' and acknowledge the 10% trial commission for the first month, then 15% standard rate thereafter.'
+                    : ' and acknowledge the 15% platform commission on each completed job.'}
                 </span>
               </label>
               {form.formState.errors.accepts_terms && (
@@ -246,7 +287,7 @@ export default function ProviderSignupPage() {
             <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">{error}</div>
           )}
 
-          <Button type="submit" className="w-full" size="lg" disabled={submitting}>
+          <Button type="submit" className={`w-full ${isNewEntrant ? 'bg-indigo-600 hover:bg-indigo-700' : ''}`} size="lg" disabled={submitting}>
             {submitting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -254,11 +295,21 @@ export default function ProviderSignupPage() {
               </>
             ) : (
               <>
-                Submit Application
+                {isNewEntrant ? 'Submit New Entrant Application' : 'Submit Application'}
                 <ChevronRight className="h-4 w-4 ml-2" />
               </>
             )}
           </Button>
+
+          {!isNewEntrant && (
+            <p className="text-center text-sm text-muted-foreground">
+              Just starting out?{' '}
+              <a href="/provider/signup?type=new-entrant" className="text-primary underline">
+                Apply as a New Entrant
+              </a>{' '}
+              and get 10% trial commission.
+            </p>
+          )}
         </form>
       </div>
     </div>

@@ -99,8 +99,8 @@ If no match found: escalate to platform admin via BRIDGE.`,
       return this.openBiddingWindow(job_id, scheduled_date)
     }
 
-    // Instant matching: find and score eligible providers
-    const providers = await this.findEligibleProviders({ job_type, origin_suburb })
+    // Instant matching: find and score eligible providers (respects capacity calendar)
+    const providers = await this.findEligibleProviders({ job_type, origin_suburb, scheduled_date })
     if (providers.length === 0) {
       await this.updateJobStatus(job_id, 'matching')
       return {
@@ -198,7 +198,11 @@ If no match found: escalate to platform admin via BRIDGE.`,
   // Helpers
   // ─────────────────────────────────────────────
 
-  private async findEligibleProviders(criteria: { job_type: string; origin_suburb: string }) {
+  private async findEligibleProviders(criteria: {
+    job_type: string
+    origin_suburb: string
+    scheduled_date?: string
+  }) {
     const supabase = await createClient()
     const { data, error } = await supabase
       .from('providers')
@@ -209,8 +213,8 @@ If no match found: escalate to platform admin via BRIDGE.`,
 
     if (error || !data) return []
 
-    // Filter by move type (can't do array contains in RLS-safe way without RPC, so filter in JS)
-    return data.filter(
+    // Filter by move type and service area (JS-side for RLS compatibility)
+    let eligible = data.filter(
       (p) =>
         p.move_types?.includes(criteria.job_type) &&
         (p.service_areas?.some((area: string) =>
@@ -218,6 +222,27 @@ If no match found: escalate to platform admin via BRIDGE.`,
           criteria.origin_suburb.toLowerCase().includes(area.toLowerCase())
         ) ?? false)
     )
+
+    // If a scheduled date is provided, cross-check capacity calendar
+    if (criteria.scheduled_date && eligible.length > 0) {
+      const scheduledDay = criteria.scheduled_date.split('T')[0]
+      const providerIds = eligible.map((p) => p.id)
+
+      // Fetch any 'unavailable' slots for the scheduled date
+      const { data: unavailable } = await supabase
+        .from('provider_availability')
+        .select('provider_id')
+        .in('provider_id', providerIds)
+        .eq('date', scheduledDay)
+        .eq('is_available', false)
+
+      if (unavailable && unavailable.length > 0) {
+        const unavailableIds = new Set(unavailable.map((a) => a.provider_id))
+        eligible = eligible.filter((p) => !unavailableIds.has(p.id))
+      }
+    }
+
+    return eligible
   }
 
   private async assignJob(jobId: string, providerId: string) {

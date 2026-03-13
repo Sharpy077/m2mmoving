@@ -157,14 +157,30 @@ describe('DispatchAgent', () => {
       },
     ]
 
-    // Mock chain: .select('...').eq('is_active', true).eq('verification_status', 'verified').order(...)
-    // .select()       → { eq: mockSelectFilter }
-    // .eq(isActive)   → mockSelectFilter() → { eq: mockEqAfterFirst }
-    // .eq(verified)   → mockEqAfterFirst() → { order: mockOrder }
-    // .order(rating)  → mockOrder() → { data, error }
+    // Providers query chain: .select().eq(isActive).eq(verified).order(rating)
     const mockOrder = vi.fn().mockResolvedValue({ data: mockEligibleProviders, error: null })
     const mockEqAfterFirst = vi.fn(() => ({ order: mockOrder }))
     mockSelectFilter.mockReturnValue({ eq: mockEqAfterFirst })
+
+    // Capacity query chain: .select().in(providerIds).eq(date).eq(isAvailable)
+    // mockFrom is called twice: once for providers, once for provider_availability
+    // The second call needs to return a chain that resolves to { data: [], error: null }
+    const mockAvailEqIsAvailable = vi.fn().mockResolvedValue({ data: [], error: null })
+    const mockAvailEqDate = vi.fn(() => ({ eq: mockAvailEqIsAvailable }))
+    const mockAvailIn = vi.fn(() => ({ eq: mockAvailEqDate }))
+    const mockAvailSelect = vi.fn(() => ({ in: mockAvailIn }))
+
+    // Override mockFrom to return different chains per table call
+    let callCount = 0
+    mockFrom.mockImplementation(() => {
+      callCount++
+      if (callCount === 1) {
+        // providers query
+        return { select: mockSelect, update: mockUpdate, insert: mockInsert }
+      }
+      // provider_availability query
+      return { select: mockAvailSelect, update: mockUpdate, insert: mockInsert }
+    })
 
     const result = await agent.process({
       type: 'event',
@@ -189,10 +205,13 @@ describe('DispatchAgent', () => {
     const { DispatchAgent } = await import('@/lib/agents/dispatch/agent')
     const agent = new DispatchAgent()
 
-    // Mock empty providers list
+    // Mock empty providers list — same chain as above
     const mockOrder = vi.fn().mockResolvedValue({ data: [], error: null })
-    const mockEqChain = vi.fn(() => ({ order: mockOrder }))
-    mockSelectFilter.mockReturnValue({ eq: mockEqChain })
+    const mockEqAfterFirst = vi.fn(() => ({ order: mockOrder }))
+    mockSelectFilter.mockReturnValue({ eq: mockEqAfterFirst })
+
+    // Reset mockFrom to simple chain for this test
+    mockFrom.mockReturnValue({ select: mockSelect, update: mockUpdate, insert: mockInsert })
 
     const result = await agent.process({
       type: 'event',
