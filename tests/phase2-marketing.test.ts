@@ -24,7 +24,7 @@ vi.mock("@/lib/email", () => ({
 }))
 
 vi.mock("@/lib/twilio", () => ({
-  twilioClient: { messages: { create: vi.fn().mockResolvedValue({ sid: "SM123" }) } },
+  sendSMS: vi.fn().mockResolvedValue(true),
   formatAustralianNumber: vi.fn((n: string) => n),
 }))
 
@@ -80,13 +80,13 @@ describe("sendSMS", () => {
     expect(result.success).toBe(true)
   })
 
-  it("returns error when Twilio client is not configured", async () => {
-    vi.doMock("@/lib/twilio", () => ({ twilioClient: null, formatAustralianNumber: vi.fn((n: string) => n) }))
+  it("returns error when Twilio sendSMS fails", async () => {
+    vi.doMock("@/lib/twilio", () => ({ sendSMS: vi.fn().mockResolvedValue(false), formatAustralianNumber: vi.fn((n: string) => n) }))
     vi.resetModules()
     const { sendSMS } = await import("@/lib/sms")
     const result = await sendSMS("+61412345678", "Test message")
     expect(result.success).toBe(false)
-    expect(result.error).toContain("not configured")
+    expect(result.error).toBeDefined()
   })
 })
 

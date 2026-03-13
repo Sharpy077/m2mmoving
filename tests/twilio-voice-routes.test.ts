@@ -4,9 +4,9 @@
  * Tests for incoming call routing, voicemail recording, transcription,
  * and call status handling.
  *
- * Note: validateTwilioRequest is mocked below because the current
- * lib/twilio.ts does not export it (known bug). The mock lets us
- * test both the allowed and rejected paths in isolation.
+ * Note: validateTwilioRequest is mocked to isolate route handler logic
+ * from Twilio signature validation, allowing both allowed and rejected
+ * paths to be tested independently.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest"
 

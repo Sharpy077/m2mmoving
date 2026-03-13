@@ -28,7 +28,7 @@ vi.mock("@/lib/email", () => ({
 }))
 
 vi.mock("@/lib/twilio", () => ({
-  twilioClient: { messages: { create: vi.fn().mockResolvedValue({ sid: "sms_1" }) } },
+  sendSMS: vi.fn().mockResolvedValue(true),
   formatAustralianNumber: vi.fn((n: string) => n),
 }))
 
