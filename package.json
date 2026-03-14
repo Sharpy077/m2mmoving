@@ -5,7 +5,7 @@
   "scripts": {
     "build": "NODE_OPTIONS='--require ./scripts/suppress-baseline-warning.cjs' next build",
     "dev": "next dev",
-    "lint": "pnpm exec eslint .",
+    "lint": "eslint .",
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -96,6 +96,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/uuid": "^9.0.7",
+    "eslint": "^9.38.0",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
     "typescript": "~5.8",
