@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
       ],
     })
   } catch (error) {
-    console.error("[v0] Webhook test error:", error)
+    console.error("[m2mmoving] Webhook test error:", error)
     return NextResponse.json(
       {
         success: false,
@@ -196,7 +196,7 @@ export async function GET(request: NextRequest) {
         : "Webhook not yet received - Complete the test payment or check Stripe dashboard",
     })
   } catch (error) {
-    console.error("[v0] Webhook status check error:", error)
+    console.error("[m2mmoving] Webhook status check error:", error)
     return NextResponse.json(
       {
         success: false,
@@ -238,7 +238,7 @@ export async function DELETE(request: NextRequest) {
       message: "Test data cleaned up successfully",
     })
   } catch (error) {
-    console.error("[v0] Cleanup error:", error)
+    console.error("[m2mmoving] Cleanup error:", error)
     return NextResponse.json(
       {
         success: false,

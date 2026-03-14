@@ -309,7 +309,7 @@ export async function POST(req: Request) {
       system: MAYA_SYSTEM_PROMPT,
       messages: modelMessages,
       onFinish: ({ text, finishReason }) => {
-        console.log("[v0] Stream finished - reason:", finishReason, "text length:", text?.length || 0)
+        console.log("[m2mmoving] Stream finished - reason:", finishReason, "text length:", text?.length || 0)
       },
     })
 
@@ -318,7 +318,7 @@ export async function POST(req: Request) {
 
     return response
   } catch (error) {
-    console.error("[v0] Quote assistant error:", error)
+    console.error("[m2mmoving] Quote assistant error:", error)
 
     return new Response(
       JSON.stringify({

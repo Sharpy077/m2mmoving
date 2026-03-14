@@ -79,7 +79,7 @@ export function AddressAutocomplete({
         }
         if (data._apiError) {
           setApiError(data._apiError)
-          console.warn("[v0] API Error:", data._apiError)
+          console.warn("[m2mmoving] API Error:", data._apiError)
         }
 
         if (data.predictions) {
@@ -89,7 +89,7 @@ export function AddressAutocomplete({
           setPredictions([])
         }
       } catch (error) {
-        console.error("[v0] Error fetching predictions:", error)
+        console.error("[m2mmoving] Error fetching predictions:", error)
         setPredictions([])
         setApiError("Network error - please check your connection")
       } finally {
@@ -141,7 +141,7 @@ export function AddressAutocomplete({
         onAddressSelect(fallbackComponents)
       }
     } catch (error) {
-      console.error("[v0] Error fetching place details:", error)
+      console.error("[m2mmoving] Error fetching place details:", error)
       // Fallback: parse from description
       const fallbackComponents = parseFromDescription(prediction.description)
       onChange(prediction.description)
@@ -152,10 +152,10 @@ export function AddressAutocomplete({
   }
 
   const parseFromDescription = (description: string): AddressComponents => {
-    console.log("[v0] parseFromDescription input:", description)
+    console.log("[m2mmoving] parseFromDescription input:", description)
 
     const parts = description.split(",").map((p) => p.trim())
-    console.log("[v0] parsed parts:", parts)
+    console.log("[m2mmoving] parsed parts:", parts)
 
     // Australian addresses typically: "Suburb State Postcode, Australia" or "Suburb, State Postcode, Australia"
     let suburb = ""
@@ -171,7 +171,7 @@ export function AddressAutocomplete({
       suburb = suburbStatePostcodeMatch[1].trim()
       state = suburbStatePostcodeMatch[2].toUpperCase()
       postcode = suburbStatePostcodeMatch[3]
-      console.log("[v0] Pattern 1 matched:", { suburb, state, postcode })
+      console.log("[m2mmoving] Pattern 1 matched:", { suburb, state, postcode })
     }
     // Pattern 2: "Suburb VIC" - suburb followed by state only
     else {
@@ -179,11 +179,11 @@ export function AddressAutocomplete({
       if (suburbStateMatch) {
         suburb = suburbStateMatch[1].trim()
         state = suburbStateMatch[2].toUpperCase()
-        console.log("[v0] Pattern 2 matched:", { suburb, state })
+        console.log("[m2mmoving] Pattern 2 matched:", { suburb, state })
       } else {
         // Pattern 3: Just suburb name, state/postcode in other parts
         suburb = firstPart
-        console.log("[v0] Pattern 3 - just suburb:", suburb)
+        console.log("[m2mmoving] Pattern 3 - just suburb:", suburb)
       }
     }
 
@@ -198,7 +198,7 @@ export function AddressAutocomplete({
       if (postcodeFirstMatch) {
         if (!postcode) postcode = postcodeFirstMatch[1]
         if (postcodeFirstMatch[2] && !state) state = postcodeFirstMatch[2].toUpperCase()
-        console.log("[v0] Postcode first pattern matched:", { postcode, state })
+        console.log("[m2mmoving] Postcode first pattern matched:", { postcode, state })
         continue
       }
 
@@ -223,14 +223,14 @@ export function AddressAutocomplete({
         if (statePostcodeMatch[2] && !postcode) {
           postcode = statePostcodeMatch[2]
         }
-        console.log("[v0] State/postcode pattern matched:", { state, postcode })
+        console.log("[m2mmoving] State/postcode pattern matched:", { state, postcode })
       }
 
       // Check for standalone postcode
       const postcodeOnly = part.match(/^(\d{4})$/)
       if (postcodeOnly && !postcode) {
         postcode = postcodeOnly[1]
-        console.log("[v0] Standalone postcode matched:", postcode)
+        console.log("[m2mmoving] Standalone postcode matched:", postcode)
       }
     }
 
@@ -238,11 +238,11 @@ export function AddressAutocomplete({
       const postcodeInDescription = description.match(/\b(\d{4})\b/)
       if (postcodeInDescription) {
         postcode = postcodeInDescription[1]
-        console.log("[v0] Extracted postcode from description:", postcode)
+        console.log("[m2mmoving] Extracted postcode from description:", postcode)
       }
     }
 
-    console.log("[v0] Final parsed result:", { suburb, state, postcode })
+    console.log("[m2mmoving] Final parsed result:", { suburb, state, postcode })
 
     return {
       street: "",

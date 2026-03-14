@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       event = JSON.parse(body)
     }
   } catch (err) {
-    console.error("[v0] Webhook signature verification failed:", err)
+    console.error("[m2mmoving] Webhook signature verification failed:", err)
     return NextResponse.json({ error: "Webhook signature verification failed" }, { status: 400 })
   }
 
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object
-        console.log("[v0] Checkout session completed:", session.id)
+        console.log("[m2mmoving] Checkout session completed:", session.id)
 
         await supabase
           .from("payments")
@@ -93,9 +93,9 @@ export async function POST(request: NextRequest) {
                   text: receipt.text,
                 })
 
-                console.log("[v0] Payment receipt email sent to:", customerEmail)
+                console.log("[m2mmoving] Payment receipt email sent to:", customerEmail)
               } catch (emailErr) {
-                console.error("[v0] Failed to send payment receipt email:", emailErr)
+                console.error("[m2mmoving] Failed to send payment receipt email:", emailErr)
               }
             }
           }
@@ -189,7 +189,7 @@ export async function POST(request: NextRequest) {
 
       case "payment_intent.succeeded": {
         const paymentIntent = event.data.object
-        console.log("[v0] Payment intent succeeded:", paymentIntent.id)
+        console.log("[m2mmoving] Payment intent succeeded:", paymentIntent.id)
 
         const charge = paymentIntent.latest_charge
         if (typeof charge === "string") {
@@ -209,7 +209,7 @@ export async function POST(request: NextRequest) {
 
       case "payment_intent.payment_failed": {
         const paymentIntent = event.data.object
-        console.log("[v0] Payment intent failed:", paymentIntent.id)
+        console.log("[m2mmoving] Payment intent failed:", paymentIntent.id)
 
         await supabase
           .from("payments")
@@ -245,7 +245,7 @@ export async function POST(request: NextRequest) {
 
       case "charge.refunded": {
         const charge = event.data.object
-        console.log("[v0] Charge refunded:", charge.id)
+        console.log("[m2mmoving] Charge refunded:", charge.id)
 
         const refundAmount = (charge.amount_refunded || 0) / 100
         const isFullRefund = charge.refunded
@@ -292,7 +292,7 @@ export async function POST(request: NextRequest) {
 
       case "charge.dispute.created": {
         const dispute = event.data.object
-        console.log("[v0] Dispute created:", dispute.id)
+        console.log("[m2mmoving] Dispute created:", dispute.id)
 
         if (resend && LEAD_NOTIFICATION_RECIPIENTS.length > 0) {
           await resend.emails.send({
@@ -315,12 +315,12 @@ export async function POST(request: NextRequest) {
       }
 
       default:
-        console.log(`[v0] Unhandled event type: ${event.type}`)
+        console.log(`[m2mmoving] Unhandled event type: ${event.type}`)
     }
 
     return NextResponse.json({ received: true })
   } catch (err) {
-    console.error("[v0] Webhook handler error:", err)
+    console.error("[m2mmoving] Webhook handler error:", err)
     return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 })
   }
 }

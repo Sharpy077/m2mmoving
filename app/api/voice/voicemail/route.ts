@@ -21,8 +21,8 @@ export async function POST(request: NextRequest) {
   const callerNumber = formData.get("From") as string
   const duration = formData.get("RecordingDuration") as string
 
-  console.log(`[v0] Voicemail received from ${callerNumber}`)
-  console.log(`[v0] Recording URL: ${recordingUrl}`)
+  console.log(`[m2mmoving] Voicemail received from ${callerNumber}`)
+  console.log(`[m2mmoving] Recording URL: ${recordingUrl}`)
 
   // Store voicemail in database and link to existing or new lead
   try {
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
 
       if (existingLead) {
         leadId = existingLead.id
-        console.log("[v0] Matched voicemail to existing lead:", leadId)
+        console.log("[m2mmoving] Matched voicemail to existing lead:", leadId)
       } else {
         // Create a stub lead for the unknown caller
         const sanitisedNumber = callerNumber.replace(/[^0-9]/g, "")
@@ -60,10 +60,10 @@ export async function POST(request: NextRequest) {
           .single()
 
         if (leadInsertError) {
-          console.error("[v0] Failed to create stub lead for voicemail:", leadInsertError)
+          console.error("[m2mmoving] Failed to create stub lead for voicemail:", leadInsertError)
         } else if (newLead) {
           leadId = newLead.id
-          console.log("[v0] Created stub lead for voicemail caller:", leadId)
+          console.log("[m2mmoving] Created stub lead for voicemail caller:", leadId)
         }
       }
     }
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
 
     if (voicemailError) {
       // Fallback: insert without lead_id in case column does not yet exist
-      console.warn("[v0] Voicemail insert with lead_id failed, retrying without:", voicemailError.message)
+      console.warn("[m2mmoving] Voicemail insert with lead_id failed, retrying without:", voicemailError.message)
       await supabase.from("voicemails").insert({
         caller_number: callerNumber,
         recording_url: recordingUrl,
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    console.log("[v0] Voicemail saved to database")
+    console.log("[m2mmoving] Voicemail saved to database")
   } catch (error) {
     console.error("Failed to save voicemail:", error)
   }

@@ -65,7 +65,7 @@ export async function createDepositCheckout(params: CreateCheckoutParams): Promi
         .single()
 
       if (leadError) {
-        console.error("[v0] Error creating lead:", leadError)
+        console.error("[m2mmoving] Error creating lead:", leadError)
         return { success: false, error: "Failed to create booking record" }
       }
       leadId = newLead.id
@@ -144,7 +144,7 @@ export async function createDepositCheckout(params: CreateCheckoutParams): Promi
       leadId,
     }
   } catch (error) {
-    console.error("[v0] Error creating deposit checkout:", error)
+    console.error("[m2mmoving] Error creating deposit checkout:", error)
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to create checkout session",
@@ -170,7 +170,7 @@ export async function markDepositPaid(leadId: string) {
     if (error) throw error
     return { success: true }
   } catch (error) {
-    console.error("[v0] Error marking deposit paid:", error)
+    console.error("[m2mmoving] Error marking deposit paid:", error)
     return { success: false, error: error instanceof Error ? error.message : "Failed to update payment status" }
   }
 }
@@ -240,7 +240,7 @@ export async function processRefund(paymentIntentId: string, amount?: number, re
 
     return { success: true, refundId: refund.id }
   } catch (error) {
-    console.error("[v0] Error processing refund:", error)
+    console.error("[m2mmoving] Error processing refund:", error)
     return { success: false, error: error instanceof Error ? error.message : "Failed to process refund" }
   }
 }
@@ -260,7 +260,7 @@ export async function getPaymentHistory(leadId: string) {
     if (error) throw error
     return { success: true, payments: data }
   } catch (error) {
-    console.error("[v0] Error fetching payment history:", error)
+    console.error("[m2mmoving] Error fetching payment history:", error)
     return { success: false, error: error instanceof Error ? error.message : "Failed to fetch payments" }
   }
 }
@@ -289,7 +289,7 @@ export async function getPaymentReceipt(paymentIntentId: string) {
 
     return { success: false, error: "Receipt not available" }
   } catch (error) {
-    console.error("[v0] Error getting receipt:", error)
+    console.error("[m2mmoving] Error getting receipt:", error)
     return { success: false, error: error instanceof Error ? error.message : "Failed to get receipt" }
   }
 }

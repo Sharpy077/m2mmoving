@@ -19,7 +19,7 @@ async function BookingsCalendar() {
     .order("target_move_date", { ascending: true })
 
   if (error) {
-    console.error("[v0] Error fetching bookings:", error)
+    console.error("[m2mmoving] Error fetching bookings:", error)
     return <div className="text-red-400">Error loading bookings</div>
   }
 

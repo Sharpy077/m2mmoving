@@ -30,7 +30,7 @@ async function LeadsTable() {
     .limit(50)
 
   if (error) {
-    console.error("[v0] Error fetching leads:", error)
+    console.error("[m2mmoving] Error fetching leads:", error)
     return <div className="text-red-400">Error loading leads</div>
   }
 

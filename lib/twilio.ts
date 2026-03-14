@@ -48,7 +48,7 @@ export async function sendSMS(to: string, body: string): Promise<boolean> {
   const fromNumber = process.env.TWILIO_PHONE_NUMBER
 
   if (!accountSid || !authToken || !fromNumber) {
-    console.error("[v0] Missing Twilio credentials")
+    console.error("[m2mmoving] Missing Twilio credentials")
     return false
   }
 
@@ -70,13 +70,13 @@ export async function sendSMS(to: string, body: string): Promise<boolean> {
 
     if (!response.ok) {
       const error = await response.text()
-      console.error("[v0] Twilio API error:", error)
+      console.error("[m2mmoving] Twilio API error:", error)
       return false
     }
 
     return true
   } catch (error) {
-    console.error("[v0] Failed to send SMS:", error)
+    console.error("[m2mmoving] Failed to send SMS:", error)
     return false
   }
 }
@@ -97,6 +97,6 @@ export function validateTwilioRequest(
 // Keep legacy export for backwards compatibility (deprecated)
 export const twilioClient = null
 export async function getTwilioClient() {
-  console.warn("[v0] getTwilioClient is deprecated, use sendSMS instead")
+  console.warn("[m2mmoving] getTwilioClient is deprecated, use sendSMS instead")
   return null
 }

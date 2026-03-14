@@ -271,7 +271,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
   const { messages, sendMessage, setMessages, status, error } = useChat({
     transport,
     onError: (err) => {
-      console.error("[v0] Chat error:", err)
+      console.error("[m2mmoving] Chat error:", err)
     },
   })
 
@@ -397,7 +397,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     const fullAddress =
       address.fullAddress || `${address.street}, ${address.suburb} ${address.state} ${address.postcode}`.trim()
 
-    console.log("[v0] handleAddressSubmit called:", { type, address, fullAddress })
+    console.log("[m2mmoving] handleAddressSubmit called:", { type, address, fullAddress })
 
     if (type === "origin") {
       setBookingData((prev) => ({ ...prev, originAddress: { ...address, fullAddress } }))
@@ -699,7 +699,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
           placeholder="Start typing your full address (e.g. 123 Main St, Richmond VIC)"
           confirmButtonText={showAddressInput === "origin" ? "Confirm Pickup Address" : "Confirm Delivery Address"}
           onAddressConfirmed={(address) => {
-            console.log("[v0] Address confirmed from UnifiedAddressInput:", address)
+            console.log("[m2mmoving] Address confirmed from UnifiedAddressInput:", address)
             handleAddressSubmit(showAddressInput!, {
               street: address.street,
               suburb: address.suburb,
