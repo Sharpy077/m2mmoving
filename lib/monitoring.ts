@@ -1,4 +1,5 @@
 import { Resend } from "resend"
+import { EMAIL_ADMIN, EMAIL_FROM } from "@/lib/constants"
 
 export type MonitoringSeverity = "info" | "warning" | "error" | "critical"
 
@@ -13,8 +14,8 @@ type SendResult =
   | { delivered: true; id: string | null }
   | { delivered: false; reason: "missing-api-key" | "no-recipients" | "send-error" }
 
-const DEFAULT_RECIPIENT = "admin@m2mmoving.au"
-const DEFAULT_FROM_ADDRESS = "M&M Commercial Moving <notifications@m2mmoving.au>"
+const DEFAULT_RECIPIENT = EMAIL_ADMIN
+const DEFAULT_FROM_ADDRESS = EMAIL_FROM
 
 let resendClient: Resend | null = null
 

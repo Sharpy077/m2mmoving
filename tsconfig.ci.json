@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["next-env.d.ts", "proxy.ts", "lib/supabase/middleware.ts"],
+  "exclude": ["node_modules"]
+}

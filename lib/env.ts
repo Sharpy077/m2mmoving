@@ -19,13 +19,28 @@ const envSchema = z.object({
   TWILIO_PHONE_NUMBER: z.string().optional(),
 })
 
-const parsed = envSchema.safeParse(process.env)
+type Env = z.infer<typeof envSchema>
 
-if (!parsed.success) {
-  const missing = parsed.error.issues
-    .map((issue) => `  • ${issue.path.join(".")}: ${issue.message}`)
-    .join("\n")
-  throw new Error(`Missing or invalid environment variables:\n${missing}`)
+let cached: Env | null = null
+
+function getEnv(): Env {
+  if (cached) return cached
+  const parsed = envSchema.safeParse(process.env)
+  if (!parsed.success) {
+    const missing = parsed.error.issues
+      .map((issue) => `  • ${issue.path.join(".")}: ${issue.message}`)
+      .join("\n")
+    throw new Error(`Missing or invalid environment variables:\n${missing}`)
+  }
+  cached = parsed.data
+  return cached
 }
 
-export const env = parsed.data
+// Validation runs lazily on first property access, not at import time.
+// This allows the module to be imported during Next.js build without
+// requiring server-side secrets that are only available at runtime.
+export const env = new Proxy({} as Env, {
+  get(_, prop: string) {
+    return getEnv()[prop as keyof Env]
+  },
+})

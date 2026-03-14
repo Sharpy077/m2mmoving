@@ -30,7 +30,7 @@ export async function GET() {
       activeDeployments = activeJobs?.length || 0
     } catch (e) {
       // Leads table doesn't exist yet, use defaults
-      console.log("Leads table not ready yet")
+      // Leads table doesn't exist yet — use defaults
     }
 
     let totalVehicles = 1
@@ -56,7 +56,7 @@ export async function GET() {
       }
     } catch (e) {
       // Vehicles table doesn't exist yet, use defaults
-      console.log("Vehicles table not ready yet")
+      // Vehicles table doesn't exist yet — use defaults
     }
 
     return NextResponse.json({

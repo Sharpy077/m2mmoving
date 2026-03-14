@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo, useCallback, useEffect } from "react"
+import { DEPOSIT_PERCENTAGE } from "@/lib/constants"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -35,6 +36,7 @@ import { PaymentConfirmation } from "@/components/payment-confirmation"
 import { useBeforeUnload } from "@/hooks/use-beforeunload"
 import { useFormPersistence } from "@/hooks/use-form-persistence"
 import { FileText, X } from "lucide-react"
+import { formatDistanceToNow } from "date-fns"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 
 const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
@@ -187,7 +189,7 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
     return Math.round(total)
   }, [selectedType, squareMeters, selectedServices, distance])
 
-  const depositAmount = estimate ? Math.round(estimate * 0.5) : 0
+  const depositAmount = estimate ? Math.round(estimate * DEPOSIT_PERCENTAGE) : 0
 
   // Validation functions
   const validateField = (field: string, value: string) => {
@@ -423,6 +425,7 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
   )
 
   const [showDraftBanner, setShowDraftBanner] = useState(false)
+  const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null)
 
   // Load draft on mount or pre-select service
   useEffect(() => {
@@ -435,6 +438,7 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
       const saved = loadSavedData()
       if (saved && (saved.step > 1 || saved.email || saved.phone)) {
         setShowDraftBanner(true)
+        if (saved._savedAt) setDraftSavedAt(saved._savedAt)
       }
     }
   }, [initialService])
@@ -618,7 +622,9 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
         <div className="bg-primary/10 border-b border-primary/30 p-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileText className="h-4 w-4 text-primary" />
-            <span className="text-sm">You have a saved draft. Would you like to continue?</span>
+            <span className="text-sm">
+              Draft saved{draftSavedAt ? ` ${formatDistanceToNow(draftSavedAt, { addSuffix: true })}` : ""}. Continue where you left off?
+            </span>
           </div>
           <div className="flex gap-2">
             <Button size="sm" onClick={restoreDraft}>

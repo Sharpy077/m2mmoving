@@ -35,6 +35,9 @@ describe("User-Side: AI Quote Assistant (Maya)", () => {
       toDataStreamResponse: () => new Response(JSON.stringify({ text: "Hello" }), {
         headers: { "Content-Type": "application/json" },
       }),
+      toUIMessageStreamResponse: () => new Response(JSON.stringify({ text: "Hello" }), {
+        headers: { "Content-Type": "application/json" },
+      }),
       fullStream: (async function* () {
         yield { type: "text-delta", textDelta: "Hello" }
       })(),

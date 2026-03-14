@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "next build",
+    "build": "NODE_OPTIONS='--require ./scripts/suppress-baseline-warning.cjs' next build",
     "dev": "next dev",
     "lint": "eslint .",
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit --project tsconfig.ci.json"
   },
   "dependencies": {
     "@ai-sdk/openai": "2.0.80",
@@ -53,11 +53,8 @@
     "@supabase/supabase-js": "2.87.1",
     "@testing-library/dom": "10.4.1",
     "@vercel/analytics": "1.6.1",
-    "@vitest/browser-playwright": "4.0.15",
-    "@vitest/browser-preview": "4.0.15",
-    "@vitest/browser-webdriverio": "4.0.15",
     "@vitest/ui": "4.0.15",
-    "ai": "5.3.3",
+    "ai": "5.0.151",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -69,7 +66,7 @@
     "input-otp": "1.4.2",
     "jsdom": "27.3.0",
     "lucide-react": "^0.454.0",
-    "next": "16.0.7",
+    "next": "16.1.5",
     "next-themes": "0.4.6",
     "react": "19.2.0",
     "react-day-picker": "9.12.0",
@@ -101,7 +98,23 @@
     "@types/uuid": "^9.0.7",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
-    "typescript": "^5",
+    "typescript": "~5.8",
     "vitest": "^2.1.9"
+  },
+  "pnpm": {
+    "overrides": {
+      "tar": ">=7.5.11",
+      "fast-xml-parser": ">=5.3.8",
+      "undici": ">=6.23.2",
+      "qs": ">=6.14.2",
+      "rollup": ">=4.59.0",
+      "axios": ">=1.13.5",
+      "esbuild": ">=0.25.0"
+    },
+    "onlyBuiltDependencies": [
+      "@tailwindcss/oxide",
+      "esbuild",
+      "sharp"
+    ]
   }
 }

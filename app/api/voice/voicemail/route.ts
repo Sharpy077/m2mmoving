@@ -21,9 +21,6 @@ export async function POST(request: NextRequest) {
   const callerNumber = formData.get("From") as string
   const duration = formData.get("RecordingDuration") as string
 
-  console.log(`Voicemail received from ${callerNumber}`)
-  console.log(`Recording URL: ${recordingUrl}`)
-
   // Store voicemail in database
   try {
     const supabase = await createClient()
@@ -36,7 +33,6 @@ export async function POST(request: NextRequest) {
       status: "new",
     })
 
-    console.log("Voicemail saved to database")
   } catch (error) {
     console.error("Failed to save voicemail:", error)
   }

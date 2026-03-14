@@ -81,10 +81,10 @@ export function StatsSection() {
   }
 
   const stats = [
-    { value: isLoading ? "..." : relocations.toString(), label: "Relocations Complete", highlight: false },
-    { value: isLoading ? "..." : damageClaims, label: "Damage Claims", highlight: true },
-    { value: isLoading ? "..." : avgProjectTime, label: "Avg. Project Time", highlight: false },
-    { value: isLoading ? "..." : satisfaction, label: "Client Satisfaction", highlight: true },
+    { value: relocations.toString(), label: "Relocations Complete", highlight: false },
+    { value: damageClaims, label: "Damage Claims", highlight: true },
+    { value: avgProjectTime, label: "Avg. Project Time", highlight: false },
+    { value: satisfaction, label: "Client Satisfaction", highlight: true },
   ]
 
   return (
@@ -110,12 +110,21 @@ export function StatsSection() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           {stats.map((stat, index) => (
             <div key={index} className="text-center">
-              <div
-                className={`text-3xl md:text-4xl font-bold mb-1 font-mono ${stat.highlight ? "text-secondary" : "text-primary"}`}
-              >
-                {stat.value}
-              </div>
-              <div className="text-xs md:text-sm text-muted-foreground uppercase tracking-widest">{stat.label}</div>
+              {isLoading ? (
+                <div className="animate-pulse">
+                  <div className="h-10 bg-muted rounded w-16 mx-auto mb-2" />
+                  <div className="h-3 bg-muted rounded w-24 mx-auto" />
+                </div>
+              ) : (
+                <>
+                  <div
+                    className={`text-3xl md:text-4xl font-bold mb-1 font-mono ${stat.highlight ? "text-secondary" : "text-primary"}`}
+                  >
+                    {stat.value}
+                  </div>
+                  <div className="text-xs md:text-sm text-muted-foreground uppercase tracking-widest">{stat.label}</div>
+                </>
+              )}
             </div>
           ))}
         </div>
