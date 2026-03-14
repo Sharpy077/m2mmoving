@@ -89,12 +89,10 @@ export async function updateSession(request: NextRequest) {
           return NextResponse.redirect(url)
         } else {
           // Update last login (fire and forget)
-          supabase
+          void supabase
             .from("admin_users")
             .update({ last_login_at: new Date().toISOString() })
             .eq("id", user.id)
-            .then(() => {})
-            .catch(() => {})
         }
       } catch {
         // admin_users table may not exist yet - allow access for initial setup
