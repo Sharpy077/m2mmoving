@@ -86,7 +86,7 @@ function ProviderSignupContent() {
           description: data.description || undefined,
           service_areas: serviceAreas,
           move_types: data.move_types,
-          // New entrant gets 10% trial commission for the first month
+          // Frontend only submits entrant intent + initial trial rate; expiry window is enforced in /api/providers/register.
           commission_rate: isNewEntrant ? 0.10 : undefined,
           is_new_entrant: isNewEntrant || undefined,
         }),
@@ -283,7 +283,7 @@ function ProviderSignupContent() {
                   I agree to the M2M Marketplace{' '}
                   <a href="/terms" className="text-primary underline">Provider Terms & Conditions</a>
                   {isNewEntrant
-                    ? ' and acknowledge the 10% trial commission for the first month, then 15% standard rate thereafter.'
+                    ? ' and acknowledge the 10% trial commission for the first month (with expiry enforced during registration), then 15% standard rate thereafter.'
                     : ' and acknowledge the 15% platform commission on each completed job.'}
                 </span>
               </label>

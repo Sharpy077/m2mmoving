@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { providerSchema } from '@/lib/marketplace/schemas'
 
+const NEW_ENTRANT_COMMISSION_RATE = 0.10
+const STANDARD_COMMISSION_RATE = 0.15
+
+function calculateNewEntrantExpiry(from: Date): string {
+  const expiry = new Date(from)
+  expiry.setMonth(expiry.getMonth() + 1)
+  return expiry.toISOString()
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
@@ -15,12 +24,19 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = await createClient()
+    const isNewEntrant = parsed.data.is_new_entrant === true
 
     const { data, error } = await supabase
       .from('providers')
       .insert({
         ...parsed.data,
         verification_status: 'pending',
+        // Server-side enforcement: entrant onboarding gets 10% commission until new_entrant_expires_at.
+        // Ongoing rate transitions should reference this expiry window, not client-supplied values.
+        // Source of truth: this /api/providers/register route.
+        commission_rate: isNewEntrant ? NEW_ENTRANT_COMMISSION_RATE : STANDARD_COMMISSION_RATE,
+        is_new_entrant: isNewEntrant,
+        new_entrant_expires_at: isNewEntrant ? calculateNewEntrantExpiry(new Date()) : null,
       })
       .select()
       .single()

@@ -56,6 +56,7 @@ export const providerSchema = z.object({
   insurance_doc_url: z.string().url().optional().nullable(),
   insurance_expiry: z.string().optional().nullable(),
   commission_rate: z.number().min(0, 'Commission rate cannot be negative').max(1, 'Commission rate cannot exceed 100%').default(0.15),
+  is_new_entrant: z.boolean().optional(),
   is_active: z.boolean().default(true),
 })
 
