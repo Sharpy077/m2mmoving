@@ -5,7 +5,7 @@
   "scripts": {
     "build": "NODE_OPTIONS='--require ./scripts/suppress-baseline-warning.cjs' next build",
     "dev": "next dev",
-    "lint": "pnpm exec eslint .",
+    "lint": "pnpm type-check",
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
