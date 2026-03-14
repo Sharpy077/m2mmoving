@@ -3,8 +3,9 @@
 import { resend, EMAIL_FROM_ADDRESS } from "@/lib/email"
 import { sendSMS } from "@/lib/twilio"
 import { createClient } from "@/lib/supabase/server"
+import { COMPANY_NAME, COMPANY_ABN, COMPANY_PHONE, EMAIL_OPERATIONS } from "@/lib/constants"
 
-const OPERATIONS_EMAIL = "operations@m2mmoving.au"
+const OPERATIONS_EMAIL = EMAIL_OPERATIONS
 
 interface BookingConfirmation {
   quoteReference: string
@@ -33,18 +34,18 @@ export async function sendBookingConfirmation(booking: BookingConfirmation) {
   if (resend && booking.customerEmail) {
     try {
       await resend.emails.send({
-        from: EMAIL_FROM_ADDRESS || "M&M Moving <noreply@m2mmoving.au>",
+        from: EMAIL_FROM_ADDRESS,
         to: booking.customerEmail,
         subject: `Booking Confirmed - ${booking.quoteReference}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <div style="background: linear-gradient(135deg, #f97316, #ef4444); padding: 20px; text-align: center;">
-              <h1 style="color: white; margin: 0;">M&M Commercial Moving</h1>
+              <h1 style="color: white; margin: 0;">${COMPANY_NAME}</h1>
             </div>
             <div style="padding: 30px; background: #f9f9f9;">
               <h2 style="color: #333;">Booking Confirmed!</h2>
               <p>Hi ${booking.customerName},</p>
-              <p>Thank you for choosing M&M Commercial Moving. Your booking has been confirmed.</p>
+              <p>Thank you for choosing ${COMPANY_NAME}. Your booking has been confirmed.</p>
               
               <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
                 <h3 style="color: #f97316; margin-top: 0;">Booking Details</h3>
@@ -59,13 +60,13 @@ export async function sendBookingConfirmation(booking: BookingConfirmation) {
               </div>
               
               <p>Our operations team will contact you 24 hours before your scheduled move to confirm final details.</p>
-              <p>If you have any questions, please call us at <strong>03 8820 1801</strong> or reply to this email.</p>
+              <p>If you have any questions, please call us at <strong>${COMPANY_PHONE}</strong> or reply to this email.</p>
               
               <p style="margin-top: 30px;">Best regards,<br>The M&M Moving Team</p>
             </div>
             <div style="background: #333; color: #999; padding: 15px; text-align: center; font-size: 12px;">
-              <p>M&M Commercial Moving | ABN: 71 661 027 309</p>
-              <p>Phone: 03 8820 1801 | Email: operations@m2mmoving.au</p>
+              <p>${COMPANY_NAME} | ABN: ${COMPANY_ABN}</p>
+              <p>Phone: ${COMPANY_PHONE} | Email: ${EMAIL_OPERATIONS}</p>
             </div>
           </div>
         `,
@@ -80,7 +81,7 @@ export async function sendBookingConfirmation(booking: BookingConfirmation) {
   if (resend) {
     try {
       await resend.emails.send({
-        from: EMAIL_FROM_ADDRESS || "M&M Moving <noreply@m2mmoving.au>",
+        from: EMAIL_FROM_ADDRESS,
         to: OPERATIONS_EMAIL,
         subject: `New Booking - ${booking.quoteReference} - ${booking.businessName}`,
         html: `
@@ -109,7 +110,7 @@ export async function sendBookingConfirmation(booking: BookingConfirmation) {
   }
 
   if (booking.customerPhone) {
-    const smsBody = `M&M Moving: Booking confirmed! Ref: ${booking.quoteReference}. ${booking.moveDate} at ${booking.moveTime}. Questions? Call 03 8820 1801`
+    const smsBody = `M&M Moving: Booking confirmed! Ref: ${booking.quoteReference}. ${booking.moveDate} at ${booking.moveTime}. Questions? Call ${COMPANY_PHONE}`
     results.sms = await sendSMS(booking.customerPhone, smsBody)
   }
 

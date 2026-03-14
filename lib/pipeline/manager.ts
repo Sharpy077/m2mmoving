@@ -4,6 +4,7 @@
  */
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js"
+import { DEPOSIT_PERCENTAGE } from "@/lib/constants"
 
 let supabaseClient: SupabaseClient | null = null
 
@@ -97,8 +98,8 @@ export async function createPaymentPlan(
   } else {
     // Standard 50/50
     installments = [
-      { installment_number: 1, amount: Math.round(totalAmount * 0.5), due_date: today.toISOString().split("T")[0] },
-      { installment_number: 2, amount: Math.round(totalAmount * 0.5), due_date: addDays(today, 14) },
+      { installment_number: 1, amount: Math.round(totalAmount * DEPOSIT_PERCENTAGE), due_date: today.toISOString().split("T")[0] },
+      { installment_number: 2, amount: Math.round(totalAmount * DEPOSIT_PERCENTAGE), due_date: addDays(today, 14) },
     ]
   }
 

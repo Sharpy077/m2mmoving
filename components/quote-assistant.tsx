@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+import { DEPOSIT_PERCENTAGE } from "@/lib/constants"
 import {
   useState,
   useRef,
@@ -471,7 +472,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     const timeCharge = Math.round(estimatedHours * TIME_RATE_PER_HOUR * 100) / 100
 
     const total = Math.round((baseCharge + distanceCharge + labourCharge + timeCharge) * 100) / 100
-    const deposit = Math.round(total * 0.5 * 100) / 100
+    const deposit = Math.round(total * DEPOSIT_PERCENTAGE * 100) / 100
     const balance = Math.round((total - deposit) * 100) / 100
 
     return {
@@ -899,8 +900,8 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
       labourCharge: 340,
       timeCharge: 90,
       total: bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580,
-      deposit: (bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580) * 0.5,
-      balance: (bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580) * 0.5,
+      deposit: (bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580) * DEPOSIT_PERCENTAGE,
+      balance: (bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580) * DEPOSIT_PERCENTAGE,
     }
 
     return (
@@ -1390,8 +1391,8 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
       labourCharge: 340,
       timeCharge: 90,
       total: bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580,
-      deposit: (bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580) * 0.5,
-      balance: (bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580) * 0.5,
+      deposit: (bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580) * DEPOSIT_PERCENTAGE,
+      balance: (bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580) * DEPOSIT_PERCENTAGE,
     }
 
     return (

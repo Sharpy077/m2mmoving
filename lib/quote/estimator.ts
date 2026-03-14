@@ -1,4 +1,5 @@
 import { additionalServices, moveTypes } from "./config"
+import { DEPOSIT_PERCENTAGE, DISTANCE_RATE_PER_KM } from "@/lib/constants"
 
 export interface EstimateInput {
   moveTypeId: string
@@ -51,9 +52,9 @@ export function calculateQuoteEstimate(params: EstimateInput): EstimateResult | 
   ]
 
   if (distance > 0) {
-    const distanceCost = distance * 8
+    const distanceCost = distance * DISTANCE_RATE_PER_KM
     total += distanceCost
-    breakdown.push({ label: `Distance (${distance}km @ $8/km)`, amount: distanceCost })
+    breakdown.push({ label: `Distance (${distance}km @ $${DISTANCE_RATE_PER_KM}/km)`, amount: distanceCost })
   }
 
   selectedServices.forEach((serviceId) => {
@@ -65,7 +66,7 @@ export function calculateQuoteEstimate(params: EstimateInput): EstimateResult | 
   })
 
   const roundedTotal = Math.round(total)
-  const deposit = Math.round(roundedTotal * 0.5)
+  const deposit = Math.round(roundedTotal * DEPOSIT_PERCENTAGE)
 
   return {
     total: roundedTotal,

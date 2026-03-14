@@ -57,3 +57,10 @@ Thumbs.db
 
 # Scripts (development only)
 scripts/*.mts
+
+# Ad-hoc debug scripts and output files
+debug-*.js
+debug_output*.txt
+verify_output*.txt
+test-tool-def.ts
+check-ai-version.js

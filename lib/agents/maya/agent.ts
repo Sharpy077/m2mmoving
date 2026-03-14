@@ -1,4 +1,5 @@
 import { BaseAgent, type AgentInput, type AgentOutput, type AgentAction } from "../base-agent"
+import { DEPOSIT_PERCENTAGE } from "@/lib/constants"
 import type {
   AgentIdentity,
   AgentConfig,
@@ -547,7 +548,7 @@ export class MayaAgent extends BaseAgent {
     const subtotal = (baseAmount + additionalAmount + distanceCharge) * urgencyMultiplier
     const gst = subtotal * 0.1
     const total = subtotal + gst
-    const deposit = total * 0.5
+    const deposit = total * DEPOSIT_PERCENTAGE
 
     const breakdown: PriceBreakdown = {
       baseRate: moveTypeConfig.base,
