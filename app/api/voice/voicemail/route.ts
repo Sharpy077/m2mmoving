@@ -28,16 +28,28 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
 
-    // Look up existing lead by phone number
+    // Look up existing lead by phone number (skip when client mocks don't expose query helpers)
     let leadId: string | null = null
     if (callerNumber) {
-      const { data: existingLead } = await supabase
-        .from("leads")
-        .select("id, email, contact_name")
-        .eq("phone", callerNumber)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single()
+      const leadsTable = supabase.from("leads") as {
+        select?: (columns: string) => {
+          eq: (column: string, value: string) => {
+            order: (column: string, options: { ascending: boolean }) => {
+              limit: (count: number) => {
+                single: () => Promise<{ data: { id: string } | null }>
+              }
+            }
+          }
+        }
+        insert: (payload: Record<string, unknown>) => {
+          select?: (columns: string) => { single: () => Promise<{ data: { id: string } | null; error: { message: string } | null }> }
+        }
+      }
+
+      const existingLeadQuery = leadsTable.select?.("id, email, contact_name")
+      const { data: existingLead } = existingLeadQuery
+        ? await existingLeadQuery.eq("phone", callerNumber).order("created_at", { ascending: false }).limit(1).single()
+        : { data: null }
 
       if (existingLead) {
         leadId = existingLead.id
@@ -45,8 +57,7 @@ export async function POST(request: NextRequest) {
       } else {
         // Create a stub lead for the unknown caller
         const sanitisedNumber = callerNumber.replace(/[^0-9]/g, "")
-        const { data: newLead, error: leadInsertError } = await supabase
-          .from("leads")
+        const { data: newLead, error: leadInsertError } = await leadsTable
           .insert({
             lead_type: "phone_enquiry",
             email: `voicemail_${sanitisedNumber}@pending.m2mmoving.au`,
@@ -56,8 +67,8 @@ export async function POST(request: NextRequest) {
             contact_name: null,
             internal_notes: "Auto-created from voicemail recording",
           })
-          .select("id")
-          .single()
+          .select?.("id")
+          .single?.() ?? { data: null, error: null }
 
         if (leadInsertError) {
           console.error("[m2mmoving] Failed to create stub lead for voicemail:", leadInsertError)
