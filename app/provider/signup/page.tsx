@@ -1,7 +1,6 @@
 'use client'
 
 import { Suspense, useState } from 'react'
-import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -36,17 +35,8 @@ const providerSignupSchema = z.object({
   accepts_terms: z.literal(true, { errorMap: () => ({ message: 'You must accept the terms' }) }),
 })
 
-type ProviderSignupForm = z.infer<typeof providerSignupSchema>
+type ProviderSignupFormData = z.infer<typeof providerSignupSchema>
 
-export default function ProviderSignupPage() {
-  return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>}>
-      <ProviderSignupForm />
-    </Suspense>
-  )
-}
-
-function ProviderSignupForm() {
 function ProviderSignupContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -56,7 +46,7 @@ function ProviderSignupContent() {
   const [error, setError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
 
-  const form = useForm<ProviderSignupForm>({
+  const form = useForm<ProviderSignupFormData>({
     resolver: zodResolver(providerSignupSchema),
     defaultValues: {
       move_types: [],
@@ -64,7 +54,7 @@ function ProviderSignupContent() {
     },
   })
 
-  const onSubmit = async (data: ProviderSignupForm) => {
+  const onSubmit = async (data: ProviderSignupFormData) => {
     setSubmitting(true)
     setError(null)
 
