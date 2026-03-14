@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "next build",
+    "build": "NODE_OPTIONS='--require ./scripts/suppress-baseline-warning.cjs' next build",
     "dev": "next dev",
     "lint": "eslint .",
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit --project tsconfig.ci.json"
   },
   "dependencies": {
     "@ai-sdk/openai": "2.0.80",
@@ -98,7 +98,7 @@
     "@types/uuid": "^9.0.7",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
-    "typescript": "^5",
+    "typescript": "~5.8",
     "vitest": "^2.1.9"
   },
   "pnpm": {
@@ -110,6 +110,11 @@
       "rollup": ">=4.59.0",
       "axios": ">=1.13.5",
       "esbuild": ">=0.25.0"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "@tailwindcss/oxide",
+      "esbuild",
+      "sharp"
+    ]
   }
 }

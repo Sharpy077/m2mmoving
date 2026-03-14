@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useState } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -46,6 +47,7 @@ export default function ProviderSignupPage() {
 }
 
 function ProviderSignupForm() {
+function ProviderSignupContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const isNewEntrant = searchParams.get('type') === 'new-entrant'
@@ -321,5 +323,22 @@ function ProviderSignupForm() {
         </form>
       </div>
     </div>
+  )
+}
+
+export default function ProviderSignupPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-muted-foreground">Loading signup form...</p>
+          </div>
+        </div>
+      }
+    >
+      <ProviderSignupContent />
+    </Suspense>
   )
 }

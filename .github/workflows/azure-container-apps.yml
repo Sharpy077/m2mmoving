@@ -1,6 +1,6 @@
 name: Azure Container Apps — Build & Deploy
 
-# Recommended path for full Next.js feature support (streaming, middleware, API routes)
+# Recommended path for full Next.js feature support (streaming, proxy, API routes)
 # Uses Docker + Azure Container Apps (has a free consumption tier)
 
 on:
@@ -11,6 +11,7 @@ on:
   workflow_dispatch:
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   # Azure resource names — update these to match your Azure setup
@@ -28,10 +29,15 @@ jobs:
 
     outputs:
       image-tag: ${{ steps.meta.outputs.tags }}
+      image-name: ${{ steps.image.outputs.name }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Normalize image name
+        id: image
+        run: echo "name=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -44,7 +50,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}
           tags: |
             type=ref,event=branch
             type=sha,prefix=sha-
@@ -85,7 +91,7 @@ jobs:
         with:
           resourceGroup: ${{ env.RESOURCE_GROUP }}
           containerAppName: ${{ env.CONTAINER_APP_NAME }}
-          imageToDeploy: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          imageToDeploy: ${{ env.REGISTRY }}/${{ needs.build-and-push.outputs.image-name }}:latest
           environmentVariables: |
             NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
             NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
