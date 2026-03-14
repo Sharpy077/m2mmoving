@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo, useCallback, useEffect } from "react"
+import { DEPOSIT_PERCENTAGE } from "@/lib/constants"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -188,7 +189,7 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
     return Math.round(total)
   }, [selectedType, squareMeters, selectedServices, distance])
 
-  const depositAmount = estimate ? Math.round(estimate * 0.5) : 0
+  const depositAmount = estimate ? Math.round(estimate * DEPOSIT_PERCENTAGE) : 0
 
   // Validation functions
   const validateField = (field: string, value: string) => {
