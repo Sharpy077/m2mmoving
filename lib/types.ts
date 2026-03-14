@@ -45,6 +45,34 @@ export interface Lead {
   updated_at: string
 }
 
+// ─────────────────────────────────────────────
+// Marketplace types re-exported for convenience
+// Full definitions live in lib/marketplace/types.ts
+// ─────────────────────────────────────────────
+export type {
+  UserProfile,
+  Provider,
+  ProviderInsert,
+  ProviderDriver,
+  ProviderDriverInsert,
+  MarketplaceJob,
+  MarketplaceJobInsert,
+  JobBid,
+  JobBidInsert,
+  MarketplacePayout,
+  ProviderAvailability,
+  MarketplaceFees,
+  UserRole,
+  ProviderVerificationStatus,
+  MarketplaceJobStatus,
+  MatchingMode,
+  JobType,
+  DriverRole,
+  BidStatus,
+  PayoutStatus,
+  JobPaymentStatus,
+} from './marketplace/types'
+
 export interface LeadInsert {
   lead_type?: "instant_quote" | "custom_quote" | "phone_enquiry"
   email: string

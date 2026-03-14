@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo, useCallback, useEffect } from "react"
+import { DEPOSIT_PERCENTAGE } from "@/lib/constants"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -35,6 +36,7 @@ import { PaymentConfirmation } from "@/components/payment-confirmation"
 import { useBeforeUnload } from "@/hooks/use-beforeunload"
 import { useFormPersistence } from "@/hooks/use-form-persistence"
 import { FileText, X } from "lucide-react"
+import { formatDistanceToNow } from "date-fns"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 
 const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
@@ -187,7 +189,7 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
     return Math.round(total)
   }, [selectedType, squareMeters, selectedServices, distance])
 
-  const depositAmount = estimate ? Math.round(estimate * 0.5) : 0
+  const depositAmount = estimate ? Math.round(estimate * DEPOSIT_PERCENTAGE) : 0
 
   // Validation functions
   const validateField = (field: string, value: string) => {
@@ -257,13 +259,11 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
       return
     }
     if (!email || !selectedType || !estimate) {
-      console.log("[v0] Submit validation failed:", { email, selectedType, estimate })
       return
     }
 
     setIsSubmitting(true)
     setSubmitError(null)
-    console.log("[v0] Starting lead submission...")
 
     try {
       const result = await submitLead({
@@ -281,7 +281,6 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
         additional_services: selectedServices.length > 0 ? selectedServices : undefined,
       })
 
-      console.log("[v0] Lead submission result:", result)
 
       if (result.success) {
         setSubmitted(true)
@@ -290,7 +289,7 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
         setSubmitError(result.error || "Failed to submit quote. Please try again.")
       }
     } catch (error) {
-      console.error("[v0] Lead submission error:", error)
+      console.error("Lead submission error:", error)
       setSubmitError("An unexpected error occurred. Please try again.")
     } finally {
       setIsSubmitting(false)
@@ -306,7 +305,6 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
 
     setIsSubmitting(true)
     setSubmitError(null)
-    console.log("[v0] Initiating deposit payment for lead:", submittedLead.id)
 
     try {
       const result = await createDepositCheckoutSession(
@@ -315,7 +313,6 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
         email,
       )
 
-      console.log("[v0] Checkout session result:", result)
 
       if (result.success && result.clientSecret) {
         setPaymentClientSecret(result.clientSecret)
@@ -324,7 +321,7 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
         setSubmitError(result.error || "Failed to initiate payment. Please try again.")
       }
     } catch (error) {
-      console.error("[v0] Payment initiation error:", error)
+      console.error("Payment initiation error:", error)
       setSubmitError("An unexpected error occurred. Please try again.")
     } finally {
       setIsSubmitting(false)
@@ -334,7 +331,6 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
   const handlePaymentComplete = useCallback(async () => {
     if (!submittedLead) return
 
-    console.log("[v0] Payment completed, updating lead status...")
     await markDepositPaid(submittedLead.id)
     setPaymentComplete(true)
     setShowPayment(false)
@@ -429,6 +425,7 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
   )
 
   const [showDraftBanner, setShowDraftBanner] = useState(false)
+  const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null)
 
   // Load draft on mount or pre-select service
   useEffect(() => {
@@ -441,6 +438,7 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
       const saved = loadSavedData()
       if (saved && (saved.step > 1 || saved.email || saved.phone)) {
         setShowDraftBanner(true)
+        if (saved._savedAt) setDraftSavedAt(saved._savedAt)
       }
     }
   }, [initialService])
@@ -624,7 +622,9 @@ export function QuoteBuilder({ initialService }: QuoteBuilderProps = {}) {
         <div className="bg-primary/10 border-b border-primary/30 p-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileText className="h-4 w-4 text-primary" />
-            <span className="text-sm">You have a saved draft. Would you like to continue?</span>
+            <span className="text-sm">
+              Draft saved{draftSavedAt ? ` ${formatDistanceToNow(draftSavedAt, { addSuffix: true })}` : ""}. Continue where you left off?
+            </span>
           </div>
           <div className="flex gap-2">
             <Button size="sm" onClick={restoreDraft}>

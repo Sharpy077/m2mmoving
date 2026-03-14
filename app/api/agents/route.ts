@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { getCortex, getAgent, initializeAISalesforce, type AgentCodename, type AgentInput } from "@/lib/agents"
+import { reportMonitoring } from "@/lib/monitoring"
 
 // Initialize on first request
 let initialized = false
@@ -101,8 +102,13 @@ export async function POST(request: NextRequest) {
     
   } catch (error) {
     console.error("[API] Agent error:", error)
+    void reportMonitoring({
+      source: "api/agents",
+      message: error instanceof Error ? error.message : "Unknown agent error",
+      severity: "error",
+    })
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     )
   }

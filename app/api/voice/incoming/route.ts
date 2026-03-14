@@ -21,9 +21,6 @@ export async function POST(request: NextRequest) {
   const callerNumber = formData.get("From") as string
   const calledNumber = formData.get("To") as string
 
-  console.log(`[v0] Incoming call from ${callerNumber} to ${calledNumber}`)
-  console.log(`[v0] Business hours: ${isBusinessHours()}`)
-
   if (isBusinessHours()) {
     // During business hours - forward to mobile numbers
     twiml.say(

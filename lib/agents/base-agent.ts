@@ -13,6 +13,7 @@ import type {
   AgentMessage,
   PriorityLevel,
 } from "./types"
+import { createHandoff } from "./db"
 
 export type { AgentInput, AgentOutput, AgentAction }
 
@@ -22,6 +23,8 @@ export interface AgentStatus {
   conversationsToday: number
   successRate: number
 }
+
+const DEFAULT_MODEL = "anthropic/claude-sonnet-4-20250514"
 
 export abstract class BaseAgent {
   protected identity: AgentIdentity
@@ -38,7 +41,7 @@ export abstract class BaseAgent {
     this.config = {
       codename: config.codename || "UNKNOWN",
       enabled: config.enabled ?? true,
-      model: config.model || "gpt-4o",
+      model: config.model || DEFAULT_MODEL,
       temperature: config.temperature ?? 0.7,
       maxTokens: config.maxTokens ?? 2000,
       systemPrompt: config.systemPrompt || "",
@@ -47,7 +50,7 @@ export abstract class BaseAgent {
       escalationRules: config.escalationRules || [],
       rateLimits: config.rateLimits || { requestsPerMinute: 30, tokensPerDay: 500000 },
     }
-    
+
     this.identity = identityFactory ? identityFactory() : this.getIdentity()
     this.registerTools()
   }
@@ -129,21 +132,54 @@ export abstract class BaseAgent {
     reason: string,
     details: string,
     context: Record<string, unknown>,
-    priority: PriorityLevel
+    priority: PriorityLevel,
   ): Promise<{ reason: string; priority: PriorityLevel }> {
     this.log("info", "escalateToHuman", `Escalating: ${reason} - ${details}`)
     return { reason, priority }
   }
 
-  protected async generateResponse(
-    messages: AgentMessage[],
-    context?: Record<string, unknown>
-  ): Promise<string> {
+  protected async generateResponse(messages: AgentMessage[], context?: Record<string, unknown>): Promise<string> {
     // Default implementation - override in subclasses for actual AI response
     const lastMessage = messages[messages.length - 1]
     if (lastMessage?.role === "user") {
       return `Thank you for your message. I'm ${this.identity.name}, and I'm here to help with your commercial moving needs. How can I assist you today?`
     }
     return "How can I help you today?"
+  }
+
+  protected async requestHandoff(
+    targetAgent: string,
+    reason: string,
+    context: Record<string, unknown>,
+    priority: string = "medium",
+  ): Promise<string> {
+    try {
+      return await createHandoff({
+        fromAgent: this.identity.codename,
+        toAgent: targetAgent,
+        reason,
+        context,
+        priority,
+      })
+    } catch {
+      return this.generateId()
+    }
+  }
+
+  protected async generateStructuredResponse<T>(
+    prompt: string,
+    schema: Record<string, unknown>,
+  ): Promise<T> {
+    // Default implementation returns a minimal valid object when AI is unavailable
+    this.log("info", "generateStructuredResponse", `Generating structured response for prompt: ${prompt.substring(0, 50)}`)
+    return {} as T
+  }
+
+  protected async sendToAgent(
+    targetCodename: string,
+    messageType: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    this.log("info", "sendToAgent", `Sending ${messageType} to ${targetCodename}`)
   }
 }

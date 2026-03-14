@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
 
     console.log("[v0] Voicemail saved to database")
   } catch (error) {
-    console.error("[v0] Failed to save voicemail:", error)
+    console.error("Failed to save voicemail:", error)
   }
 
   const twiml = new VoiceResponse()

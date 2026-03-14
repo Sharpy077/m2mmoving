@@ -17,9 +17,6 @@ export async function POST(request: NextRequest) {
   const recordingSid = formData.get("RecordingSid") as string
   const transcriptionStatus = formData.get("TranscriptionStatus") as string
 
-  console.log(`[v0] Transcription received for recording ${recordingSid}`)
-  console.log(`[v0] Status: ${transcriptionStatus}`)
-
   if (transcriptionStatus === "completed" && transcriptionText) {
     try {
       const supabase = await createClient()
@@ -32,17 +29,15 @@ export async function POST(request: NextRequest) {
         .select("id")
 
       if (error) {
-        console.error("[v0] Failed to save transcription:", error)
+        console.error("Failed to save transcription:", error)
       } else if (!data || data.length === 0) {
-        console.warn(`[v0] Transcription received for unknown recording_sid: ${recordingSid}`)
-      } else {
-        console.log("[v0] Transcription saved to database")
+        console.warn(`Transcription received for unknown recording_sid: ${recordingSid}`)
       }
     } catch (error) {
-      console.error("[v0] Failed to save transcription:", error)
+      console.error("Failed to save transcription:", error)
     }
   } else if (transcriptionStatus !== "completed") {
-    console.warn(`[v0] Transcription failed with status: ${transcriptionStatus} for recording ${recordingSid}`)
+    console.warn(`Transcription failed with status: ${transcriptionStatus} for recording ${recordingSid}`)
   }
 
   return new NextResponse("OK", { status: 200 })

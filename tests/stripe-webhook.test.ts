@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const { constructEventMock, eqMock, updateMock, fromMock, createClientMock } = vi.hoisted(() => {
+const { constructEventMock, singleMock, selectAfterEqMock, eqMock, updateMock, fromMock, createClientMock } = vi.hoisted(() => {
   const constructEventMock = vi.fn()
-  const eqMock = vi.fn()
+  const singleMock = vi.fn()
+  const selectAfterEqMock = vi.fn(() => ({ single: singleMock }))
+  const eqMock = vi.fn(() => ({ select: selectAfterEqMock }))
   const updateMock = vi.fn(() => ({ eq: eqMock }))
   const fromMock = vi.fn(() => ({ update: updateMock }))
   const createClientMock = vi.fn()
-  return { constructEventMock, eqMock, updateMock, fromMock, createClientMock }
+  return { constructEventMock, singleMock, selectAfterEqMock, eqMock, updateMock, fromMock, createClientMock }
 })
 
 vi.mock("@/lib/stripe", () => ({
@@ -29,9 +31,10 @@ describe("Stripe webhook route", () => {
   beforeEach(() => {
     process.env = { ...originalEnv, STRIPE_WEBHOOK_SECRET: "whsec_test" }
     constructEventMock.mockReset()
-    eqMock.mockReset()
+    eqMock.mockClear()
     updateMock.mockClear()
     fromMock.mockClear()
+    singleMock.mockResolvedValue({ data: { id: "lead_123", email: "test@test.com", contact_name: "Test" }, error: null })
     createClientMock.mockResolvedValue({
       from: fromMock,
     })
@@ -60,8 +63,6 @@ describe("Stripe webhook route", () => {
         },
       },
     })
-    eqMock.mockResolvedValueOnce({ error: null })
-
     const response = await POST(createRequest("{}", "sig_test"))
 
     expect(response.status).toBe(200)

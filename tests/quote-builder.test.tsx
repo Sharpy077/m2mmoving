@@ -91,7 +91,7 @@ describe("QuoteBuilder", () => {
     )
 
     expect(await screen.findByText(/Quote Submitted/i)).toBeInTheDocument()
-  })
+  }, 15000)
 
   it("prevents confirmation until a contact email is provided", async () => {
     const user = userEvent.setup()

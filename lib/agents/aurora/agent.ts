@@ -5,18 +5,7 @@
 
 import { z } from "zod"
 import { BaseAgent, type AgentInput, type AgentOutput, type AgentAction } from "../base-agent"
-import type {
-  AgentIdentity,
-  AgentConfig,
-  ToolDefinition,
-  InterAgentMessage,
-  ContentPiece,
-  ContentType,
-  Platform,
-  Campaign,
-  CampaignMetrics,
-  AgentMessage,
-} from "../types"
+import type { AgentIdentity, AgentConfig, InterAgentMessage, ContentPiece, Platform, Campaign } from "../types"
 
 // =============================================================================
 // AURORA AGENT
@@ -27,12 +16,12 @@ export class AuroraAgent extends BaseAgent {
   private marketingConfig: MarketingConfig
   private contentCalendar: Map<string, ScheduledContent> = new Map()
   private campaigns: Map<string, Campaign> = new Map()
-  
+
   constructor(config?: Partial<AgentConfig>) {
     super({
       codename: "AURORA_MKT",
       enabled: true,
-      model: "gpt-4o",
+      model: "anthropic/claude-sonnet-4-20250514", // Updated model to Claude
       temperature: 0.8, // Higher creativity for marketing
       maxTokens: 2500,
       systemPrompt: AURORA_SYSTEM_PROMPT,
@@ -62,14 +51,14 @@ export class AuroraAgent extends BaseAgent {
       },
       ...config,
     })
-    
+
     this.marketingConfig = DEFAULT_MARKETING_CONFIG
   }
-  
+
   // =============================================================================
   // IDENTITY
   // =============================================================================
-  
+
   protected getIdentity(): AgentIdentity {
     return {
       codename: "AURORA_MKT",
@@ -89,11 +78,11 @@ export class AuroraAgent extends BaseAgent {
       status: "idle",
     }
   }
-  
+
   // =============================================================================
   // TOOLS REGISTRATION
   // =============================================================================
-  
+
   protected registerTools(): void {
     // Generate Blog Post
     this.registerTool({
@@ -104,7 +93,11 @@ export class AuroraAgent extends BaseAgent {
         properties: {
           topic: { type: "string", description: "Blog post topic" },
           keywords: { type: "array", description: "Target keywords" },
-          tone: { type: "string", enum: ["professional", "casual", "educational", "persuasive"], description: "Writing tone" },
+          tone: {
+            type: "string",
+            enum: ["professional", "casual", "educational", "persuasive"],
+            description: "Writing tone",
+          },
           length: { type: "string", enum: ["short", "medium", "long"], description: "Post length" },
           targetAudience: { type: "string", description: "Target audience" },
         },
@@ -112,7 +105,7 @@ export class AuroraAgent extends BaseAgent {
       },
       handler: async (params) => this.generateBlogPost(params as BlogParams),
     })
-    
+
     // Generate Social Post
     this.registerTool({
       name: "generateSocialPost",
@@ -120,8 +113,16 @@ export class AuroraAgent extends BaseAgent {
       parameters: {
         type: "object",
         properties: {
-          platform: { type: "string", enum: ["linkedin", "facebook", "instagram", "twitter"], description: "Social platform" },
-          contentType: { type: "string", enum: ["promotional", "educational", "engagement", "testimonial", "behind_scenes"], description: "Content type" },
+          platform: {
+            type: "string",
+            enum: ["linkedin", "facebook", "instagram", "twitter"],
+            description: "Social platform",
+          },
+          contentType: {
+            type: "string",
+            enum: ["promotional", "educational", "engagement", "testimonial", "behind_scenes"],
+            description: "Content type",
+          },
           topic: { type: "string", description: "Post topic" },
           includeImage: { type: "boolean", description: "Include image suggestion" },
           cta: { type: "string", description: "Call to action" },
@@ -130,7 +131,7 @@ export class AuroraAgent extends BaseAgent {
       },
       handler: async (params) => this.generateSocialPost(params as SocialParams),
     })
-    
+
     // Schedule Post
     this.registerTool({
       name: "schedulePost",
@@ -146,7 +147,7 @@ export class AuroraAgent extends BaseAgent {
       },
       handler: async (params) => this.schedulePost(params as ScheduleParams),
     })
-    
+
     // Analyze Performance
     this.registerTool({
       name: "analyzePerformance",
@@ -154,7 +155,11 @@ export class AuroraAgent extends BaseAgent {
       parameters: {
         type: "object",
         properties: {
-          channel: { type: "string", enum: ["social", "email", "ads", "blog", "all"], description: "Channel to analyze" },
+          channel: {
+            type: "string",
+            enum: ["social", "email", "ads", "blog", "all"],
+            description: "Channel to analyze",
+          },
           period: { type: "string", enum: ["week", "month", "quarter"], description: "Analysis period" },
           compareToLast: { type: "boolean", description: "Compare to previous period" },
         },
@@ -162,7 +167,7 @@ export class AuroraAgent extends BaseAgent {
       },
       handler: async (params) => this.analyzePerformance(params as AnalyzeParams),
     })
-    
+
     // Optimize Ads
     this.registerTool({
       name: "optimizeAds",
@@ -178,7 +183,7 @@ export class AuroraAgent extends BaseAgent {
       },
       handler: async (params) => this.optimizeAds(params as AdOptimizeParams),
     })
-    
+
     // Generate Email Sequence
     this.registerTool({
       name: "generateEmailSequence",
@@ -186,7 +191,11 @@ export class AuroraAgent extends BaseAgent {
       parameters: {
         type: "object",
         properties: {
-          sequenceType: { type: "string", enum: ["welcome", "nurture", "reengagement", "post_quote", "post_move"], description: "Sequence type" },
+          sequenceType: {
+            type: "string",
+            enum: ["welcome", "nurture", "reengagement", "post_quote", "post_move"],
+            description: "Sequence type",
+          },
           numberOfEmails: { type: "number", description: "Number of emails in sequence" },
           audienceSegment: { type: "string", description: "Target audience segment" },
         },
@@ -194,7 +203,7 @@ export class AuroraAgent extends BaseAgent {
       },
       handler: async (params) => this.generateEmailSequence(params as EmailSequenceParams),
     })
-    
+
     // Create Campaign
     this.registerTool({
       name: "createCampaign",
@@ -203,7 +212,11 @@ export class AuroraAgent extends BaseAgent {
         type: "object",
         properties: {
           name: { type: "string", description: "Campaign name" },
-          type: { type: "string", enum: ["awareness", "lead_gen", "conversion", "retention"], description: "Campaign type" },
+          type: {
+            type: "string",
+            enum: ["awareness", "lead_gen", "conversion", "retention"],
+            description: "Campaign type",
+          },
           channels: { type: "array", description: "Marketing channels" },
           budget: { type: "number", description: "Total budget" },
           startDate: { type: "string", description: "Start date" },
@@ -214,7 +227,7 @@ export class AuroraAgent extends BaseAgent {
       },
       handler: async (params) => this.createCampaign(params as CreateCampaignParams),
     })
-    
+
     // Research Keywords
     this.registerTool({
       name: "researchKeywords",
@@ -223,7 +236,11 @@ export class AuroraAgent extends BaseAgent {
         type: "object",
         properties: {
           seedKeywords: { type: "array", description: "Seed keywords to expand" },
-          intent: { type: "string", enum: ["informational", "commercial", "transactional"], description: "Search intent" },
+          intent: {
+            type: "string",
+            enum: ["informational", "commercial", "transactional"],
+            description: "Search intent",
+          },
           location: { type: "string", description: "Target location" },
         },
         required: ["seedKeywords"],
@@ -231,14 +248,14 @@ export class AuroraAgent extends BaseAgent {
       handler: async (params) => this.researchKeywords(params as KeywordParams),
     })
   }
-  
+
   // =============================================================================
   // MAIN PROCESSING
   // =============================================================================
-  
+
   public async process(input: AgentInput): Promise<AgentOutput> {
     this.log("info", "process", `Processing input type: ${input.type}`)
-    
+
     try {
       switch (input.type) {
         case "message":
@@ -260,35 +277,35 @@ export class AuroraAgent extends BaseAgent {
       }
     }
   }
-  
+
   /**
    * Handle incoming message
    */
   private async handleMessage(input: AgentInput): Promise<AgentOutput> {
     const content = input.content || ""
-    
+
     // Parse content requests
     if (content.includes("blog") || content.includes("article")) {
       return await this.handleBlogRequest(content, input.metadata)
     }
-    
+
     if (content.includes("social") || content.includes("post")) {
       return await this.handleSocialRequest(content, input.metadata)
     }
-    
+
     if (content.includes("email") || content.includes("newsletter")) {
       return await this.handleEmailRequest(content, input.metadata)
     }
-    
+
     if (content.includes("campaign")) {
       return await this.handleCampaignRequest(content, input.metadata)
     }
-    
+
     // Default: generate response
     const response = await this.generateResponse(input.messages || [])
     return { success: true, response }
   }
-  
+
   /**
    * Handle events
    */
@@ -297,7 +314,7 @@ export class AuroraAgent extends BaseAgent {
     if (!event) {
       return { success: false, error: "No event provided" }
     }
-    
+
     switch (event.name) {
       case "new_testimonial":
         return await this.createTestimonialContent(event.data)
@@ -311,13 +328,13 @@ export class AuroraAgent extends BaseAgent {
         return { success: false, error: `Unknown event: ${event.name}` }
     }
   }
-  
+
   /**
    * Handle scheduled tasks
    */
   private async handleScheduledTask(input: AgentInput): Promise<AgentOutput> {
     const taskType = input.metadata?.taskType as string
-    
+
     switch (taskType) {
       case "daily_content":
         return await this.runDailyContentGeneration()
@@ -331,7 +348,7 @@ export class AuroraAgent extends BaseAgent {
         return { success: false, error: `Unknown task: ${taskType}` }
     }
   }
-  
+
   /**
    * Handle handoff from another agent
    */
@@ -340,33 +357,33 @@ export class AuroraAgent extends BaseAgent {
     if (!handoff) {
       return { success: false, error: "No handoff data provided" }
     }
-    
+
     this.log("info", "handleHandoff", `Received handoff from ${handoff.fromAgent}`)
-    
+
     // Process based on source agent
     if (handoff.fromAgent === "PHOENIX_RET") {
       // Create referral/testimonial content
       return await this.createTestimonialContent(handoff.context)
     }
-    
+
     if (handoff.fromAgent === "ECHO_REP") {
       // Handle reputation-related content
       return await this.handleReputationContent(handoff.context)
     }
-    
+
     return {
       success: true,
       response: "Handoff received and processed.",
       data: { handoffId: handoff.id },
     }
   }
-  
+
   /**
    * Handle inter-agent messages
    */
   public async handleInterAgentMessage(message: InterAgentMessage): Promise<void> {
     this.log("info", "handleInterAgentMessage", `Message from ${message.from}: ${message.type}`)
-    
+
     switch (message.type) {
       case "request":
         if (message.payload.action === "generate_content") {
@@ -378,20 +395,20 @@ export class AuroraAgent extends BaseAgent {
         break
     }
   }
-  
+
   // =============================================================================
   // CONTENT WORKFLOWS
   // =============================================================================
-  
+
   /**
    * Run daily content generation
    */
   private async runDailyContentGeneration(): Promise<AgentOutput> {
     this.log("info", "runDailyContentGeneration", "Starting daily content generation")
-    
+
     const actions: AgentAction[] = []
     const generatedContent: ContentPiece[] = []
-    
+
     // Generate social posts for each platform
     for (const platform of this.marketingConfig.activePlatforms) {
       const topic = this.selectDailyTopic()
@@ -401,11 +418,11 @@ export class AuroraAgent extends BaseAgent {
         contentType: "educational",
         includeImage: true,
       })
-      
+
       if (result.success && result.data) {
         const content = result.data as ContentPiece
         generatedContent.push(content)
-        
+
         // Schedule for optimal time
         const optimalTime = this.getOptimalPostTime(platform)
         await this.schedulePost({
@@ -415,9 +432,9 @@ export class AuroraAgent extends BaseAgent {
         })
       }
     }
-    
+
     this.log("info", "runDailyContentGeneration", `Generated ${generatedContent.length} pieces of content`)
-    
+
     return {
       success: true,
       response: `Daily content generation complete. Created ${generatedContent.length} posts.`,
@@ -425,13 +442,13 @@ export class AuroraAgent extends BaseAgent {
       data: { generatedContent },
     }
   }
-  
+
   /**
    * Generate weekly newsletter
    */
   private async generateWeeklyNewsletter(): Promise<AgentOutput> {
     this.log("info", "generateWeeklyNewsletter", "Generating weekly newsletter")
-    
+
     const newsletter = await this.generateStructuredResponse(
       `Generate a weekly newsletter for M&M Commercial Moving subscribers. Include:
       1. A catchy subject line
@@ -456,59 +473,59 @@ export class AuroraAgent extends BaseAgent {
           url: z.string(),
         }),
         signOff: z.string(),
-      })
+      }),
     )
-    
+
     return {
       success: true,
       response: "Weekly newsletter generated successfully.",
       data: { newsletter },
     }
   }
-  
+
   /**
    * Plan content calendar
    */
   private async planContentCalendar(): Promise<AgentOutput> {
     const daysToplan = 14 // Two weeks ahead
     const calendar: ScheduledContent[] = []
-    
+
     const today = new Date()
-    
+
     for (let i = 0; i < daysToplan; i++) {
       const date = new Date(today)
       date.setDate(today.getDate() + i)
-      
+
       // Skip weekends for B2B content
       if (date.getDay() === 0 || date.getDay() === 6) continue
-      
+
       // Plan content for each day
       const dayPlan = await this.planDayContent(date)
       calendar.push(...dayPlan)
     }
-    
+
     // Store in calendar
     for (const item of calendar) {
       this.contentCalendar.set(item.id, item)
     }
-    
+
     return {
       success: true,
       response: `Content calendar planned for next ${daysToplan} days. ${calendar.length} pieces scheduled.`,
       data: { calendar },
     }
   }
-  
+
   // =============================================================================
   // TOOL IMPLEMENTATIONS
   // =============================================================================
-  
+
   private async generateBlogPost(params: BlogParams) {
     const keywords = params.keywords || ["commercial moving", "office relocation", "Melbourne"]
     const length = params.length || "medium"
-    
+
     const wordCount = length === "short" ? 600 : length === "medium" ? 1200 : 2000
-    
+
     const blogPrompt = `Write a ${wordCount}-word blog post about "${params.topic}" for M&M Commercial Moving.
 
 Target keywords: ${keywords.join(", ")}
@@ -539,9 +556,9 @@ Use Australian English. Be informative and valuable, not salesy.`
         suggestedImages: z.array(z.string()),
         cta: z.string(),
         estimatedReadTime: z.number(),
-      })
+      }),
     )
-    
+
     const content: ContentPiece = {
       id: this.generateId(),
       type: "blog",
@@ -550,7 +567,7 @@ Use Australian English. Be informative and valuable, not salesy.`
       status: "draft",
       createdAt: new Date(),
     }
-    
+
     return {
       success: true,
       data: {
@@ -559,10 +576,10 @@ Use Australian English. Be informative and valuable, not salesy.`
       },
     }
   }
-  
+
   private async generateSocialPost(params: SocialParams) {
     const platformGuidelines = PLATFORM_GUIDELINES[params.platform]
-    
+
     const postPrompt = `Create a ${params.platform} post for M&M Commercial Moving about "${params.topic}".
 
 Platform guidelines:
@@ -583,9 +600,9 @@ Make it engaging, professional, and appropriate for B2B audience. Use Australian
         imagePrompt: z.string().optional(),
         linkText: z.string().optional(),
         bestTimeToPost: z.string(),
-      })
+      }),
     )
-    
+
     const content: ContentPiece = {
       id: this.generateId(),
       type: "social",
@@ -595,7 +612,7 @@ Make it engaging, professional, and appropriate for B2B audience. Use Australian
       status: "draft",
       createdAt: new Date(),
     }
-    
+
     return {
       success: true,
       data: {
@@ -606,7 +623,7 @@ Make it engaging, professional, and appropriate for B2B audience. Use Australian
       },
     }
   }
-  
+
   private async schedulePost(params: ScheduleParams) {
     const scheduledContent: ScheduledContent = {
       id: params.contentId,
@@ -614,11 +631,11 @@ Make it engaging, professional, and appropriate for B2B audience. Use Australian
       scheduledTime: new Date(params.scheduledTime),
       status: "scheduled",
     }
-    
+
     this.contentCalendar.set(params.contentId, scheduledContent)
-    
+
     this.log("info", "schedulePost", `Content scheduled for ${params.scheduledTime}`, params)
-    
+
     return {
       success: true,
       data: {
@@ -629,7 +646,7 @@ Make it engaging, professional, and appropriate for B2B audience. Use Australian
       },
     }
   }
-  
+
   private async analyzePerformance(params: AnalyzeParams) {
     // In production, integrate with analytics APIs
     const mockMetrics: ChannelPerformance = {
@@ -659,13 +676,13 @@ Make it engaging, professional, and appropriate for B2B audience. Use Australian
         "Tuesday and Thursday posts get 20% more reach",
       ],
     }
-    
+
     return {
       success: true,
       data: mockMetrics,
     }
   }
-  
+
   private async optimizeAds(params: AdOptimizeParams) {
     const recommendations: AdRecommendation[] = [
       {
@@ -693,7 +710,7 @@ Make it engaging, professional, and appropriate for B2B audience. Use Australian
         priority: "high",
       },
     ]
-    
+
     return {
       success: true,
       data: {
@@ -704,10 +721,10 @@ Make it engaging, professional, and appropriate for B2B audience. Use Australian
       },
     }
   }
-  
+
   private async generateEmailSequence(params: EmailSequenceParams) {
     const numberOfEmails = params.numberOfEmails || 5
-    
+
     const sequencePrompt = `Create a ${params.sequenceType} email sequence for M&M Commercial Moving.
     
 Number of emails: ${numberOfEmails}
@@ -727,27 +744,29 @@ Focus on building trust and providing value, not hard selling.`
       sequencePrompt,
       z.object({
         sequenceName: z.string(),
-        emails: z.array(z.object({
-          order: z.number(),
-          subjectA: z.string(),
-          subjectB: z.string(),
-          previewText: z.string(),
-          content: z.string(),
-          cta: z.string(),
-          ctaUrl: z.string(),
-          delayDays: z.number(),
-        })),
+        emails: z.array(
+          z.object({
+            order: z.number(),
+            subjectA: z.string(),
+            subjectB: z.string(),
+            previewText: z.string(),
+            content: z.string(),
+            cta: z.string(),
+            ctaUrl: z.string(),
+            delayDays: z.number(),
+          }),
+        ),
         expectedOpenRate: z.string(),
         expectedClickRate: z.string(),
-      })
+      }),
     )
-    
+
     return {
       success: true,
       data: sequence,
     }
   }
-  
+
   private async createCampaign(params: CreateCampaignParams) {
     const campaign: Campaign = {
       id: this.generateId(),
@@ -759,17 +778,19 @@ Focus on building trust and providing value, not hard selling.`
       endDate: params.endDate ? new Date(params.endDate) : undefined,
       targetAudience: params.targetAudience ? [params.targetAudience] : [],
     }
-    
+
     this.campaigns.set(campaign.id, campaign)
-    
+
     // Generate campaign brief
-    const brief = await this.generateResponse([{
-      id: this.generateId(),
-      role: "user",
-      content: `Create a campaign brief for: ${params.name}. Type: ${params.type}. Channels: ${params.channels.join(", ")}`,
-      timestamp: new Date(),
-    }])
-    
+    const brief = await this.generateResponse([
+      {
+        id: this.generateId(),
+        role: "user",
+        content: `Create a campaign brief for: ${params.name}. Type: ${params.type}. Channels: ${params.channels.join(", ")}`,
+        timestamp: new Date(),
+      },
+    ])
+
     return {
       success: true,
       data: {
@@ -784,10 +805,10 @@ Focus on building trust and providing value, not hard selling.`
       },
     }
   }
-  
+
   private async researchKeywords(params: KeywordParams) {
     const seedKeywords = params.seedKeywords || ["commercial moving", "office relocation"]
-    
+
     // In production, integrate with SEMrush/Ahrefs API
     const keywords: KeywordData[] = [
       { keyword: "commercial moving Melbourne", volume: 720, difficulty: 45, intent: "transactional" },
@@ -799,47 +820,47 @@ Focus on building trust and providing value, not hard selling.`
       { keyword: "data center migration services", volume: 170, difficulty: 48, intent: "commercial" },
       { keyword: "IT equipment moving", volume: 140, difficulty: 32, intent: "commercial" },
     ]
-    
+
     return {
       success: true,
       data: {
         seedKeywords,
         expandedKeywords: keywords,
-        contentOpportunities: keywords.filter(k => k.intent === "informational" && k.difficulty < 30),
-        targetKeywords: keywords.filter(k => k.intent === "transactional" || k.intent === "commercial"),
+        contentOpportunities: keywords.filter((k) => k.intent === "informational" && k.difficulty < 30),
+        targetKeywords: keywords.filter((k) => k.intent === "transactional" || k.intent === "commercial"),
       },
     }
   }
-  
+
   // =============================================================================
   // HELPER METHODS
   // =============================================================================
-  
+
   private async handleBlogRequest(content: string, metadata?: Record<string, unknown>): Promise<AgentOutput> {
     const topic = this.extractTopic(content) || "office relocation best practices"
     return await this.generateBlogPost({ topic })
   }
-  
+
   private async handleSocialRequest(content: string, metadata?: Record<string, unknown>): Promise<AgentOutput> {
     const topic = this.extractTopic(content) || "commercial moving tips"
     const results: any[] = []
-    
+
     for (const platform of this.marketingConfig.activePlatforms) {
       const result = await this.generateSocialPost({ platform: platform as Platform, topic })
       if (result.success) results.push(result.data)
     }
-    
+
     return {
       success: true,
       response: `Generated ${results.length} social posts.`,
       data: { posts: results },
     }
   }
-  
+
   private async handleEmailRequest(content: string, metadata?: Record<string, unknown>): Promise<AgentOutput> {
     return await this.generateEmailSequence({ sequenceType: "nurture" })
   }
-  
+
   private async handleCampaignRequest(content: string, metadata?: Record<string, unknown>): Promise<AgentOutput> {
     return await this.createCampaign({
       name: "New Campaign",
@@ -847,13 +868,13 @@ Focus on building trust and providing value, not hard selling.`
       channels: ["linkedin", "email"],
     })
   }
-  
+
   private async createTestimonialContent(data: Record<string, unknown>): Promise<AgentOutput> {
     const testimonial = data as any
-    
+
     // Generate multiple content pieces from testimonial
     const content = []
-    
+
     // Social post
     const socialResult = await this.generateSocialPost({
       platform: "linkedin",
@@ -861,45 +882,45 @@ Focus on building trust and providing value, not hard selling.`
       contentType: "testimonial",
     })
     if (socialResult.success) content.push(socialResult.data)
-    
+
     return {
       success: true,
       response: "Testimonial content created.",
       data: { content },
     }
   }
-  
+
   private async createThoughtLeadership(data: Record<string, unknown>): Promise<AgentOutput> {
     const news = data as any
-    
+
     const blogResult = await this.generateBlogPost({
       topic: `Industry insight: ${news.headline}`,
       tone: "educational",
     })
-    
+
     return {
       success: true,
       response: "Thought leadership content created.",
       data: blogResult.data,
     }
   }
-  
+
   private async respondToCompetitor(data: Record<string, unknown>): Promise<AgentOutput> {
     return { success: true, response: "Competitor response strategy created." }
   }
-  
+
   private async createCaseStudy(data: Record<string, unknown>): Promise<AgentOutput> {
     return { success: true, response: "Case study content created." }
   }
-  
+
   private async handleReputationContent(context: Record<string, unknown>): Promise<AgentOutput> {
     return { success: true, response: "Reputation content handled." }
   }
-  
+
   private async generateMonthlyReport(): Promise<AgentOutput> {
     return { success: true, response: "Monthly report generated." }
   }
-  
+
   private selectDailyTopic(): string {
     const topics = [
       "office move preparation tips",
@@ -910,11 +931,11 @@ Focus on building trust and providing value, not hard selling.`
     ]
     return topics[Math.floor(Math.random() * topics.length)]
   }
-  
+
   private getOptimalPostTime(platform: string): Date {
     const now = new Date()
     const optimal = new Date(now)
-    
+
     // Set to next optimal posting time
     switch (platform) {
       case "linkedin":
@@ -929,18 +950,18 @@ Focus on building trust and providing value, not hard selling.`
       default:
         optimal.setHours(10, 0, 0)
     }
-    
+
     // If time has passed, schedule for tomorrow
     if (optimal <= now) {
       optimal.setDate(optimal.getDate() + 1)
     }
-    
+
     return optimal
   }
-  
+
   private async planDayContent(date: Date): Promise<ScheduledContent[]> {
     const content: ScheduledContent[] = []
-    
+
     // Plan LinkedIn post
     content.push({
       id: this.generateId(),
@@ -949,17 +970,17 @@ Focus on building trust and providing value, not hard selling.`
       status: "planned",
       topic: this.selectDailyTopic(),
     })
-    
+
     return content
   }
-  
+
   private extractTopic(content: string): string | null {
     const aboutMatch = content.match(/about\s+["']?([^"'\n]+)["']?/i)
     if (aboutMatch) return aboutMatch[1]
-    
+
     const onMatch = content.match(/on\s+["']?([^"'\n]+)["']?/i)
     if (onMatch) return onMatch[1]
-    
+
     return null
   }
 }

@@ -1,13 +1,13 @@
 import { Resend } from "resend"
+import { EMAIL_FROM, EMAIL_SALES } from "@/lib/constants"
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY
 
 export const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null
 
-export const EMAIL_FROM_ADDRESS =
-  process.env.EMAIL_FROM_ADDRESS || "M&M Commercial Moving <notifications@m2mmoving.au>"
+export const EMAIL_FROM_ADDRESS = process.env.EMAIL_FROM_ADDRESS || EMAIL_FROM
 
-export const LEAD_NOTIFICATION_RECIPIENTS = (process.env.LEAD_NOTIFICATION_EMAILS || "sales@m2mmoving.au")
+export const LEAD_NOTIFICATION_RECIPIENTS = (process.env.LEAD_NOTIFICATION_EMAILS || EMAIL_SALES)
   .split(",")
   .map((email) => email.trim())
   .filter(Boolean)

@@ -16,9 +16,6 @@ export async function POST(request: NextRequest) {
   }
 
   const dialCallStatus = formData.get("DialCallStatus") as string
-  const callerNumber = formData.get("From") as string
-
-  console.log(`[v0] Call status: ${dialCallStatus} from ${callerNumber}`)
 
   const twiml = new VoiceResponse()
 
