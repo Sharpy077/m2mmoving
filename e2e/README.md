@@ -2,18 +2,18 @@
 
 ## Overview
 
-This directory contains end-to-end tests using Playwright to verify the complete user journey and critical paths through the application.
+This directory contains Playwright end-to-end tests that exercise key user and API flows.
 
 ## Test Structure
 
-```
+```text
 e2e/
-├── homepage.spec.ts       # Landing page tests
-├── quote-assistant.spec.ts # Maya AI assistant tests
-├── admin.spec.ts          # Admin dashboard tests
-├── booking-flow.spec.ts   # Complete booking journey
-├── api-health.spec.ts     # API endpoint health checks
-└── README.md              # This file
+├── homepage.spec.ts         # Landing page flow checks
+├── quote-assistant.spec.ts  # Maya quote assistant flow checks
+├── admin.spec.ts            # Admin dashboard flow checks
+├── booking-flow.spec.ts     # Booking journey checks
+├── api-health.spec.ts       # Public/API health checks
+└── README.md                # This file
 ```
 
 ## Running Tests
@@ -21,35 +21,34 @@ e2e/
 ### Prerequisites
 
 ```bash
-# Install Playwright browsers
 npx playwright install
 ```
 
-### Run All Tests
+### Run all tests
 
 ```bash
 npx playwright test
 ```
 
-### Run Specific Test File
+### Run a specific test file
 
 ```bash
 npx playwright test e2e/homepage.spec.ts
 ```
 
-### Run Tests in UI Mode
+### Run in UI mode
 
 ```bash
 npx playwright test --ui
 ```
 
-### Run Tests in Debug Mode
+### Run in debug mode
 
 ```bash
 npx playwright test --debug
 ```
 
-### View Test Report
+### View the HTML report
 
 ```bash
 npx playwright show-report
@@ -57,18 +56,29 @@ npx playwright show-report
 
 ## Test Configuration
 
-See `playwright.config.ts` for configuration options:
+See `playwright.config.ts` for full configuration details.
 
-- **Browsers**: Chromium, Firefox, WebKit, Mobile Chrome, Mobile Safari
-- **Base URL**: `http://localhost:3000` (or `PLAYWRIGHT_TEST_BASE_URL` env var)
-- **Retries**: 2 in CI, 0 locally
-- **Screenshots**: Only on failure
-- **Videos**: On first retry
-- **Trace**: On first retry
+Common settings include:
+
+- Browsers: Chromium, Firefox, WebKit, Mobile Chrome, Mobile Safari
+- Base URL: `http://localhost:3000` (or `PLAYWRIGHT_TEST_BASE_URL`)
+- Retries: `2` in CI, `0` locally
+- Screenshots: on failure
+- Videos/trace: on first retry
+
+## CI Integration (Current State)
+
+At the time of writing, the repository contains this GitHub Actions workflow:
+
+- `.github/workflows/azure-container-apps.yml`
+
+That workflow performs container build/push and Azure deployment. It does **not** currently run Playwright tests.
+
+If you want E2E tests in CI, add a dedicated workflow in `.github/workflows/` (for example, `e2e.yml`) that starts the app and runs `npx playwright test`.
 
 ## Writing New Tests
 
-```typescript
+```ts
 import { test, expect } from '@playwright/test'
 
 test.describe('Feature Name', () => {
@@ -82,24 +92,19 @@ test.describe('Feature Name', () => {
 })
 ```
 
-## CI Integration
-
-Tests run automatically on:
-- Pull requests
-- Pushes to main branch
-
-Configure in `.github/workflows/e2e.yml` (if using GitHub Actions).
-
 ## Troubleshooting
 
 ### Tests timing out
-- Increase timeout in playwright.config.ts
-- Check if dev server is running
+
+- Increase timeout values in `playwright.config.ts`
+- Verify the target app/dev server is running
 
 ### Element not found
-- Use `await page.waitForTimeout(1000)` for dynamic content
-- Use more flexible selectors (`.or()` chains)
+
+- Add explicit waits for dynamic content where appropriate
+- Prefer resilient selectors over brittle CSS chains
 
 ### Authentication issues
-- Set up auth fixtures in `e2e/fixtures/`
-- Use `test.use({ storageState: 'auth.json' })` for authenticated tests
+
+- Use auth fixtures (if introduced)
+- Reuse authenticated `storageState` where applicable
