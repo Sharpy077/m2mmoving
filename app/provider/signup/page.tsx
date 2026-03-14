@@ -1,5 +1,6 @@
 'use client'
 
+import { Suspense, useState } from 'react'
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
@@ -37,6 +38,15 @@ const providerSignupSchema = z.object({
 
 type ProviderSignupForm = z.infer<typeof providerSignupSchema>
 
+export default function ProviderSignupPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>}>
+      <ProviderSignupForm />
+    </Suspense>
+  )
+}
+
+function ProviderSignupForm() {
 function ProviderSignupContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
