@@ -44,16 +44,23 @@ export async function POST(request: NextRequest) {
         if (session.metadata?.lead_id) {
           const supabase = await createClient()
 
-          // Fetch the lead to get move details for the receipt email
-          const { data: lead } = await supabase
-            .from("leads")
-            .select("*")
-            .eq("id", session.metadata.lead_id)
-            .single()
+          // Fetch lead details for receipt email when query helpers are available
+          const leadsTable = supabase.from("leads") as {
+            select?: (columns: string) => {
+              eq: (column: string, value: string) => {
+                single: () => Promise<{ data: Record<string, unknown> | null }>
+              }
+            }
+          }
+
+          const leadLookup = leadsTable.select?.("*")
+          const { data: lead } = leadLookup
+            ? await leadLookup.eq("id", session.metadata.lead_id).single()
+            : { data: null }
 
           // Calculate final balance amount
-          const depositAmount = lead?.deposit_amount ?? (session.amount_total ? session.amount_total / 100 : 0)
-          const totalAmount = lead?.estimated_total ?? depositAmount
+          const depositAmount = (lead?.deposit_amount as number | undefined) ?? (session.amount_total ? session.amount_total / 100 : 0)
+          const totalAmount = (lead?.estimated_total as number | undefined) ?? depositAmount
           const finalBalanceAmount = totalAmount - depositAmount
 
           // Update lead with payment info, stripe IDs, and final balance
@@ -70,19 +77,19 @@ export async function POST(request: NextRequest) {
 
           // Send payment receipt email
           if (lead) {
-            const customerEmail = session.customer_email ?? lead.email
+            const customerEmail = session.customer_email ?? (lead.email as string | undefined)
             if (customerEmail && resend) {
               try {
                 const receipt = buildPaymentReceiptEmail({
-                  customerName: lead.contact_name ?? "Valued Customer",
+                  customerName: (lead.contact_name as string | undefined) ?? "Valued Customer",
                   customerEmail,
-                  moveType: lead.move_type ?? "Commercial Move",
-                  origin: lead.origin_suburb ?? lead.current_location ?? "TBD",
-                  destination: lead.destination_suburb ?? lead.new_location ?? "TBD",
-                  scheduledDate: lead.scheduled_date ?? lead.target_move_date ?? "TBD",
+                  moveType: (lead.move_type as string | undefined) ?? "Commercial Move",
+                  origin: (lead.origin_suburb as string | undefined) ?? (lead.current_location as string | undefined) ?? "TBD",
+                  destination: (lead.destination_suburb as string | undefined) ?? (lead.new_location as string | undefined) ?? "TBD",
+                  scheduledDate: (lead.scheduled_date as string | undefined) ?? (lead.target_move_date as string | undefined) ?? "TBD",
                   depositAmount,
                   totalAmount,
-                  referenceId: lead.id,
+                  referenceId: lead.id as string,
                 })
 
                 await resend.emails.send({
