@@ -42,17 +42,66 @@ export async function POST(request: NextRequest) {
           .eq("stripe_checkout_session_id", session.id)
 
         if (session.metadata?.lead_id) {
+          const supabase = await createClient()
+
+          // Fetch the lead to get move details for the receipt email
           const { data: lead } = await supabase
+            .from("leads")
+            .select("*")
+            .eq("id", session.metadata.lead_id)
+            .single()
+
+          // Calculate final balance amount
+          const depositAmount = lead?.deposit_amount ?? (session.amount_total ? session.amount_total / 100 : 0)
+          const totalAmount = lead?.estimated_total ?? depositAmount
+          const finalBalanceAmount = totalAmount - depositAmount
+
+          // Update lead with payment info, stripe IDs, and final balance
+          await supabase
             .from("leads")
             .update({
               deposit_paid: true,
               payment_status: "paid",
-              stripe_payment_intent_id: session.payment_intent,
-              status: "confirmed",
+              stripe_session_id: session.id,
+              stripe_payment_intent_id: session.payment_intent ?? null,
+              final_balance_amount: finalBalanceAmount > 0 ? finalBalanceAmount : null,
             })
             .eq("id", session.metadata.lead_id)
-            .select()
-            .single()
+
+          // Send payment receipt email
+          if (lead) {
+            const customerEmail = session.customer_email ?? lead.email
+            if (customerEmail && resend) {
+              try {
+                const receipt = buildPaymentReceiptEmail({
+                  customerName: lead.contact_name ?? "Valued Customer",
+                  customerEmail,
+                  moveType: lead.move_type ?? "Commercial Move",
+                  origin: lead.origin_suburb ?? lead.current_location ?? "TBD",
+                  destination: lead.destination_suburb ?? lead.new_location ?? "TBD",
+                  scheduledDate: lead.scheduled_date ?? lead.target_move_date ?? "TBD",
+                  depositAmount,
+                  totalAmount,
+                  referenceId: lead.id,
+                })
+
+                await resend.emails.send({
+                  from: EMAIL_FROM_ADDRESS,
+                  to: [customerEmail],
+                  subject: receipt.subject,
+                  html: receipt.html,
+                  text: receipt.text,
+                })
+
+                console.log("[v0] Payment receipt email sent to:", customerEmail)
+              } catch (emailErr) {
+                console.error("[v0] Failed to send payment receipt email:", emailErr)
+              }
+            }
+          }
+        }
+        break
+      }
 
           if (lead && resend) {
             // Customer confirmation email
