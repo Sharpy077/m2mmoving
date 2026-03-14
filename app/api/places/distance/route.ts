@@ -32,8 +32,18 @@ export async function POST(request: NextRequest) {
     const body: DistanceRequest = await request.json()
     const { originLat, originLng, destinationLat, destinationLng, originAddress, destinationAddress } = body
 
-    if (!originLat || !originLng || !destinationLat || !destinationLng) {
-      return NextResponse.json({ error: "Missing coordinates" }, { status: 400 })
+    const isValidLatitude = (value: unknown): value is number =>
+      typeof value === "number" && Number.isFinite(value) && value >= -90 && value <= 90
+    const isValidLongitude = (value: unknown): value is number =>
+      typeof value === "number" && Number.isFinite(value) && value >= -180 && value <= 180
+
+    if (
+      !isValidLatitude(originLat) ||
+      !isValidLongitude(originLng) ||
+      !isValidLatitude(destinationLat) ||
+      !isValidLongitude(destinationLng)
+    ) {
+      return NextResponse.json({ error: "Invalid coordinates" }, { status: 400 })
     }
 
     // Cache key with 3 decimal places (~111m precision)
@@ -94,7 +104,21 @@ async function fetchOSRMRoute(
   lng2: number,
 ): Promise<Omit<DistanceResponse, "origin" | "destination" | "source"> | null> {
   try {
-    const url = `https://router.project-osrm.org/route/v1/driving/${lng1},${lat1};${lng2},${lat2}?overview=full&geometries=geojson`
+    const safeLat1 = Number(lat1)
+    const safeLng1 = Number(lng1)
+    const safeLat2 = Number(lat2)
+    const safeLng2 = Number(lng2)
+
+    if (
+      !Number.isFinite(safeLat1) ||
+      !Number.isFinite(safeLng1) ||
+      !Number.isFinite(safeLat2) ||
+      !Number.isFinite(safeLng2)
+    ) {
+      return null
+    }
+
+    const url = `https://router.project-osrm.org/route/v1/driving/${safeLng1},${safeLat1};${safeLng2},${safeLat2}?overview=full&geometries=geojson`
 
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 5000)
