@@ -60,7 +60,7 @@ function saveLocalCache(cache: CacheData): void {
     localStorage.setItem(CACHE_KEY, JSON.stringify(cache))
   } catch (e) {
     // localStorage might be full - clear old data
-    console.warn("[v0] localStorage cache full, clearing old entries")
+    console.warn("[m2mmoving] localStorage cache full, clearing old entries")
     localStorage.removeItem(CACHE_KEY)
   }
 }
@@ -183,7 +183,7 @@ export function UnifiedAddressInput({
           saveLocalCache(cache)
         }
       } catch (error) {
-        console.error("[v0] Error fetching predictions:", error)
+        console.error("[m2mmoving] Error fetching predictions:", error)
         setPredictions([])
       } finally {
         setIsLoading(false)
@@ -283,7 +283,7 @@ export function UnifiedAddressInput({
         }
       }
     } catch (error) {
-      console.error("[v0] Error fetching place details:", error)
+      console.error("[m2mmoving] Error fetching place details:", error)
       const fallbackAddress = parseFromDescription(prediction.description)
       setInputValue(prediction.description)
       setSelectedAddress(fallbackAddress)

@@ -99,7 +99,7 @@ export function PriceEstimate({
           onPriceCalculated(data.total, data.depositAmount)
         }
       } catch (err) {
-        console.error("[v0] Price calculation error:", err)
+        console.error("[m2mmoving] Price calculation error:", err)
         setError("We're preparing your quote. This may take a moment...")
 
         if (retryCount < 2) {

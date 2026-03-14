@@ -85,7 +85,7 @@ export function AddressMap({
       setIsLoading(false)
     }
     script.onerror = () => {
-      console.error("[v0] Failed to load Leaflet")
+      console.error("[m2mmoving] Failed to load Leaflet")
       setIsLoading(false)
     }
     document.head.appendChild(script)
@@ -211,7 +211,7 @@ export function AddressMap({
 
     const cachedResult = clientDistanceCache.get(coordsKey)
     if (cachedResult) {
-      console.log("[v0] Client distance cache HIT:", coordsKey)
+      console.log("[m2mmoving] Client distance cache HIT:", coordsKey)
       calculatedCoordsRef.current = coordsKey
       setDistanceKm(cachedResult.km)
       setDistance(cachedResult.text)
@@ -321,7 +321,7 @@ export function AddressMap({
         }
       }
     } catch (error) {
-      console.error("[v0] Error calculating route:", error)
+      console.error("[m2mmoving] Error calculating route:", error)
       const d = calculateHaversineDistance(originLat, originLng, destinationLat, destinationLng)
       const mins = Math.round((d / 60) * 60)
       setDistanceKm(d)

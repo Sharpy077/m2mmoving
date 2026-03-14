@@ -97,13 +97,13 @@ export async function updateLeadUtm(
       .eq("id", leadId)
 
     if (error) {
-      console.error("[v0] Error updating lead UTM fields:", error)
+      console.error("[m2mmoving] Error updating lead UTM fields:", error)
       return { success: false, error: error.message }
     }
 
     return { success: true }
   } catch (error) {
-    console.error("[v0] Unexpected error in updateLeadUtm:", error)
+    console.error("[m2mmoving] Unexpected error in updateLeadUtm:", error)
     return { success: false, error: error instanceof Error ? error.message : "An unexpected error occurred" }
   }
 }

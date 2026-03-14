@@ -73,7 +73,7 @@ export async function sendBookingConfirmation(booking: BookingConfirmation) {
       })
       results.email.customer = true
     } catch (error) {
-      console.error("[v0] Failed to send customer email:", error)
+      console.error("[m2mmoving] Failed to send customer email:", error)
     }
   }
 
@@ -105,7 +105,7 @@ export async function sendBookingConfirmation(booking: BookingConfirmation) {
       })
       results.email.operations = true
     } catch (error) {
-      console.error("[v0] Failed to send operations email:", error)
+      console.error("[m2mmoving] Failed to send operations email:", error)
     }
   }
 
@@ -138,7 +138,7 @@ export async function sendBookingConfirmation(booking: BookingConfirmation) {
     if (error) throw error
     results.database = true
   } catch (error) {
-    console.error("[v0] Failed to save to database:", error)
+    console.error("[m2mmoving] Failed to save to database:", error)
   }
 
   return results

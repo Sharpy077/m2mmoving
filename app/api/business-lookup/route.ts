@@ -8,12 +8,12 @@ function parseJSONP(text: string): unknown {
   const suffix = ")"
 
   if (text.includes("A server error has occurred") || text.includes("server error")) {
-    console.log("[v0] ABR API server error detected, returning null")
+    console.log("[m2mmoving] ABR API server error detected, returning null")
     return null
   }
 
   if (!text.startsWith(prefix) || !text.endsWith(suffix)) {
-    console.log("[v0] Invalid JSONP format, response:", text.slice(0, 200))
+    console.log("[m2mmoving] Invalid JSONP format, response:", text.slice(0, 200))
     return null
   }
 
@@ -21,7 +21,7 @@ function parseJSONP(text: string): unknown {
     const jsonContent = text.slice(prefix.length, -suffix.length)
     return JSON.parse(jsonContent)
   } catch {
-    console.log("[v0] Failed to parse JSONP content")
+    console.log("[m2mmoving] Failed to parse JSONP content")
     return null
   }
 }
@@ -53,10 +53,10 @@ async function fetchABNDetails(abn: string) {
       return null
     }
 
-    console.log("[v0] ABR API raw response for ABN", cleanABN, ":", JSON.stringify(data, null, 2))
+    console.log("[m2mmoving] ABR API raw response for ABN", cleanABN, ":", JSON.stringify(data, null, 2))
 
     if (data.Message) {
-      console.log("[v0] ABR API message:", data.Message)
+      console.log("[m2mmoving] ABR API message:", data.Message)
       return null
     }
 
@@ -70,7 +70,7 @@ async function fetchABNDetails(abn: string) {
     // GST: if Gst field has a date, the entity is GST registered
     const gstRegistered = !!(data.Gst && data.Gst.trim() !== "" && data.Gst.trim().length > 0)
 
-    console.log("[v0] Parsed status for", cleanABN, ":", {
+    console.log("[m2mmoving] Parsed status for", cleanABN, ":", {
       EntityStatusCode: data.EntityStatusCode,
       AbnStatus: data.AbnStatus,
       isActive,
@@ -96,7 +96,7 @@ async function fetchABNDetails(abn: string) {
       gstRegisteredDate: data.Gst || data.GstEffectiveFrom || undefined,
     }
   } catch (error) {
-    console.log("[v0] fetchABNDetails failed for ABN (rate limit or network issue):", abn)
+    console.log("[m2mmoving] fetchABNDetails failed for ABN (rate limit or network issue):", abn)
     return null
   }
 }
@@ -185,7 +185,7 @@ export async function GET(req: Request) {
     const response = await fetch(nameUrl)
     const text = await response.text()
 
-    console.log("[v0] ABR name search response:", text.slice(0, 500))
+    console.log("[m2mmoving] ABR name search response:", text.slice(0, 500))
 
     const data = parseJSONP(text) as {
       Names?: Array<{
@@ -206,9 +206,9 @@ export async function GET(req: Request) {
 
     const nameResults = data.Names || []
 
-    console.log("[v0] Name search returned", nameResults.length, "results")
+    console.log("[m2mmoving] Name search returned", nameResults.length, "results")
     console.log(
-      "[v0] First few results:",
+      "[m2mmoving] First few results:",
       nameResults.slice(0, 3).map((r) => ({
         Name: r.Name,
         NameType: r.NameType,
@@ -280,7 +280,7 @@ export async function GET(req: Request) {
     })
 
     console.log(
-      "[v0] Sorted results:",
+      "[m2mmoving] Sorted results:",
       sortedResults.slice(0, 5).map((r) => ({
         name: r.name,
         status: r.status,
@@ -291,7 +291,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ results: sortedResults })
   } catch (error) {
-    console.error("[v0] Business lookup error:", error)
+    console.error("[m2mmoving] Business lookup error:", error)
     return NextResponse.json({ error: "Failed to lookup business" }, { status: 500 })
   }
 }
@@ -312,7 +312,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ business: details })
   } catch (error) {
-    console.error("[v0] Business details error:", error)
+    console.error("[m2mmoving] Business details error:", error)
     return NextResponse.json({ error: "Failed to fetch business details" }, { status: 500 })
   }
 }

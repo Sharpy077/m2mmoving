@@ -96,7 +96,7 @@ export function StreetAutocomplete({
           setPredictions([])
         }
       } catch (error) {
-        console.error("[v0] Error fetching street predictions:", error)
+        console.error("[m2mmoving] Error fetching street predictions:", error)
         setPredictions([])
       } finally {
         setIsLoading(false)
@@ -156,7 +156,7 @@ export function StreetAutocomplete({
         const lat = data.result.geometry?.location?.lat
         const lng = data.result.geometry?.location?.lng
 
-        console.log("[v0] Street selection extracted:", {
+        console.log("[m2mmoving] Street selection extracted:", {
           streetAddress,
           extractedPostcode,
           extractedSuburb,
@@ -181,7 +181,7 @@ export function StreetAutocomplete({
         const postcodeMatch = prediction.description.match(/\b(\d{4})\b/)
         const fallbackPostcode = postcodeMatch ? postcodeMatch[1] : ""
 
-        console.log("[v0] Street selection fallback - postcode from description:", fallbackPostcode)
+        console.log("[m2mmoving] Street selection fallback - postcode from description:", fallbackPostcode)
 
         onChange(streetText)
         if (onStreetSelect) {
@@ -193,7 +193,7 @@ export function StreetAutocomplete({
         }
       }
     } catch (error) {
-      console.error("[v0] Error fetching street details:", error)
+      console.error("[m2mmoving] Error fetching street details:", error)
       const streetText = prediction.structured_formatting?.main_text || prediction.description.split(",")[0]
       const postcodeMatch = prediction.description.match(/\b(\d{4})\b/)
       const fallbackPostcode = postcodeMatch ? postcodeMatch[1] : ""

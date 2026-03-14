@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error || !configData) {
-      console.error("[v0] Error fetching pricing config:", error)
+      console.error("[m2mmoving] Error fetching pricing config:", error)
       // Use default pricing if no config found
       return calculateWithDefaults(body)
     }
@@ -226,7 +226,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(response)
   } catch (error) {
-    console.error("[v0] Pricing calculation error:", error)
+    console.error("[m2mmoving] Pricing calculation error:", error)
     return NextResponse.json({ error: "Failed to calculate pricing" }, { status: 500 })
   }
 }
