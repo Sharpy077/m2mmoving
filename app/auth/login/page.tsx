@@ -8,13 +8,80 @@ import { Label } from "@/components/ui/label"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useState, Suspense, useTransition } from "react"
-import { Lock, AlertTriangle, ArrowLeft } from "lucide-react"
+import { Lock, AlertTriangle, ArrowLeft, Loader2, CheckCircle2 } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
+
+function ForgotPasswordLink() {
+  const [email, setEmail] = useState("")
+  const [sent, setSent] = useState(false)
+  const [show, setShow] = useState(false)
+  const [isSending, startSending] = useTransition()
+
+  const handleReset = () => {
+    if (!email) return
+    startSending(async () => {
+      const supabase = createClient()
+      await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/reset-password`,
+      })
+      setSent(true)
+    })
+  }
+
+  if (!show) {
+    return (
+      <button
+        type="button"
+        onClick={() => setShow(true)}
+        className="text-xs text-muted-foreground hover:text-primary font-mono transition-colors"
+      >
+        FORGOT PASSWORD?
+      </button>
+    )
+  }
+
+  if (sent) {
+    return (
+      <div className="flex items-center justify-center gap-2 text-xs text-secondary font-mono">
+        <CheckCircle2 className="w-4 h-4" />
+        Reset link sent — check your email
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2 mt-2">
+      <p className="text-xs text-muted-foreground font-mono">Enter your email to receive a reset link:</p>
+      <div className="flex gap-2">
+        <Input
+          type="email"
+          placeholder="admin@example.com.au"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="bg-muted/50 border-border font-mono text-xs h-8"
+        />
+        <Button
+          type="button"
+          size="sm"
+          onClick={handleReset}
+          disabled={isSending || !email}
+          className="font-mono text-xs h-8"
+        >
+          {isSending ? <Loader2 className="w-3 h-3 animate-spin" /> : "SEND"}
+        </Button>
+      </div>
+    </div>
+  )
+}
 
 function LoginForm() {
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const searchParams = useSearchParams()
-  const redirectTo = searchParams.get("redirect") || "/admin"
+  // Validate redirect to prevent open redirect attacks — only allow known relative paths
+  const allowedRedirects = ["/admin", "/admin/voicemails", "/admin/settings", "/admin/agents", "/quote"]
+  const rawRedirect = searchParams.get("redirect") || "/admin"
+  const redirectTo = allowedRedirects.includes(rawRedirect) ? rawRedirect : "/admin"
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -89,11 +156,22 @@ function LoginForm() {
               className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-mono"
               disabled={isPending}
             >
-              {isPending ? "AUTHENTICATING..." : "LOGIN"}
+              {isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  AUTHENTICATING...
+                </>
+              ) : (
+                "LOGIN"
+              )}
             </Button>
           </form>
 
-          <div className="mt-6 pt-4 border-t border-border">
+          <div className="mt-4 text-center">
+            <ForgotPasswordLink />
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-border">
             <Link
               href="/"
               className="flex items-center justify-center gap-2 text-muted-foreground hover:text-foreground text-sm font-mono transition-colors"

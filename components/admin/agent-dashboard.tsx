@@ -22,6 +22,7 @@ import {
   Eye,
 } from "lucide-react"
 import { AGENT_REGISTRY } from "@/lib/agents"
+import { AgentChat } from "./agent-chat"
 
 // =============================================================================
 // TYPES
@@ -144,15 +145,18 @@ export function AgentDashboard() {
         <AgentComparisonChart agents={agents} />
       </div>
       
-      {/* Agent Detail Modal */}
-      <AnimatePresence>
-        {selectedAgent && (
-          <AgentDetailModal 
-            agent={agents.find(a => a.codename === selectedAgent)!}
-            onClose={() => setSelectedAgent(null)}
-          />
-        )}
-      </AnimatePresence>
+      {/* Agent Chat Panel */}
+      {selectedAgent && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="h-[500px]">
+            <AgentChat
+              agentCodename={selectedAgent}
+              agentName={agents.find(a => a.codename === selectedAgent)?.name || selectedAgent}
+            />
+          </div>
+          <AgentDetailPanel agent={agents.find(a => a.codename === selectedAgent)} />
+        </div>
+      )}
     </div>
   )
 }
@@ -574,15 +578,63 @@ function AgentComparisonChart({ agents }: { agents: AgentStatus[] }) {
 }
 
 // =============================================================================
-// AGENT DETAIL MODAL
+// AGENT DETAIL PANEL (inline, replaces modal when chat is active)
 // =============================================================================
 
-function AgentDetailModal({ 
-  agent, 
-  onClose 
-}: { 
+function AgentDetailPanel({ agent }: { agent: AgentStatus | undefined }) {
+  if (!agent) return null
+
+  return (
+    <div className="bg-white/[0.02] rounded-2xl border border-white/10 p-6 space-y-6">
+      <div className="flex items-center gap-4">
+        <div className="p-3 rounded-xl bg-gradient-to-br from-cyan-500/20 to-violet-500/20 border border-white/10">
+          <Bot className="w-8 h-8 text-cyan-400" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-bold">{agent.name}</h2>
+          <p className="text-white/50">{agent.codename} — {agent.category.replace("_", " ")}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+          <div className="text-3xl font-bold text-cyan-400">{agent.messagesHandled}</div>
+          <div className="text-sm text-white/40">Messages</div>
+        </div>
+        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+          <div className="text-3xl font-bold text-violet-400">{agent.avgResponseTime.toFixed(1)}s</div>
+          <div className="text-sm text-white/40">Avg Response</div>
+        </div>
+        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+          <div className="text-3xl font-bold text-emerald-400">{agent.successRate.toFixed(1)}%</div>
+          <div className="text-sm text-white/40">Success Rate</div>
+        </div>
+      </div>
+
+      <div className="flex gap-3">
+        <button className="flex-1 py-3 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-medium hover:bg-cyan-500/30 transition-colors flex items-center justify-center gap-2">
+          <Eye className="w-4 h-4" />
+          View Logs
+        </button>
+        <button className="flex-1 py-3 rounded-xl bg-violet-500/20 text-violet-400 border border-violet-500/30 font-medium hover:bg-violet-500/30 transition-colors flex items-center justify-center gap-2">
+          <Settings className="w-4 h-4" />
+          Configure
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// =============================================================================
+// AGENT DETAIL MODAL (legacy, kept for reference)
+// =============================================================================
+
+function AgentDetailModal({
+  agent,
+  onClose
+}: {
   agent: AgentStatus
-  onClose: () => void 
+  onClose: () => void
 }) {
   return (
     <motion.div

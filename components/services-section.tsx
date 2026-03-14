@@ -54,7 +54,7 @@ export function ServicesSection() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {services.map((service, index) => (
-            <Card key={index} className="group hover:border-primary/50 transition-colors bg-card">
+            <Card key={index} className="group hover:border-primary/50 transition-colors bg-card focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2">
               <CardHeader>
                 <div className="flex items-start justify-between mb-4">
                   <div className="w-12 h-12 bg-primary/10 border border-primary/30 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
@@ -67,7 +67,7 @@ export function ServicesSection() {
               <CardContent>
                 <p className="text-sm text-muted-foreground leading-relaxed mb-4">{service.description}</p>
                 <Button asChild variant="outline" size="sm" className="w-full group/btn bg-transparent">
-                  <Link href={`/quote?service=${service.id}`}>
+                  <Link href={`/quote?service=${service.id}`} className="focus-visible:outline-none">
                     Get Quote
                     <ArrowRight className="ml-2 h-4 w-4 group-hover/btn:translate-x-1 transition-transform" />
                   </Link>

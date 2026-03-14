@@ -324,9 +324,9 @@ export function validateUserInput(
 
   // Stage-specific validation
   if (currentStage === "business_lookup") {
-    // ABN format check
-    const abnMatch = sanitized.match(/\b\d{11}\b/)
-    if (abnMatch && abnMatch[0].length !== 11) {
+    // ABN format check — warn if input contains digits that look like an ABN attempt but aren't 11 digits
+    const digitSequence = sanitized.match(/\d+/)
+    if (digitSequence && !sanitized.match(/\b\d{11}\b/)) {
       warnings.push("ABN should be 11 digits")
     }
   }

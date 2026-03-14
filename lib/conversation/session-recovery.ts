@@ -4,6 +4,7 @@
  */
 
 import type { ConversationContext } from "./state-machine"
+import { DEPOSIT_PERCENTAGE } from "@/lib/constants"
 
 export interface SavedSession {
   conversationId: string
@@ -266,7 +267,7 @@ export class SessionRecoveryManager {
         break
       case "payment":
         if (context.quoteAmount) {
-          prompt += `Your booking is ready for payment. The deposit is $${Math.round(context.quoteAmount * 0.5).toLocaleString()}. Ready to complete?`
+          prompt += `Your booking is ready for payment. The deposit is $${Math.round(context.quoteAmount * DEPOSIT_PERCENTAGE).toLocaleString()}. Ready to complete?`
         }
         break
       default:

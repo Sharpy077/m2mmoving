@@ -1,5 +1,6 @@
 import { BaseAgent, type AgentInput, type AgentOutput } from "../base-agent"
 import type { AgentIdentity, AgentConfig, InterAgentMessage } from "../types"
+import { DEPOSIT_PERCENTAGE } from "@/lib/constants"
 
 // =============================================================================
 // PRISM AGENT
@@ -369,7 +370,7 @@ export class PrismAgent extends BaseAgent {
           gst: Math.round(gst),
           total: Math.round(total),
         },
-        deposit: Math.round(total * 0.5),
+        deposit: Math.round(total * DEPOSIT_PERCENTAGE),
         validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
         margin: margin.toFixed(1),
         demandLevel: this.getDemandLevel(params.date),

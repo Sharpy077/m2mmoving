@@ -54,8 +54,15 @@ describe("ConversationStateMachine", () => {
     })
 
     it("should check required fields for transition", () => {
-      // Try to go to quote_generated without required fields
+      // Navigate to location_destination stage with required context data
       machine.transitionTo("service_select")
+      machine.updateContext({ serviceType: "office" })
+      machine.transitionTo("qualifying_questions")
+      machine.updateContext({ squareMeters: 200 })
+      machine.transitionTo("location_origin")
+      machine.updateContext({ originSuburb: "Melbourne CBD" })
+      machine.transitionTo("location_destination")
+      // Now try to go to quote_generated - missing destinationSuburb
       const result = machine.canTransitionTo("quote_generated")
       expect(result.allowed).toBe(false)
       expect(result.missingFields).toBeDefined()
@@ -213,6 +220,99 @@ describe("ConversationStateMachine", () => {
       const unanswered = machine.getUnansweredQualifyingQuestions()
       const total = machine.getQualifyingQuestions()
       expect(unanswered.length).toBe(total.length)
+    })
+  })
+
+  describe("re-engagement urgency levels", () => {
+    it("returns 'critical' urgency when idle at payment stage for over 10 minutes", () => {
+      machine.transitionTo("payment")
+      const context = machine.getContext()
+      const pastTime = Date.now() - 11 * 60 * 1000 // 11 minutes ago
+      const stalePaymentMachine = new ConversationStateMachine({
+        ...context,
+        stage: "payment",
+        lastMessageTime: pastTime,
+      })
+      const check = stalePaymentMachine.checkReengagement()
+      expect(check.needsReengagement).toBe(true)
+      expect(check.urgencyLevel).toBe("critical")
+    })
+
+    it("returns 'high' urgency when idle at payment stage for 6 minutes", () => {
+      const context = machine.getContext()
+      const pastTime = Date.now() - 6 * 60 * 1000 // 6 minutes — over idle threshold but < 10min
+      const stalePaymentMachine = new ConversationStateMachine({
+        ...context,
+        stage: "payment",
+        lastMessageTime: pastTime,
+      })
+      const check = stalePaymentMachine.checkReengagement()
+      expect(check.needsReengagement).toBe(true)
+      expect(check.urgencyLevel).toBe("high")
+    })
+
+    it("returns 'high' urgency when idle at quote_generated stage for over 5 minutes", () => {
+      const context = machine.getContext()
+      const pastTime = Date.now() - 6 * 60 * 1000 // 6 minutes — over the 5-minute threshold
+      const staleMachine = new ConversationStateMachine({
+        ...context,
+        stage: "quote_generated",
+        lastMessageTime: pastTime,
+      })
+      const check = staleMachine.checkReengagement()
+      expect(check.needsReengagement).toBe(true)
+      expect(check.urgencyLevel).toBe("high")
+    })
+
+    it("returns 'medium' urgency for a generic stage idle beyond its max idle time", () => {
+      const context = machine.getContext()
+      // greeting maxIdleTimeMs = 60_000 (1 min); 2 min idle is past threshold but < 3×
+      const pastTime = Date.now() - 2 * 60 * 1000
+      const staleMachine = new ConversationStateMachine({
+        ...context,
+        stage: "greeting",
+        lastMessageTime: pastTime,
+      })
+      const check = staleMachine.checkReengagement()
+      expect(check.needsReengagement).toBe(true)
+      expect(check.urgencyLevel).toBe("medium")
+    })
+  })
+
+  describe("inventory sqm estimation by item type", () => {
+    const sqmCases: Array<[string, string, number]> = [
+      ["workstations", "desk", 2.5],
+      ["workstations", "executive_desk", 4],
+      ["seating", "office_chair", 0.5],
+      ["storage", "filing_cabinet_4dr", 0.7],
+      ["storage", "bookshelf", 1],
+      ["meeting", "conference_table_large", 8],
+      ["it", "server_rack", 2],
+      ["it", "computer", 0.3],
+      ["specialty", "copier", 1.5],
+    ]
+
+    it.each(sqmCases)(
+      "estimates sqm correctly for %s / %s (expected %s m²)",
+      (category, itemType, expectedSqmPerItem) => {
+        const fresh = new ConversationStateMachine()
+        fresh.addInventoryItem({ category, itemType, quantity: 1 })
+        const summary = fresh.getInventorySummary()
+        expect(summary.estimatedSqm).toBe(expectedSqmPerItem)
+      },
+    )
+
+    it("uses 1 sqm as the fallback for unknown item types", () => {
+      machine.addInventoryItem({ category: "misc", itemType: "unknown_item_xyz", quantity: 1 })
+      const summary = machine.getInventorySummary()
+      expect(summary.estimatedSqm).toBe(1)
+    })
+
+    it("accumulates sqm correctly across multiple item types", () => {
+      machine.addInventoryItem({ category: "workstations", itemType: "desk", quantity: 10 }) // 10 * 2.5 = 25
+      machine.addInventoryItem({ category: "it", itemType: "server_rack", quantity: 5 }) // 5 * 2 = 10
+      const summary = machine.getInventorySummary()
+      expect(summary.estimatedSqm).toBe(35)
     })
   })
 })

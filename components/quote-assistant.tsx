@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+import { DEPOSIT_PERCENTAGE } from "@/lib/constants"
 import {
   useState,
   useRef,
@@ -218,6 +219,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
   const [abnSearchQuery, setAbnSearchQuery] = useState("")
   const [abnSearchResults, setAbnSearchResults] = useState<BusinessInfo[]>([])
   const [isSearchingABN, setIsSearchingABN] = useState(false)
+  const [abnSearchError, setAbnSearchError] = useState<string | null>(null)
   const [paymentClientSecret, setPaymentClientSecret] = useState<string | null>(null)
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
 
@@ -360,13 +362,17 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
   const handleABNSearch = async () => {
     if (!abnSearchQuery.trim()) return
     setIsSearchingABN(true)
+    setAbnSearchError(null)
     try {
       const searchType = /^\d+$/.test(abnSearchQuery.replace(/\s/g, "")) ? "abn" : "name"
       const response = await fetch(`/api/business-lookup?q=${encodeURIComponent(abnSearchQuery)}&type=${searchType}`)
+      if (!response.ok) throw new Error("Search unavailable")
       const data = await response.json()
       setAbnSearchResults(data.results || [])
     } catch (err) {
       console.error("ABN lookup failed:", err)
+      setAbnSearchError("Business search is temporarily unavailable. Please enter your details manually.")
+      setAbnSearchResults([])
     } finally {
       setIsSearchingABN(false)
     }
@@ -466,7 +472,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
     const timeCharge = Math.round(estimatedHours * TIME_RATE_PER_HOUR * 100) / 100
 
     const total = Math.round((baseCharge + distanceCharge + labourCharge + timeCharge) * 100) / 100
-    const deposit = Math.round(total * 0.5 * 100) / 100
+    const deposit = Math.round(total * DEPOSIT_PERCENTAGE * 100) / 100
     const balance = Math.round((total - deposit) * 100) / 100
 
     return {
@@ -538,7 +544,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
         <div className="flex gap-2 mb-3">
           <Input
             value={abnSearchQuery}
-            onChange={(e) => setAbnSearchQuery(e.target.value)}
+            onChange={(e) => { setAbnSearchQuery(e.target.value); setAbnSearchError(null) }}
             placeholder="e.g. 71661027309 or Acme Pty Ltd"
             onKeyDown={(e) => e.key === "Enter" && handleABNSearch()}
             className="bg-background text-foreground placeholder:text-muted-foreground border-input"
@@ -552,11 +558,21 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
           </Button>
         </div>
 
+        {/* Search Error */}
+        {abnSearchError && (
+          <p className="text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded p-2 mb-3">
+            {abnSearchError}
+          </p>
+        )}
+
         {/* Search Results */}
         {abnSearchResults.length > 0 && (
           <div className="space-y-2 max-h-64 overflow-y-auto">
             <p className="text-xs text-muted-foreground mb-2">
               {abnSearchResults.length} result{abnSearchResults.length !== 1 ? "s" : ""} found - click to select
+              {abnSearchResults.length >= 10 && (
+                <span className="ml-1 text-primary">— refine your search for more specific results</span>
+              )}
             </p>
             {abnSearchResults.map((biz, idx) => (
               <div
@@ -823,6 +839,7 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
       <div className="flex items-center gap-2 mb-2">
         <Clock className="h-4 w-4 text-primary flex-shrink-0" />
         <p className="font-medium text-sm text-foreground">Select Time Slot</p>
+        <span className="ml-auto text-xs text-muted-foreground">AEST (Melbourne)</span>
       </div>
       <p className="text-xs text-muted-foreground mb-2">
         {bookingData.preferredDate && formatDate(bookingData.preferredDate, "short")}
@@ -883,8 +900,8 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
       labourCharge: 340,
       timeCharge: 90,
       total: bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580,
-      deposit: (bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580) * 0.5,
-      balance: (bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580) * 0.5,
+      deposit: (bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580) * DEPOSIT_PERCENTAGE,
+      balance: (bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580) * DEPOSIT_PERCENTAGE,
     }
 
     return (
@@ -1374,8 +1391,8 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
       labourCharge: 340,
       timeCharge: 90,
       total: bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580,
-      deposit: (bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580) * 0.5,
-      balance: (bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580) * 0.5,
+      deposit: (bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580) * DEPOSIT_PERCENTAGE,
+      balance: (bookingData.quoteAmount > 0 ? bookingData.quoteAmount : 580) * DEPOSIT_PERCENTAGE,
     }
 
     return (
@@ -1553,6 +1570,30 @@ const QuoteAssistant = forwardRef<QuoteAssistantRef, QuoteAssistantProps>(({ isO
           </Badge>
         </div>
       </div>
+
+      {/* Progress bar */}
+      {messages.length > 0 && (() => {
+        const steps = [
+          !!bookingData.serviceType,
+          !!(bookingData.business?.abn),
+          !!(bookingData.originAddress?.suburb),
+          !!(bookingData.destinationAddress?.suburb),
+          !!(bookingData.preferredDate),
+          !!(bookingData.preferredTime),
+          Object.values(inventoryItems).some(v => v > 0),
+          showQuoteConfirmation || showPayment || showConfirmation,
+        ]
+        const completed = steps.filter(Boolean).length
+        const pct = Math.round((completed / steps.length) * 100)
+        return (
+          <div className="shrink-0 h-1 bg-muted" title={`Booking progress: ${pct}%`}>
+            <div
+              className="h-full bg-primary transition-all duration-500"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        )
+      })()}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto scroll-smooth overscroll-contain">

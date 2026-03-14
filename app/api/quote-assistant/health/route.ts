@@ -16,7 +16,7 @@ export async function GET() {
       timestamp: new Date().toISOString(),
       checks: {
         openai: hasOpenAIKey,
-        supabase: !!process.env.SUPABASE_URL,
+        supabase: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
       },
     }
 

@@ -33,6 +33,17 @@ export async function updateSession(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser()
 
+    // Protect provider portal routes (dashboard, jobs, earnings — not the public signup/landing)
+    const PROVIDER_PROTECTED = ['/provider/dashboard', '/provider/jobs', '/provider/earnings', '/provider/onboarding']
+    if (PROVIDER_PROTECTED.some((p) => request.nextUrl.pathname.startsWith(p))) {
+      if (!user) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/auth/login'
+        url.searchParams.set('redirect', request.nextUrl.pathname)
+        return NextResponse.redirect(url)
+      }
+    }
+
     if (request.nextUrl.pathname.startsWith("/admin")) {
       // Check if user is authenticated
       if (!user) {

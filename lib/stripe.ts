@@ -1,5 +1,6 @@
-import "server-only"
 import Stripe from "stripe"
+import "server-only"
+import "@/lib/env" // Validates required env vars at module load time
 
 let stripeInstance: Stripe | null = null
 

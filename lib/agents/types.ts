@@ -20,6 +20,7 @@ export type AgentCodename =
   | "BRIDGE_HH"
   | "GUARDIAN_QA"
   | "CORTEX_ORCH"
+  | "DISPATCH_MKT"
 
 export interface AgentIdentity {
   codename: AgentCodename | string
@@ -163,6 +164,8 @@ export interface PriceBreakdown {
   sqmCharge: number
   distanceCharge: number
   additionalServices: number
+  hardwareCost: number
+  furnitureSetup: number
   surcharges: number
   discounts: number
   subtotal: number
@@ -179,6 +182,7 @@ export interface PriceAdjustment {
 export interface PriceQuote {
   id: string
   leadId: string
+  items: Array<{ name: string; quantity: number; unitPrice: number; type: ServiceCategory }>
   baseAmount: number
   adjustments: PriceAdjustment[]
   totalAmount: number
@@ -319,7 +323,7 @@ export type TicketStatus = "open" | "in_progress" | "waiting_customer" | "resolv
 
 export type TicketPriority = "low" | "medium" | "high" | "urgent"
 
-export type TicketCategory = "booking" | "billing" | "damage" | "complaint" | "general" | "other"
+export type TicketCategory = "booking" | "billing" | "damage" | "complaint" | "it_support" | "procurement" | "general" | "other"
 
 export interface TicketMessage {
   id: string
@@ -375,3 +379,13 @@ export interface Job {
   notes?: string
   metadata?: Record<string, unknown>
 }
+
+export type ServiceCategory =
+  | "office_relocation"
+  | "it_equipment_moved"
+  | "office_furniture_moved"
+  | "datacentre_relocation"
+  | "office_furniture_installation"
+  | "it_equipment_installation"
+  | "it_asset_management"
+  | "general"

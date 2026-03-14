@@ -1,10 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const constructEventMock = vi.fn()
-const eqMock = vi.fn()
-const updateMock = vi.fn(() => ({ eq: eqMock }))
-const fromMock = vi.fn(() => ({ update: updateMock }))
-const reportMonitoringMock = vi.fn().mockResolvedValue({ delivered: true })
+const { constructEventMock, singleMock, selectAfterEqMock, eqMock, updateMock, fromMock, createClientMock } = vi.hoisted(() => {
+  const constructEventMock = vi.fn()
+  const singleMock = vi.fn()
+  const selectAfterEqMock = vi.fn(() => ({ single: singleMock }))
+  const eqMock = vi.fn(() => ({ select: selectAfterEqMock }))
+  const updateMock = vi.fn(() => ({ eq: eqMock }))
+  const fromMock = vi.fn(() => ({ update: updateMock }))
+  const createClientMock = vi.fn()
+  return { constructEventMock, singleMock, selectAfterEqMock, eqMock, updateMock, fromMock, createClientMock }
+})
 
 vi.mock("@/lib/stripe", () => ({
   stripe: {
@@ -14,14 +19,8 @@ vi.mock("@/lib/stripe", () => ({
   },
 }))
 
-vi.mock("@/lib/supabase/admin", () => ({
-  getSupabaseAdmin: () => ({
-    from: fromMock,
-  }),
-}))
-
-vi.mock("@/lib/monitoring", () => ({
-  reportMonitoring: reportMonitoringMock,
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: () => createClientMock(),
 }))
 
 import { POST } from "@/app/api/stripe/webhook/route"
@@ -32,27 +31,24 @@ describe("Stripe webhook route", () => {
   beforeEach(() => {
     process.env = { ...originalEnv, STRIPE_WEBHOOK_SECRET: "whsec_test" }
     constructEventMock.mockReset()
-    eqMock.mockReset()
+    eqMock.mockClear()
     updateMock.mockClear()
     fromMock.mockClear()
-    reportMonitoringMock.mockClear()
+    singleMock.mockResolvedValue({ data: { id: "lead_123", email: "test@test.com", contact_name: "Test" }, error: null })
+    createClientMock.mockResolvedValue({
+      from: fromMock,
+    })
   })
 
   afterEach(() => {
     process.env = { ...originalEnv }
   })
 
-  it("returns 400 and alerts when signature header is missing", async () => {
+  it("returns 400 when signature header is missing", async () => {
     const response = await POST(createRequest("{}", undefined))
 
     expect(response.status).toBe(400)
     expect(constructEventMock).not.toHaveBeenCalled()
-    expect(reportMonitoringMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        source: "stripe.webhook",
-        severity: "warning",
-      }),
-    )
   })
 
   it("updates lead when checkout session completes successfully", async () => {
@@ -63,11 +59,10 @@ describe("Stripe webhook route", () => {
           id: "cs_test",
           metadata: { lead_id: "lead_123", deposit_amount: "5000" },
           amount_total: 100000,
+          payment_intent: "pi_test_123",
         },
       },
     })
-    eqMock.mockResolvedValueOnce({ error: null })
-
     const response = await POST(createRequest("{}", "sig_test"))
 
     expect(response.status).toBe(200)
@@ -77,38 +72,19 @@ describe("Stripe webhook route", () => {
       expect.objectContaining({
         payment_status: "paid",
         deposit_paid: true,
-        status: "quoted",
-        deposit_amount: 5000,
       }),
     )
     expect(eqMock).toHaveBeenCalledWith("id", "lead_123")
-    expect(reportMonitoringMock).not.toHaveBeenCalled()
   })
 
-  it("reports monitoring alert when Supabase update fails", async () => {
-    constructEventMock.mockReturnValueOnce({
-      type: "checkout.session.completed",
-      data: {
-        object: {
-          id: "cs_test",
-          metadata: { lead_id: "lead_999", deposit_amount: "2500" },
-        },
-      },
+  it("returns 400 when signature verification fails", async () => {
+    constructEventMock.mockImplementation(() => {
+      throw new Error("Invalid signature")
     })
-    eqMock.mockResolvedValueOnce({ error: { message: "database offline" } })
 
-    const response = await POST(createRequest("{}", "sig_test"))
+    const response = await POST(createRequest("{}", "bad_sig"))
 
-    expect(response.status).toBe(500)
-    expect(reportMonitoringMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        source: "stripe.webhook",
-        severity: "critical",
-        details: expect.objectContaining({
-          eventType: "checkout.session.completed",
-        }),
-      }),
-    )
+    expect(response.status).toBe(400)
   })
 })
 

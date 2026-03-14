@@ -1,4 +1,5 @@
 import { Suspense } from "react"
+import { DEPOSIT_PERCENTAGE } from "@/lib/constants"
 import type { Metadata } from "next"
 import { createClient } from "@/lib/supabase/server"
 import { Calendar, Truck, MapPin, Clock, CheckCircle2, User, Building2 } from "lucide-react"
@@ -86,7 +87,7 @@ async function BookingsCalendar() {
                       ${booking.estimated_total?.toLocaleString() || "TBC"}
                     </div>
                     <div className="text-xs text-white/40">
-                      Deposit: ${booking.deposit_amount || Math.round((booking.estimated_total || 0) * 0.5)}
+                      Deposit: ${booking.deposit_amount || Math.round((booking.estimated_total || 0) * DEPOSIT_PERCENTAGE)}
                     </div>
                   </div>
                 </div>

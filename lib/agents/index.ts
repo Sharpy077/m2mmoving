@@ -34,6 +34,9 @@ export const AGENT_REGISTRY = {
   CIPHER: { name: "Cipher", codename: "CIPHER_SEC", category: "security", description: "AI Security & Compliance Agent" },
   BRIDGE: { name: "Bridge", codename: "BRIDGE_HH", category: "handoff", description: "AI Human Handoff Agent" },
   GUARDIAN: { name: "Guardian", codename: "GUARDIAN_QA", category: "quality", description: "AI Quality Assurance Agent" },
+
+  // Marketplace Agents
+  DISPATCH: { name: "Dispatch", codename: "DISPATCH_MKT", category: "marketplace", description: "Autonomous Job Matching & Assignment Engine" },
 } as const
 
 export type AgentName = keyof typeof AGENT_REGISTRY
@@ -79,6 +82,7 @@ export const AGENT_CATEGORIES = [
   "security",
   "handoff",
   "quality",
+  "marketplace",
 ] as const
 
 export type AgentCategory = typeof AGENT_CATEGORIES[number]

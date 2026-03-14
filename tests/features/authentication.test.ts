@@ -22,9 +22,9 @@ describe('Authentication - Functionality Tests', () => {
       const credentials2 = { email: '', password: 'password123' }
       const credentials3 = { email: 'test@example.com', password: 'password123' }
 
-      expect(credentials1.email && credentials1.password).toBe(false)
-      expect(credentials2.email && credentials2.password).toBe(false)
-      expect(credentials3.email && credentials3.password).toBe(true)
+      expect(credentials1.email && credentials1.password).toBeFalsy()
+      expect(credentials2.email && credentials2.password).toBeFalsy()
+      expect(credentials3.email && credentials3.password).toBeTruthy()
     })
 
     it('should handle successful login', () => {

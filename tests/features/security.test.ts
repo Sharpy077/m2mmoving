@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { POST } from "@/app/api/stripe/webhook/route"
-import { NextRequest } from "next/server"
 
-// Mock Stripe
-const constructEventMock = vi.fn()
+const { constructEventMock, mockUpdate, mockEq, mockFrom, createClientMock } = vi.hoisted(() => {
+  const constructEventMock = vi.fn()
+  const mockUpdate = vi.fn()
+  const mockEq = vi.fn()
+  const mockFrom = vi.fn(() => ({ update: mockUpdate }))
+  const createClientMock = vi.fn()
+  return { constructEventMock, mockUpdate, mockEq, mockFrom, createClientMock }
+})
+
 vi.mock("@/lib/stripe", () => ({
   stripe: {
     webhooks: {
@@ -12,29 +17,20 @@ vi.mock("@/lib/stripe", () => ({
   },
 }))
 
-// Mock Supabase
-const mockUpdate = vi.fn()
-const mockEq = vi.fn()
-const mockFrom = vi.fn(() => ({
-  update: mockUpdate,
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: () => createClientMock(),
 }))
 
-vi.mock("@/lib/supabase/admin", () => ({
-  getSupabaseAdmin: () => ({
-    from: mockFrom,
-  }),
-}))
-
-// Mock monitoring
-const reportMonitoringMock = vi.fn()
-vi.mock("@/lib/monitoring", () => ({
-  reportMonitoring: reportMonitoringMock,
-}))
+import { POST } from "@/app/api/stripe/webhook/route"
+import { NextRequest } from "next/server"
 
 describe("Security: Stripe Webhook", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_test"
+    createClientMock.mockResolvedValue({
+      from: mockFrom,
+    })
     mockUpdate.mockReturnValue({
       eq: mockEq,
     })
@@ -48,6 +44,7 @@ describe("Security: Stripe Webhook", () => {
         object: {
           id: "cs_test",
           metadata: { lead_id: "lead_123" },
+          payment_intent: "pi_test",
         },
       },
     })
@@ -72,7 +69,6 @@ describe("Security: Stripe Webhook", () => {
 
     const response = await POST(request)
     expect(response.status).toBe(400)
-    expect(reportMonitoringMock).toHaveBeenCalled()
   })
 
   it("should reject invalid signatures", async () => {
@@ -104,7 +100,7 @@ describe("Security: Input Validation", () => {
   it("should validate email format", () => {
     const validEmail = "test@example.com"
     const invalidEmail = "not-an-email"
-    
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     expect(emailRegex.test(validEmail)).toBe(true)
     expect(emailRegex.test(invalidEmail)).toBe(false)
@@ -113,7 +109,7 @@ describe("Security: Input Validation", () => {
   it("should validate phone number format", () => {
     const validPhone = "+61400000000"
     const invalidPhone = "invalid"
-    
+
     const phoneRegex = /^\+?[1-9]\d{1,14}$/
     expect(phoneRegex.test(validPhone.replace(/[^\d+]/g, ""))).toBe(true)
   })

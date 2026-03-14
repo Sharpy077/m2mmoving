@@ -60,23 +60,18 @@ export function Footer() {
             <h4 className="font-bold text-foreground mb-4 uppercase text-sm tracking-wider">Company</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
-                <a href="mailto:sales@m2mmoving.au?subject=About Us Inquiry" className="hover:text-primary transition-colors">
-                  About Us
+                <a href="/quote" className="hover:text-primary transition-colors">
+                  Get a Quote
                 </a>
               </li>
               <li>
-                <a href="mailto:sales@m2mmoving.au?subject=Careers Inquiry" className="hover:text-primary transition-colors">
-                  Careers
+                <a href="/#services" className="hover:text-primary transition-colors">
+                  Our Services
                 </a>
               </li>
               <li>
                 <a href="/#contact" className="hover:text-primary transition-colors">
                   Contact
-                </a>
-              </li>
-              <li>
-                <a href="mailto:sales@m2mmoving.au?subject=Blog Inquiry" className="hover:text-primary transition-colors">
-                  Blog
                 </a>
               </li>
               <li>
@@ -90,7 +85,7 @@ export function Footer() {
 
         <div className="border-t border-border pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-xs text-muted-foreground font-mono">
-            © 2025 M&M Commercial Moving Services. All rights reserved.
+            © 2026 M&M Commercial Moving Services. All rights reserved.
           </p>
           <p className="text-xs text-muted-foreground font-mono">
             SYS_VERSION: 2.4.1 | STATUS: <span className="text-primary">OPERATIONAL</span>
